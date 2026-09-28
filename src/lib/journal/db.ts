@@ -78,7 +78,7 @@ export function getState() {
 }
 
 type Row = { id: string };
-export async function putMany(store: StoreName, items: Row[]) {
+export async function putMany(store: StoreName, items: (Row & Record<string, any>)[] | any[]) {
   if (!items.length) return;
   await tx([store], (t) => items.forEach((i) => t.objectStore(store).put(i)));
   const map = new Map((state[store] as Row[]).map((r) => [r.id, r]));
