@@ -210,20 +210,21 @@ type SetlistJSON = {
 export function parseSetlist(text: string): ParseResult {
   const out: ParseResult = { entries: [], errors: [] };
   const trimmed = text.trim();
-  let rows: { row: Record<string, unknown>; sourceRow: number }[] = [];
+  let rows: { row: Record<string, unknown>; raw: Record<string, unknown>; sourceRow: number }[] = [];
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     const j = JSON.parse(trimmed);
     const arr: SetlistJSON[] = Array.isArray(j) ? j : j.setlist ?? j.setlists ?? [];
     rows = arr.map((s, i) => ({
       sourceRow: i + 1,
+      raw: { ...s },
       row: {
         date: s.eventDate ?? "", artist: s.artist?.name ?? "", venue: s.venue?.name ?? "",
         city: s.venue?.city?.name ?? "", country: s.venue?.city?.country?.name ?? "", tour: s.tour?.name ?? "",
         songs: (s.sets?.set ?? []).flatMap((x) => (x.song ?? []).map((so) => so.name ?? "")).filter(Boolean),
       },
     }));
-  } else rows = csvRows(text);
-  rows.forEach(({ row: r, sourceRow }) => {
+  } else rows = csvRows(text).map(({ row, sourceRow }) => ({ row, raw: row, sourceRow }));
+  rows.forEach(({ row: r, raw, sourceRow }) => {
     const start = normDate(pick(r, ["date", "eventDate", "Event date"]));
     const artist = pick(r, ["artist", "Artist name"]);
     if (!start || !artist) return out.errors.push(`Entry ${sourceRow}: missing date or artist`);
@@ -238,7 +239,7 @@ export function parseSetlist(text: string): ParseResult {
       // Your own attendance log, so treated as confirmed rather than merely a purchase.
       confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),
       startTz: tz, startUTC: localToUTC(start, tz),
-      raw: Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])),
+      raw,
     };
     ev.dedupeKey = eventKey(ev);
     const w: string[] = [];
@@ -280,7 +281,7 @@ export function parseGeneric(text: string): ParseResult {
     const confidence = confidenceFrom(r, tier === 2 ? "confirmed" : "inferred");
     const purpose = purposeFrom(r);
     const companions = companionsFrom(r);
-    const raw = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
+    const raw = r;
     const base = {
       id: uid(), source: "generic" as Source, tier, start, end, createdAt: now(),
       journal: pick(r, ["notes", "note", "journal"]) || undefined, confidence, purpose, companions, raw,
@@ -308,6 +309,7 @@ export function parseGeneric(text: string): ParseResult {
         ...base, kind: "event", category: EVENT_TYPES[type], artist: pick(r, ["title", "artist", "name"]) || "Moment",
         venue: pick(r, ["venue", "place"]), city, people: companions, dedupeKey: "",
         startTz: tz, startUTC: localToUTC(start, tz),
+        endTz: end ? tz : undefined, endUTC: end ? localToUTC(end, tz) : undefined,
       };
       e.dedupeKey = eventKey(e);
       out.entries.push({ entry: e, warnings: [], sourceRow });

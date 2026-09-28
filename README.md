@@ -13,6 +13,7 @@ Key specifications from the project discovery and data model:
   * Stays: accommodation/lodgings with place, dates, check-in/out, notes.
   * Events: activities, concerts, gigs (artist, venue, city, date, setlist details).
   * Manual Overrides & Notes: sovereign Tier 1 overrides and personal journal reflections attached to days or trips.
+  * Imported entries retain their parsed source record (including nested JSON) and original row reference. Local times and known place timezones provide UTC instants when unambiguous; manual time/place corrections recalculate UTC in the effective entry view without overwriting source facts.
 
 2. Ingestion & Staging Pipeline:
 - Dedicated Staging Hub where uploaded files are parsed, previewed, and reviewed before committing to the main store.

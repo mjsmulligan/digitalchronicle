@@ -1,3 +1,6 @@
+import { timezoneFor } from "./geo";
+import { localToUTC } from "./tz";
+
 export type Source = "manual" | "fr24" | "viaduct" | "setlistfm" | "generic";
 /** 1 = user manual (sovereign), 2 = primary transit/attendance records, 3 = secondary order/calendar records */
 export type Tier = 1 | 2 | 3;
@@ -34,9 +37,8 @@ interface Base {
   purpose?: Purpose;
   /** Person ids or free-text names of who was there */
   companions?: string[];
-  /** Exact row/record as the source gave it, kept verbatim so imports can be re-run later
-   *  (e.g. after Place resolution improves) without re-entering anything. */
-  raw?: Record<string, string>;
+  /** Parsed source record, including nested JSON fields, retained for later reprocessing. */
+  raw?: Record<string, unknown>;
   /** Where this fact came from: filename and row/index within it. */
   sourceRef?: string;
 }
@@ -153,7 +155,26 @@ export const SOURCE_LABEL: Record<Source, string> = {
 };
 
 export function view<T extends Entry>(e: T): T {
-  return e.overrides ? ({ ...e, ...e.overrides } as T) : e;
+  if (!e.overrides) return e;
+  const v = { ...e, ...e.overrides } as T;
+  const keys = e.overrides;
+  if (v.kind === "leg") {
+    if ("start" in keys || "from" in keys) {
+      v.startTz = timezoneFor(v.from);
+      v.startUTC = localToUTC(v.start, v.startTz);
+    }
+    if ("end" in keys || "to" in keys) {
+      v.endTz = timezoneFor(v.to);
+      v.endUTC = v.end ? localToUTC(v.end, v.endTz) : undefined;
+    }
+  } else if ("city" in keys || "start" in keys || "end" in keys) {
+    const tz = timezoneFor(v.city ?? "");
+    v.startTz = tz;
+    v.startUTC = localToUTC(v.start, tz);
+    v.endTz = v.end ? tz : undefined;
+    v.endUTC = v.end ? localToUTC(v.end, tz) : undefined;
+  }
+  return v;
 }
 
 export function uid() {
