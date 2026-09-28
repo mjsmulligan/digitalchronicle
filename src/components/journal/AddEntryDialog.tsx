@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -7,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { putMany } from "@/lib/journal/db";
 import { CATEGORY_LABEL, uid, type EventCategory, type Entry, type Purpose } from "@/lib/journal/types";
 import { eventKey, legKey, stayKey } from "@/lib/journal/parsers";
-import { timezoneFor } from "@/lib/journal/geo";
+import { loadStations, timezoneFor } from "@/lib/journal/geo";
 import { localToUTC } from "@/lib/journal/tz";
 
 type Kind = EventCategory | "stay" | "flight" | "train" | "road";
@@ -18,10 +19,12 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("memory");
   const [f, setF] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
   const date = f.date || defaultDate || new Date().toISOString().slice(0, 10);
 
-  const submit = async () => {
+  const save = async () => {
+    if (f.city || f.from || f.to) await loadStations();
     // Manual entries are the user's own statement: highest confidence, and never guessed at.
     const companions = f.people ? f.people.split(",").map((x) => x.trim()).filter(Boolean) : undefined;
     const purpose = (f.purpose as Purpose) || undefined;
@@ -56,6 +59,18 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
     await putMany(e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : "events", [e]);
     setF({});
     setOpen(false);
+  };
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await save();
+    } catch (error) {
+      toast.error(`Could not save entry: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const isLeg = kind === "flight" || kind === "train" || kind === "road";
@@ -98,7 +113,7 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
           <Input className="col-span-2" placeholder="Companions (comma separated)" value={f.people ?? ""} onChange={set("people")} />
         </div>
         <Textarea placeholder="Reflection…" className="font-serif" value={f.journal ?? ""} onChange={set("journal")} />
-        <Button onClick={submit}>Save entry</Button>
+        <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : "Save entry"}</Button>
       </DialogContent>
     </Dialog>
   );

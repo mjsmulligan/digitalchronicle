@@ -1,6 +1,6 @@
 import { allEntries, getState, putMany, removeMany, storeFor } from "./db";
 import { PARSERS, detectSource } from "./parsers";
-import { locate } from "./geo";
+import { loadStations, locate } from "./geo";
 import {
   day, uid, view, type Cluster, type Entry, type Source, type StagedRecord, type StagingBatch, type Trip,
 } from "./types";
@@ -52,6 +52,7 @@ export async function stageFile(filename: string, text: string, forced?: Exclude
     throw new Error("Flightradar24 exports are not supported. Use a generic flight CSV or add flights manually.");
   }
   const source = forced ?? detectSource(filename, text);
+  await loadStations();
   let res;
   try {
     res = PARSERS[source](text);

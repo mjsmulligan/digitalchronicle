@@ -7,13 +7,14 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BookOpen, Map as MapIcon, Luggage, Inbox, HardDrive, Lock } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { initJournal, useJournal } from "@/lib/journal/db";
 import { Toaster } from "@/components/ui/sonner";
+import { Button } from "@/components/ui/button";
 
 function NotFoundComponent() {
   return (
@@ -108,8 +109,13 @@ const NAV = [
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const [initError, setInitError] = useState<string | null>(null);
   useEffect(() => {
-    void initJournal();
+    let active = true;
+    void initJournal().catch((error: unknown) => {
+      if (active) setInitError(error instanceof Error ? error.message : String(error));
+    });
+    return () => { active = false; };
   }, []);
   const { staging } = useJournal();
   return (
@@ -140,7 +146,15 @@ function RootComponent() {
           </nav>
         </aside>
         <main className="min-w-0 flex-1 px-4 py-8 md:px-10">
-          <Outlet />
+          {initError ? (
+            <div role="alert">
+              <p>Could not load the journal or offline station lookup: {initError}</p>
+              <Button onClick={() => {
+                setInitError(null);
+                void initJournal().catch((error: unknown) => setInitError(error instanceof Error ? error.message : String(error)));
+              }}>Try again</Button>
+            </div>
+          ) : <Outlet />}
         </main>
       </div>
       <Toaster />

@@ -1,8 +1,22 @@
-// Small offline gazetteer — no network lookups, keeps everything local.
-// `raw` is always kept on the entry itself; this table is only used to resolve it
-// to a display name, coordinates and timezone at read time. Anything not listed
-// here resolves to nothing (won't show on the map, timezone stays unknown, and
-// UTC is left uncomputed) rather than being guessed at.
+// Offline gazetteer — no external place lookups, keeps journal data local.
+type Stations = typeof import("./stations.generated").STATIONS;
+let stations: Stations | undefined;
+let stationPromise: Promise<void> | undefined;
+
+export function loadStations(): Promise<void> {
+  if (stations) return Promise.resolve();
+  stationPromise ??= import("./stations.generated")
+    .then(({ STATIONS }) => {
+      stations = STATIONS;
+    })
+    .catch((error: unknown) => {
+      stationPromise = undefined;
+      throw error;
+    });
+  return stationPromise;
+}
+
+// The hand-curated entries take precedence over the bundled station dataset.
 export interface PlaceInfo {
   name: string;
   lat: number;
@@ -68,7 +82,13 @@ export function normKey(s: string) {
 
 /** Resolve a raw source value (code or name) to its gazetteer entry, if known. */
 export function locate(code: string): PlaceInfo | undefined {
-  return PLACES[normKey(code)];
+  const key = normKey(code);
+  const curated = PLACES[key];
+  if (curated) return curated;
+  const station = stations?.[key];
+  if (!station) return undefined;
+  const [name, lat, lon, timezone] = station;
+  return { name, lat, lon, timezone };
 }
 
 /** Convenience: just the timezone, for wiring up UTC conversion in the parsers. */
