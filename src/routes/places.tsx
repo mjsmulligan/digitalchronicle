@@ -1,0 +1,100 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useMemo } from "react";
+import { allEntries, useJournal } from "@/lib/journal/db";
+import { locate } from "@/lib/journal/geo";
+import { view } from "@/lib/journal/types";
+
+export const Route = createFileRoute("/places")({
+  head: () => ({
+    meta: [
+      { title: "Places — Journal" },
+      { name: "description", content: "A map and list of every place in your journal." },
+      { property: "og:title", content: "Places — Journal" },
+      { property: "og:description", content: "Where your life has happened: cities, venues, stations and airports." },
+    ],
+  }),
+  component: Places,
+});
+
+const W = 1000, H = 500;
+const px = (lon: number, lat: number) => [((lon + 180) / 360) * W, ((90 - lat) / 180) * H] as const;
+
+function Places() {
+  const s = useJournal();
+  const { points, arcs, unknown } = useMemo(() => {
+    const pts = new Map<string, { name: string; lat: number; lon: number; count: number; kinds: Set<string> }>();
+    const arcs: { a: [number, number]; b: [number, number]; mode: string }[] = [];
+    const unknown = new Map<string, number>();
+    const add = (code: string, kind: string) => {
+      if (!code) return;
+      const p = locate(code);
+      if (!p) return unknown.set(code, (unknown.get(code) ?? 0) + 1);
+      const cur = pts.get(p.name) ?? { ...p, count: 0, kinds: new Set() };
+      cur.count++;
+      cur.kinds.add(kind);
+      pts.set(p.name, cur);
+    };
+    allEntries(s).map(view).forEach((e) => {
+      if (e.kind === "leg") {
+        add(e.from, e.mode); add(e.to, e.mode);
+        const a = locate(e.from), b = locate(e.to);
+        if (a && b) arcs.push({ a: [a.lon, a.lat], b: [b.lon, b.lat], mode: e.mode });
+      } else if (e.kind === "stay") add(e.city ?? e.place, "stay");
+      else add(e.city, e.category);
+    });
+    return { points: [...pts.values()].sort((a, b) => b.count - a.count), arcs, unknown: [...unknown.entries()] };
+  }, [s]);
+
+  const color = (m: string) => (m === "air" ? "var(--air)" : m === "rail" ? "var(--rail)" : "var(--road)");
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <h1 className="text-4xl font-semibold">Places</h1>
+      <p className="mb-6 text-muted-foreground">{points.length} mapped places · drawn offline, nothing leaves your browser.</p>
+      <div className="overflow-hidden rounded-md border border-border bg-card">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+          {Array.from({ length: 11 }, (_, i) => <line key={"v" + i} x1={i * 100} x2={i * 100} y1={0} y2={H} stroke="var(--border)" strokeWidth={0.5} />)}
+          {Array.from({ length: 7 }, (_, i) => <line key={"h" + i} y1={(i * H) / 6} y2={(i * H) / 6} x1={0} x2={W} stroke="var(--border)" strokeWidth={i === 3 ? 1 : 0.5} />)}
+          {arcs.map((r, i) => {
+            const [x1, y1] = px(...r.a), [x2, y2] = px(...r.b);
+            const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - Math.hypot(x2 - x1, y2 - y1) * 0.2;
+            return <path key={i} d={`M${x1},${y1} Q${mx},${my} ${x2},${y2}`} fill="none" stroke={color(r.mode)} strokeWidth={1.2} strokeDasharray={r.mode === "rail" ? "3 2" : undefined} opacity={0.8} />;
+          })}
+          {points.map((p) => {
+            const [x, y] = px(p.lon, p.lat);
+            return (
+              <g key={p.name}>
+                <circle cx={x} cy={y} r={2 + Math.min(p.count, 8)} fill="var(--primary)" opacity={0.25} />
+                <circle cx={x} cy={y} r={2} fill="var(--primary)" />
+                <title>{p.name} — {p.count}</title>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <div className="mt-8 grid gap-8 md:grid-cols-[2fr_1fr]">
+        <table className="w-full text-sm">
+          <thead className="text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+            <tr><th className="py-2">Place</th><th>Appearances</th><th>Why</th></tr>
+          </thead>
+          <tbody>
+            {points.map((p) => (
+              <tr key={p.name} className="border-t border-border">
+                <td className="py-2 font-medium">{p.name}</td>
+                <td className="font-mono">{p.count}</td>
+                <td className="text-muted-foreground">{[...p.kinds].join(", ")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {unknown.length > 0 && (
+          <div>
+            <h2 className="text-lg">Not on the map</h2>
+            <p className="mb-2 text-xs text-muted-foreground">Not in the offline place list.</p>
+            <ul className="text-sm">{unknown.map(([k, n]) => <li key={k}>{k} <span className="font-mono text-muted-foreground">×{n}</span></li>)}</ul>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
