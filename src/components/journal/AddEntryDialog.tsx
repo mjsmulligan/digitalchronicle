@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { putMany } from "@/lib/journal/db";
 import { CATEGORY_LABEL, uid, type EventCategory, type Entry, type Purpose } from "@/lib/journal/types";
 import { eventKey, legKey, stayKey } from "@/lib/journal/parsers";
+import { timezoneFor } from "@/lib/journal/geo";
+import { localToUTC } from "@/lib/journal/tz";
 
 type Kind = EventCategory | "stay" | "flight" | "train" | "road";
 const KINDS: Kind[] = ["memory", "concert", "gathering", "celebration", "milestone", "activity", "flight", "train", "road", "stay"];
@@ -29,10 +31,27 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
       journal: f.journal || undefined, purpose, companions,
     };
     let e: Entry;
-    if (kind === "stay") e = { ...base, kind: "stay", place: f.title || "Stay", city: f.city, end: f.end || undefined, dedupeKey: "" };
-    else if (kind === "flight" || kind === "train" || kind === "road")
-      e = { ...base, kind: "leg", mode: kind === "flight" ? "air" : kind === "train" ? "rail" : "road", from: f.from || "?", to: f.to || "?", dedupeKey: "" };
-    else e = { ...base, kind: "event", category: kind, artist: f.title || CATEGORY_LABEL[kind], venue: f.venue || "", city: f.city || "", people: companions, dedupeKey: "" };
+    if (kind === "stay") {
+      const tz = timezoneFor(f.city || "");
+      e = {
+        ...base, kind: "stay", place: f.title || "Stay", city: f.city, end: f.end || undefined,
+        startTz: tz, endTz: tz, startUTC: localToUTC(base.start, tz), dedupeKey: "",
+      };
+    } else if (kind === "flight" || kind === "train" || kind === "road") {
+      const tz = timezoneFor(f.from || "");
+      e = {
+        ...base, kind: "leg", mode: kind === "flight" ? "air" : kind === "train" ? "rail" : "road",
+        from: f.from || "?", to: f.to || "?", startTz: tz, endTz: timezoneFor(f.to || ""),
+        startUTC: localToUTC(base.start, tz), dedupeKey: "",
+      };
+    } else {
+      const tz = timezoneFor(f.city || "");
+      e = {
+        ...base, kind: "event", category: kind, artist: f.title || CATEGORY_LABEL[kind],
+        venue: f.venue || "", city: f.city || "", people: companions,
+        startTz: tz, startUTC: localToUTC(base.start, tz), dedupeKey: "",
+      };
+    }
     e.dedupeKey = e.kind === "leg" ? legKey(e) : e.kind === "stay" ? stayKey(e) : eventKey(e);
     await putMany(e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : "events", [e]);
     setF({});

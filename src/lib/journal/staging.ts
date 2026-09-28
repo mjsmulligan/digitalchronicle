@@ -55,10 +55,8 @@ export async function stageFile(filename: string, text: string, forced?: Exclude
   }
   const existing = new Map(allEntries(getState()).map((e) => [e.dedupeKey, e]));
   const seen = new Set<string>();
-  const records: StagedRecord[] = res.entries.map(({ entry, warnings }, i) => {
-    // Row-level pointer back to the file this fact came from, kept on the entry itself
-    // (not just this staging batch) so it survives commit and imports can be re-run later.
-    entry.sourceRef = `${filename}#row${i + 1}`;
+  const records: StagedRecord[] = res.entries.map(({ entry, warnings, sourceRow }) => {
+    entry.sourceRef = `${filename}#row${sourceRow}`;
     const c = classify(entry, existing, seen);
     return { entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" };
   });
