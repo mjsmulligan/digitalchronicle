@@ -133,45 +133,6 @@ function legWarnings(l: Leg): string[] {
   return w;
 }
 
-// ---------- Flightradar24 ----------
-function airport(s: string): { code: string; name: string } {
-  const m = s.match(/\(([A-Z0-9]{3})\/?[A-Z0-9]*\)/);
-  const name = s.replace(/\s*\(.*\)\s*/, "").trim();
-  return { code: m ? m[1] : s.trim().toUpperCase(), name };
-}
-
-export function parseFR24(text: string): ParseResult {
-  const out: ParseResult = { entries: [], errors: [] };
-  csvRows(text).forEach(({ row: r, sourceRow }) => {
-    const start = normDate(pick(r, ["Date"]), pick(r, ["Dep time", "Departure time"]));
-    if (!start) return out.errors.push(`Row ${sourceRow}: unreadable date`);
-    const from = airport(pick(r, ["From"]));
-    const to = airport(pick(r, ["To"]));
-    if (!from.code || !to.code) return out.errors.push(`Row ${sourceRow}: missing airports`);
-    const arr = pick(r, ["Arr time", "Arrival time"]);
-    let end = arr ? normDate(start.slice(0, 10), arr) ?? undefined : undefined;
-    if (end && end < start) {
-      const d = new Date(start.slice(0, 10) + "T00:00");
-      d.setDate(d.getDate() + 1);
-      end = normDate(d.toISOString().slice(0, 10), arr) ?? end;
-    }
-    const leg: Leg = {
-      id: uid(), kind: "leg", mode: "air", source: "fr24", tier: 2, start, end,
-      from: from.code, to: to.code, fromName: from.name, toName: to.name,
-      flightNumber: pick(r, ["Flight number", "Flight"]), aircraft: pick(r, ["Aircraft"]),
-      operator: pick(r, ["Airline"]), seat: pick(r, ["Seat number"]), journal: pick(r, ["Note"]) || undefined,
-      dedupeKey: "", createdAt: now(),
-      // Flightradar24 is a primary record of what was flown, so confirmed by default.
-      confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),
-      raw: r,
-    };
-    withTiming(leg);
-    leg.dedupeKey = legKey(leg);
-    out.entries.push({ entry: leg, warnings: legWarnings(leg), sourceRow });
-  });
-  return out;
-}
-
 // ---------- Viaduct rail ----------
 export function parseViaduct(text: string): ParseResult {
   const out: ParseResult = { entries: [], errors: [] };
@@ -319,7 +280,6 @@ export function parseGeneric(text: string): ParseResult {
 }
 
 export const PARSERS: Record<Exclude<Source, "manual">, (t: string) => ParseResult> = {
-  fr24: parseFR24,
   viaduct: parseViaduct,
   setlistfm: parseSetlist,
   generic: parseGeneric,
@@ -327,7 +287,6 @@ export const PARSERS: Record<Exclude<Source, "manual">, (t: string) => ParseResu
 
 export function detectSource(filename: string, text: string): Exclude<Source, "manual"> {
   const head = text.slice(0, 400).toLowerCase();
-  if (head.includes("flight number") && head.includes("aircraft")) return "fr24";
   if (head.includes("eventdate") || head.includes('"artist"') || /setlist/i.test(filename)) return "setlistfm";
   if (/viaduct/i.test(filename) || (head.includes("station") || (head.includes("origin") && head.includes("operator")))) return "viaduct";
   return "generic";

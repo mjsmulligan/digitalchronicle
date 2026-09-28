@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Upload, AlertTriangle, Scissors, Merge, Trash2 } from "lucide-react";
 import { useJournal, removeMany } from "@/lib/journal/db";
 import { stageFile, saveBatch, commitBatch, clusterRecords, suggestTitle } from "@/lib/journal/staging";
-import { SAMPLE_FR24, SAMPLE_VIADUCT, SAMPLE_SETLIST, SAMPLE_GENERIC, SAMPLE_LIFE } from "@/lib/journal/samples";
+import { SAMPLE_VIADUCT, SAMPLE_SETLIST, SAMPLE_GENERIC, SAMPLE_LIFE } from "@/lib/journal/samples";
 import { SOURCE_LABEL, entryTitle, uid, type Source, type StagingBatch, type StageStatus } from "@/lib/journal/types";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,7 +17,7 @@ export const Route = createFileRoute("/import")({
   head: () => ({
     meta: [
       { title: "Import & staging — Journal" },
-      { name: "description", content: "Import Flightradar24, Viaduct, setlist.fm and custom CSV/JSON exports, review, then commit to your journal." },
+      { name: "description", content: "Import Viaduct, setlist.fm and custom CSV/JSON exports, review, then commit to your journal." },
       { property: "og:title", content: "Import & staging — Journal" },
       { property: "og:description", content: "Review parsed records, duplicates and suggested trips before they enter your journal." },
     ],
@@ -158,12 +158,15 @@ function ImportPage() {
 
   const handle = async (files: FileList | File[]) => {
     for (const f of Array.from(files)) {
-      const b = await stageFile(f.name, await f.text(), src === "auto" ? undefined : src);
-      toast(`Staged ${b.records.length} records from ${f.name} (${SOURCE_LABEL[b.source]})`);
+      try {
+        const b = await stageFile(f.name, await f.text(), src === "auto" ? undefined : src);
+        toast(`Staged ${b.records.length} records from ${f.name} (${SOURCE_LABEL[b.source]})`);
+      } catch (err) {
+        toast.error(`Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   };
   const samples = async () => {
-    await stageFile("flightradar24-flights.csv", SAMPLE_FR24, "fr24");
     await stageFile("viaduct-journeys.csv", SAMPLE_VIADUCT, "viaduct");
     await stageFile("setlistfm-attended.json", SAMPLE_SETLIST, "setlistfm");
     await stageFile("stays-cleaned.csv", SAMPLE_GENERIC, "generic");
@@ -175,7 +178,7 @@ function ImportPage() {
     <div className="mx-auto max-w-6xl">
       <h1 className="text-4xl font-semibold">Import & staging</h1>
       <p className="mb-6 max-w-2xl text-muted-foreground">
-        Files are read inside your browser. Nothing enters your journal until you commit. Precedence: your manual edits &gt; primary records (flights, trains, setlists) &gt; secondary records (bookings, calendars).
+        Files are read inside your browser. Nothing enters your journal until you commit. Precedence: your manual edits &gt; primary records (trains, setlists) &gt; secondary records (bookings, calendars).
       </p>
 
       <div
@@ -189,7 +192,6 @@ function ImportPage() {
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
           <select value={src} onChange={(e) => setSrc(e.target.value as Auto)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
             <option value="auto">Detect format</option>
-            <option value="fr24">Flightradar24 CSV</option>
             <option value="viaduct">Viaduct rail CSV</option>
             <option value="setlistfm">setlist.fm JSON/CSV</option>
             <option value="generic">Generic / cleaned CSV or JSON</option>

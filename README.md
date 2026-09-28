@@ -18,7 +18,6 @@ Key specifications from the project discovery and data model:
 2. Ingestion & Staging Pipeline:
 - Dedicated Staging Hub where uploaded files are parsed, previewed, and reviewed before committing to the main store.
 - Built-in format parsers and presets:
-  * Flightradar24 personal flight CSV export
   * Viaduct rail CSV export (handles station names, local timestamps)
   * setlist.fm concert attendance export (JSON/CSV)
   * Generic / Cleaned CSV & JSON parser for pre-processed custom datasets
@@ -32,7 +31,7 @@ Key specifications from the project discovery and data model:
 - Timeline & Daily Journal: chronological view with rich expandable cards for flights, train journeys, concerts, and daily notes.
 - Trips Explorer: summary of trips with stats, legs, and stops.
 - Places & Map View: visual map and place list of destinations visited.
-- Staging / Importers Manager: drag-and-drop dropzone, sample data loader (to test Flightradar24, Viaduct, and setlist.fm data immediately), and staging queue.
+- Staging / Importers Manager: drag-and-drop dropzone, sample data loader (to test Viaduct, setlist.fm, and generic CSV data immediately), and staging queue.
 - Backup & Data Management: storage metrics, full JSON export/import, and database reset options.
 
 This project was built with [Lovable](https://lovable.dev).
