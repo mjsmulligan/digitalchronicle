@@ -5,11 +5,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { putMany } from "@/lib/journal/db";
-import { CATEGORY_LABEL, uid, type EventCategory, type Entry } from "@/lib/journal/types";
+import { CATEGORY_LABEL, uid, type EventCategory, type Entry, type Purpose } from "@/lib/journal/types";
 import { eventKey, legKey, stayKey } from "@/lib/journal/parsers";
+import { timezoneFor } from "@/lib/journal/geo";
+import { localToUTC } from "@/lib/journal/tz";
 
 type Kind = EventCategory | "stay" | "flight" | "train" | "road";
 const KINDS: Kind[] = ["memory", "concert", "gathering", "celebration", "milestone", "activity", "flight", "train", "road", "stay"];
+const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
 
 export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
   const [open, setOpen] = useState(false);
@@ -19,12 +22,36 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
   const date = f.date || defaultDate || new Date().toISOString().slice(0, 10);
 
   const submit = async () => {
-    const base = { id: uid(), source: "manual" as const, tier: 1 as const, start: f.time ? `${date}T${f.time}` : date, createdAt: new Date().toISOString(), journal: f.journal || undefined };
+    // Manual entries are the user's own statement: highest confidence, and never guessed at.
+    const companions = f.people ? f.people.split(",").map((x) => x.trim()).filter(Boolean) : undefined;
+    const purpose = (f.purpose as Purpose) || undefined;
+    const base = {
+      id: uid(), source: "manual" as const, tier: 1 as const, confidence: "confirmed" as const,
+      start: f.time ? `${date}T${f.time}` : date, createdAt: new Date().toISOString(),
+      journal: f.journal || undefined, purpose, companions,
+    };
     let e: Entry;
-    if (kind === "stay") e = { ...base, kind: "stay", place: f.title || "Stay", city: f.city, end: f.end || undefined, dedupeKey: "" };
-    else if (kind === "flight" || kind === "train" || kind === "road")
-      e = { ...base, kind: "leg", mode: kind === "flight" ? "air" : kind === "train" ? "rail" : "road", from: f.from || "?", to: f.to || "?", dedupeKey: "" };
-    else e = { ...base, kind: "event", category: kind, artist: f.title || CATEGORY_LABEL[kind], venue: f.venue || "", city: f.city || "", people: f.people ? f.people.split(",").map((x) => x.trim()) : undefined, dedupeKey: "" };
+    if (kind === "stay") {
+      const tz = timezoneFor(f.city || "");
+      e = {
+        ...base, kind: "stay", place: f.title || "Stay", city: f.city, end: f.end || undefined,
+        startTz: tz, endTz: tz, startUTC: localToUTC(base.start, tz), dedupeKey: "",
+      };
+    } else if (kind === "flight" || kind === "train" || kind === "road") {
+      const tz = timezoneFor(f.from || "");
+      e = {
+        ...base, kind: "leg", mode: kind === "flight" ? "air" : kind === "train" ? "rail" : "road",
+        from: f.from || "?", to: f.to || "?", startTz: tz, endTz: timezoneFor(f.to || ""),
+        startUTC: localToUTC(base.start, tz), dedupeKey: "",
+      };
+    } else {
+      const tz = timezoneFor(f.city || "");
+      e = {
+        ...base, kind: "event", category: kind, artist: f.title || CATEGORY_LABEL[kind],
+        venue: f.venue || "", city: f.city || "", people: companions,
+        startTz: tz, startUTC: localToUTC(base.start, tz), dedupeKey: "",
+      };
+    }
     e.dedupeKey = e.kind === "leg" ? legKey(e) : e.kind === "stay" ? stayKey(e) : eventKey(e);
     await putMany(e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : "events", [e]);
     setF({});
@@ -47,6 +74,14 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
         <div className="grid grid-cols-2 gap-2">
           <Input type="date" value={date} onChange={set("date")} />
           <Input type="time" value={f.time ?? ""} onChange={set("time")} />
+          <select
+            className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm capitalize"
+            value={f.purpose ?? ""}
+            onChange={(e) => setF({ ...f, purpose: e.target.value })}
+          >
+            <option value="">Purpose (optional)</option>
+            {PURPOSES.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}
+          </select>
           {isLeg ? (
             <>
               <Input placeholder="From (e.g. LHR)" value={f.from ?? ""} onChange={set("from")} />
@@ -58,9 +93,9 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
               {kind !== "stay" && <Input placeholder="Venue / place" value={f.venue ?? ""} onChange={set("venue")} />}
               <Input placeholder="City" value={f.city ?? ""} onChange={set("city")} />
               {kind === "stay" && <Input type="date" value={f.end ?? ""} onChange={set("end")} />}
-              {kind !== "stay" && <Input className="col-span-2" placeholder="People (comma separated)" value={f.people ?? ""} onChange={set("people")} />}
             </>
           )}
+          <Input className="col-span-2" placeholder="Companions (comma separated)" value={f.people ?? ""} onChange={set("people")} />
         </div>
         <Textarea placeholder="Reflection…" className="font-serif" value={f.journal ?? ""} onChange={set("journal")} />
         <Button onClick={submit}>Save entry</Button>

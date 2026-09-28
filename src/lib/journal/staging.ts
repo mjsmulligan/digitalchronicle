@@ -55,7 +55,8 @@ export async function stageFile(filename: string, text: string, forced?: Exclude
   }
   const existing = new Map(allEntries(getState()).map((e) => [e.dedupeKey, e]));
   const seen = new Set<string>();
-  const records: StagedRecord[] = res.entries.map(({ entry, warnings }) => {
+  const records: StagedRecord[] = res.entries.map(({ entry, warnings, sourceRow }) => {
+    entry.sourceRef = `${filename}#row${sourceRow}`;
     const c = classify(entry, existing, seen);
     return { entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" };
   });
