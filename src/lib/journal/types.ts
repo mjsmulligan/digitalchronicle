@@ -3,19 +3,42 @@ export type Source = "manual" | "fr24" | "viaduct" | "setlistfm" | "generic";
 export type Tier = 1 | 2 | 3;
 export type Mode = "air" | "rail" | "road";
 
+/** How sure we are this fact is right, independent of Tier (which is precedence, not quality). */
+export type Confidence = "confirmed" | "inferred" | "approximate";
+export type Purpose = "work" | "family" | "leisure" | "other";
+
 interface Base {
   id: string;
   source: Source;
   tier: Tier;
-  /** Local wall-clock time, "YYYY-MM-DDTHH:mm" (or date only) */
+  /** Local wall-clock time at the start place, "YYYY-MM-DDTHH:mm" (or date only) */
   start: string;
+  /** Local wall-clock time at the end place */
   end?: string;
+  /** IANA zone for `start`, e.g. "Europe/Dublin". Undefined if the place couldn't be resolved. */
+  startTz?: string;
+  /** IANA zone for `end` */
+  endTz?: string;
+  /** `start` converted to UTC (ISO 8601). Undefined whenever startTz is unknown or start has no time. */
+  startUTC?: string;
+  /** `end` converted to UTC (ISO 8601) */
+  endUTC?: string;
   tripId?: string;
   dedupeKey: string;
   journal?: string;
   /** Tier 1 manual overrides layered on top of source data */
   overrides?: Record<string, string>;
   createdAt: string;
+  /** How sure we are this fact (not just this record) is right. Not the same as Tier. */
+  confidence: Confidence;
+  purpose?: Purpose;
+  /** Person ids or free-text names of who was there */
+  companions?: string[];
+  /** Exact row/record as the source gave it, kept verbatim so imports can be re-run later
+   *  (e.g. after Place resolution improves) without re-entering anything. */
+  raw?: Record<string, string>;
+  /** Where this fact came from: filename and row/index within it. */
+  sourceRef?: string;
 }
 
 export interface Leg extends Base {

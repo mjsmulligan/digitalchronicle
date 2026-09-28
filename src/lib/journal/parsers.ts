@@ -1,5 +1,31 @@
-import { locate } from "./geo";
-import { uid, type Entry, type EventCategory, type JEvent, type Leg, type Source, type Stay, type Tier } from "./types";
+import { locate, timezoneFor } from "./geo";
+import { localToUTC } from "./tz";
+import { uid, type Confidence, type Entry, type EventCategory, type JEvent, type Leg, type Purpose, type Source, type Stay, type Tier } from "./types";
+
+/** Attach timezone + UTC to a leg from its resolved origin/destination, in place. */
+function withTiming(leg: Leg): Leg {
+  leg.startTz = timezoneFor(leg.from);
+  leg.endTz = timezoneFor(leg.to);
+  leg.startUTC = localToUTC(leg.start, leg.startTz);
+  leg.endUTC = leg.end ? localToUTC(leg.end, leg.endTz) : undefined;
+  return leg;
+}
+
+const PURPOSE_VALUES: Purpose[] = ["work", "family", "leisure", "other"];
+function purposeFrom(row: Record<string, unknown>): Purpose | undefined {
+  const v = pick(row as Record<string, string>, ["purpose"]).toLowerCase();
+  return (PURPOSE_VALUES as string[]).includes(v) ? (v as Purpose) : undefined;
+}
+function companionsFrom(row: Record<string, unknown>): string[] | undefined {
+  const v = pick(row as Record<string, string>, ["companions", "with", "people", "guests"]);
+  const list = v.split(/[;|,]/).map((x) => x.trim()).filter(Boolean);
+  return list.length ? list : undefined;
+}
+const CONFIDENCE_VALUES: Confidence[] = ["confirmed", "inferred", "approximate"];
+function confidenceFrom(row: Record<string, unknown>, fallback: Confidence): Confidence {
+  const v = pick(row as Record<string, string>, ["confidence"]).toLowerCase();
+  return (CONFIDENCE_VALUES as string[]).includes(v) ? (v as Confidence) : fallback;
+}
 
 export function parseCSV(text: string): Record<string, string>[] {
   const rows: string[][] = [];
@@ -112,7 +138,11 @@ export function parseFR24(text: string): ParseResult {
       flightNumber: pick(r, ["Flight number", "Flight"]), aircraft: pick(r, ["Aircraft"]),
       operator: pick(r, ["Airline"]), seat: pick(r, ["Seat number"]), journal: pick(r, ["Note"]) || undefined,
       dedupeKey: "", createdAt: now(),
+      // Flightradar24 is a primary record of what was flown, so confirmed by default.
+      confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),
+      raw: r,
     };
+    withTiming(leg);
     leg.dedupeKey = legKey(leg);
     out.entries.push({ entry: leg, warnings: legWarnings(leg) });
   });
@@ -136,7 +166,10 @@ export function parseViaduct(text: string): ParseResult {
       from, to, operator: pick(r, ["Operator", "Company"]), trainNumber: pick(r, ["Train", "Train number", "Service"]),
       seat: pick(r, ["Seat", "Coach/Seat"]), journal: pick(r, ["Notes", "Note"]) || undefined,
       dedupeKey: "", createdAt: now(),
+      confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),
+      raw: r,
     };
+    withTiming(leg);
     leg.dedupeKey = legKey(leg);
     out.entries.push({ entry: leg, warnings: legWarnings(leg) });
   });
@@ -169,11 +202,17 @@ export function parseSetlist(text: string): ParseResult {
     const artist = pick(r, ["artist", "Artist name"]);
     if (!start || !artist) return out.errors.push(`Entry ${i + 1}: missing date or artist`);
     const songs = Array.isArray(r.songs) ? (r.songs as string[]) : pick(r, ["songs", "setlist"]).split(/[;|]/).map((s) => s.trim()).filter(Boolean);
+    const city = pick(r, ["city", "City name"]);
+    const tz = timezoneFor(city);
     const ev: JEvent = {
       id: uid(), kind: "event", category: "concert", source: "setlistfm", tier: 2, start, artist,
-      venue: pick(r, ["venue", "Venue name"]) || "Unknown venue", city: pick(r, ["city", "City name"]),
+      venue: pick(r, ["venue", "Venue name"]) || "Unknown venue", city,
       country: pick(r, ["country"]) || undefined, tour: pick(r, ["tour"]) || undefined,
       setlist: songs.length ? songs : undefined, dedupeKey: "", createdAt: now(),
+      // Your own attendance log, so treated as confirmed rather than merely a purchase.
+      confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),
+      startTz: tz, startUTC: localToUTC(start, tz),
+      raw: Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)])),
     };
     ev.dedupeKey = eventKey(ev);
     const w: string[] = [];
@@ -205,20 +244,38 @@ export function parseGeneric(text: string): ParseResult {
     const end = endRaw ? normDate(endRaw) ?? undefined : undefined;
     const tierN = Number(pick(r, ["tier"]));
     const tier = (tierN === 2 || tierN === 3 ? tierN : 3) as Tier;
-    const base = { id: uid(), source: "generic" as Source, tier, start, end, createdAt: now(), journal: pick(r, ["notes", "note", "journal"]) || undefined };
+    // Tier 2 (e.g. a primary record fed through the generic importer) defaults to confirmed;
+    // tier 3 (e.g. Calendar/Gmail-derived) defaults to inferred, since it's evidence of what
+    // happened rather than a direct record of it. Either can be overridden with a confidence column.
+    const confidence = confidenceFrom(r, tier === 2 ? "confirmed" : "inferred");
+    const purpose = purposeFrom(r);
+    const companions = companionsFrom(r);
+    const raw = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
+    const base = {
+      id: uid(), source: "generic" as Source, tier, start, end, createdAt: now(),
+      journal: pick(r, ["notes", "note", "journal"]) || undefined, confidence, purpose, companions, raw,
+    };
     if (["leg", "flight", "train", "rail", "air", "road", "drive", "bus"].includes(type)) {
       const mode = type === "flight" || type === "air" ? "air" : type === "train" || type === "rail" ? "rail" : type === "leg" ? ((pick(r, ["mode"]) as Leg["mode"]) || "road") : "road";
       const leg: Leg = { ...base, kind: "leg", mode, from: pick(r, ["from", "origin"]), to: pick(r, ["to", "destination"]), flightNumber: pick(r, ["flightnumber", "flight"]) || undefined, operator: pick(r, ["operator", "airline"]) || undefined, dedupeKey: "" };
       if (!leg.from || !leg.to) return out.errors.push(`Row ${i + 1}: leg missing from/to`);
+      withTiming(leg);
       leg.dedupeKey = legKey(leg);
       out.entries.push({ entry: leg, warnings: legWarnings(leg) });
     } else if (["stay", "hotel", "lodging", "accommodation"].includes(type)) {
-      const s: Stay = { ...base, kind: "stay", place: pick(r, ["place", "name", "hotel", "title"]) || "Stay", city: pick(r, ["city"]) || undefined, dedupeKey: "" };
+      const city = pick(r, ["city"]) || undefined;
+      const tz = city ? timezoneFor(city) : undefined;
+      const s: Stay = { ...base, kind: "stay", place: pick(r, ["place", "name", "hotel", "title"]) || "Stay", city, dedupeKey: "", startTz: tz, endTz: tz };
       s.dedupeKey = stayKey(s);
       out.entries.push({ entry: s, warnings: end ? [] : ["No check-out date"] });
     } else if (type in EVENT_TYPES) {
-      const people = pick(r, ["people", "with", "guests"]).split(/[;|]/).map((x) => x.trim()).filter(Boolean);
-      const e: JEvent = { ...base, kind: "event", category: EVENT_TYPES[type], artist: pick(r, ["title", "artist", "name"]) || "Moment", venue: pick(r, ["venue", "place"]), city: pick(r, ["city"]), people: people.length ? people : undefined, dedupeKey: "" };
+      const city = pick(r, ["city"]);
+      const tz = timezoneFor(city);
+      const e: JEvent = {
+        ...base, kind: "event", category: EVENT_TYPES[type], artist: pick(r, ["title", "artist", "name"]) || "Moment",
+        venue: pick(r, ["venue", "place"]), city, people: companions, dedupeKey: "",
+        startTz: tz, startUTC: localToUTC(start, tz),
+      };
       e.dedupeKey = eventKey(e);
       out.entries.push({ entry: e, warnings: [] });
     } else out.errors.push(`Row ${i + 1}: unknown type "${type}" (use flight/train/stay/concert/gathering/birthday/milestone/memory…)`);
