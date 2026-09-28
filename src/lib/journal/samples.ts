@@ -44,3 +44,11 @@ stay,2026-05-17,2026-05-19,25hours Altes Hafenamt,Hamburg,,3
 stay,2026-08-03,2026-08-06,Trunk Hotel,Tokyo,,3
 stay,2026-08-06,2026-08-09,Ace Hotel,Kyoto,,3
 `;
+
+export const SAMPLE_LIFE = `type,start,title,venue,city,people,notes
+birthday,2026-03-21,Mum's 60th birthday,The Ivy,London,Mum;Dad;Sara,Surprise speech went well
+gathering,2026-04-11,Book club supper,Home,London,Ana;Tom;Priya,
+milestone,2026-06-02,Started new job,Studio North,London,,First day nerves
+wedding,2026-07-18,Tom & Ana's wedding,Kew Gardens,London,Tom;Ana,Danced until 1am
+memory,2026-09-05,First swim in the lido this year,Brockwell Lido,London,,
+`;

@@ -1,5 +1,5 @@
 import { locate } from "./geo";
-import { uid, type Entry, type JEvent, type Leg, type Source, type Stay, type Tier } from "./types";
+import { uid, type Entry, type EventCategory, type JEvent, type Leg, type Source, type Stay, type Tier } from "./types";
 
 export function parseCSV(text: string): Record<string, string>[] {
   const rows: string[][] = [];
@@ -170,7 +170,7 @@ export function parseSetlist(text: string): ParseResult {
     if (!start || !artist) return out.errors.push(`Entry ${i + 1}: missing date or artist`);
     const songs = Array.isArray(r.songs) ? (r.songs as string[]) : pick(r, ["songs", "setlist"]).split(/[;|]/).map((s) => s.trim()).filter(Boolean);
     const ev: JEvent = {
-      id: uid(), kind: "event", source: "setlistfm", tier: 2, start, artist,
+      id: uid(), kind: "event", category: "concert", source: "setlistfm", tier: 2, start, artist,
       venue: pick(r, ["venue", "Venue name"]) || "Unknown venue", city: pick(r, ["city", "City name"]),
       country: pick(r, ["country"]) || undefined, tour: pick(r, ["tour"]) || undefined,
       setlist: songs.length ? songs : undefined, dedupeKey: "", createdAt: now(),
@@ -185,6 +185,12 @@ export function parseSetlist(text: string): ParseResult {
 }
 
 // ---------- Generic / cleaned ----------
+const EVENT_TYPES: Record<string, EventCategory> = {
+  event: "activity", activity: "activity", concert: "concert", gig: "concert", show: "concert",
+  gathering: "gathering", party: "gathering", dinner: "gathering", social: "gathering",
+  celebration: "celebration", birthday: "celebration", wedding: "celebration", anniversary: "celebration",
+  milestone: "milestone", life: "milestone", memory: "memory", moment: "memory",
+};
 export function parseGeneric(text: string): ParseResult {
   const out: ParseResult = { entries: [], errors: [] };
   const t = text.trim();
@@ -210,11 +216,12 @@ export function parseGeneric(text: string): ParseResult {
       const s: Stay = { ...base, kind: "stay", place: pick(r, ["place", "name", "hotel", "title"]) || "Stay", city: pick(r, ["city"]) || undefined, dedupeKey: "" };
       s.dedupeKey = stayKey(s);
       out.entries.push({ entry: s, warnings: end ? [] : ["No check-out date"] });
-    } else if (["event", "concert", "gig", "activity"].includes(type)) {
-      const e: JEvent = { ...base, kind: "event", artist: pick(r, ["artist", "title", "name"]) || "Event", venue: pick(r, ["venue", "place"]), city: pick(r, ["city"]), dedupeKey: "" };
+    } else if (type in EVENT_TYPES) {
+      const people = pick(r, ["people", "with", "guests"]).split(/[;|]/).map((x) => x.trim()).filter(Boolean);
+      const e: JEvent = { ...base, kind: "event", category: EVENT_TYPES[type], artist: pick(r, ["title", "artist", "name"]) || "Moment", venue: pick(r, ["venue", "place"]), city: pick(r, ["city"]), people: people.length ? people : undefined, dedupeKey: "" };
       e.dedupeKey = eventKey(e);
       out.entries.push({ entry: e, warnings: [] });
-    } else out.errors.push(`Row ${i + 1}: unknown type "${type}" (use leg/flight/train/stay/event)`);
+    } else out.errors.push(`Row ${i + 1}: unknown type "${type}" (use flight/train/stay/concert/gathering/birthday/milestone/memory…)`);
   });
   return out;
 }

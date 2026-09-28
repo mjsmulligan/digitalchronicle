@@ -39,9 +39,18 @@ export interface Stay extends Base {
   notes?: string;
 }
 
+export type EventCategory = "concert" | "gathering" | "celebration" | "milestone" | "memory" | "activity";
+export const CATEGORY_LABEL: Record<EventCategory, string> = {
+  concert: "Concert", gathering: "Gathering", celebration: "Celebration",
+  milestone: "Milestone", memory: "Memory", activity: "Activity",
+};
+
 export interface JEvent extends Base {
   kind: "event";
+  category: EventCategory;
+  /** Headline: artist for concerts, title for other moments */
   artist: string;
+  people?: string[];
   venue: string;
   city: string;
   country?: string;
@@ -136,5 +145,5 @@ export function entryTitle(e: Entry): string {
   const v = view(e);
   if (v.kind === "leg") return `${v.from} → ${v.to}`;
   if (v.kind === "stay") return v.place;
-  return `${v.artist} @ ${v.venue}`;
+  return v.category === "concert" && v.venue ? `${v.artist} @ ${v.venue}` : v.artist;
 }
