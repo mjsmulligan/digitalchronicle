@@ -34,7 +34,7 @@ export function clusterRecords(records: StagedRecord[], gapDays: number): Cluste
     clusters[clusters.length - 1].push(e);
     lastEnd = Math.max(s === lastEnd ? lastEnd : s, en);
   }
-  return clusters.map((c) => ({ id: uid(), title: suggestTitle(c), recordIds: c.map((e) => e.id), accepted: true }));
+  return clusters.map((c) => ({ id: uid(), title: suggestTitle(c), recordIds: c.map((e) => e.id), accepted: c.some((e) => e.kind !== "event") }));
 }
 
 export function suggestTitle(c: Entry[]): string {
