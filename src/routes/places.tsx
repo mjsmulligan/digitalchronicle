@@ -51,6 +51,17 @@ function Places() {
     <div className="mx-auto max-w-5xl">
       <h1 className="text-4xl font-semibold">Places</h1>
       <p className="mb-6 text-muted-foreground">{points.length} mapped places · drawn offline, nothing leaves your browser.</p>
+      <p className="mb-4 text-xs text-muted-foreground">
+        Station locations:{" "}
+        <a className="underline" href="https://github.com/trainline-eu/stations" target="_blank" rel="noreferrer">
+          Trainline EU stations
+        </a>
+        , licensed under{" "}
+        <a className="underline" href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noreferrer">
+          ODbL 1.0
+        </a>
+        .
+      </p>
       <div className="overflow-hidden rounded-md border border-border bg-card">
         <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
           {Array.from({ length: 11 }, (_, i) => <line key={"v" + i} x1={i * 100} x2={i * 100} y1={0} y2={H} stroke="var(--border)" strokeWidth={0.5} />)}

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { STORES, type JournalData, type StoreName, type Entry } from "./types";
+import { STORES, type JournalData, type StoreName, type Entry, type StagingBatch } from "./types";
+import { loadStations } from "./geo";
 
 const DB_NAME = "waypoint-journal";
 const DB_VERSION = 1;
@@ -53,13 +54,32 @@ function emit(next: Partial<State>) {
   listeners.forEach((l) => l());
 }
 
-let initStarted = false;
-export async function initJournal() {
-  if (initStarted) return;
-  initStarted = true;
-  const data: Partial<State> = {};
-  for (const s of STORES) (data as Record<string, unknown>)[s] = await getAll(s);
-  emit({ ...data, ready: true });
+let initPromise: Promise<void> | undefined;
+function hasPlace(e: Entry): boolean {
+  if (e.kind === "leg") return !!(e.from || e.to || e.overrides?.from || e.overrides?.to);
+  return !!(e.city || e.overrides?.city || (e.kind === "stay" && (e.place || e.overrides?.place)));
+}
+
+function hasJournalPlaces(data: Partial<JournalData>): boolean {
+  return (
+    [...(data.legs ?? []), ...(data.stays ?? []), ...(data.events ?? [])].some(hasPlace) ||
+    (data.staging ?? []).some((batch) => batch.records.some((record) => hasPlace(record.entry)))
+  );
+}
+
+export function initJournal(): Promise<void> {
+  initPromise ??= (async () => {
+    const data: Partial<State> = {};
+    for (const s of STORES) (data as Record<string, unknown>)[s] = await getAll(s);
+    if (hasJournalPlaces(data)) {
+      await loadStations();
+    }
+    emit({ ...data, ready: true });
+  })().catch((error: unknown) => {
+    initPromise = undefined;
+    throw error;
+  });
+  return initPromise;
 }
 
 export function useJournal(): State {
@@ -80,6 +100,8 @@ export function getState() {
 type Row = { id: string };
 export async function putMany(store: StoreName, items: (Row & Record<string, any>)[] | any[]) {
   if (!items.length) return;
+  if ((store === "legs" || store === "stays" || store === "events") && (items as Entry[]).some(hasPlace)) await loadStations();
+  if (store === "staging" && (items as StagingBatch[]).some((batch) => batch.records.some((record) => hasPlace(record.entry)))) await loadStations();
   await tx([store], (t) => items.forEach((i) => t.objectStore(store).put(i)));
   const map = new Map((state[store] as Row[]).map((r) => [r.id, r]));
   items.forEach((i) => map.set(i.id, i));
@@ -93,6 +115,7 @@ export async function removeMany(store: StoreName, ids: string[]) {
 }
 
 export async function replaceAll(data: JournalData) {
+  if (hasJournalPlaces(data)) await loadStations();
   await tx([...STORES], (t) => {
     for (const s of STORES) {
       const os = t.objectStore(s);

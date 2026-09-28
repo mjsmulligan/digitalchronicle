@@ -14,6 +14,7 @@ Key specifications from the project discovery and data model:
   * Events: activities, concerts, gigs (artist, venue, city, date, setlist details).
   * Manual Overrides & Notes: sovereign Tier 1 overrides and personal journal reflections attached to days or trips.
   * Imported entries retain their parsed source record (including nested JSON) and original row reference. Local times and known place timezones provide UTC instants when unambiguous; manual time/place corrections recalculate UTC in the effective entry view without overwriting source facts.
+  * Place matching is offline: hand-curated airports/cities and an unambiguous European station lookup. Unknown or ambiguous names stay unresolved rather than being guessed; no place names are sent to a geocoding service.
 
 2. Ingestion & Staging Pipeline:
 - Dedicated Staging Hub where uploaded files are parsed, previewed, and reviewed before committing to the main store.
@@ -35,6 +36,8 @@ Key specifications from the project discovery and data model:
 - Backup & Data Management: storage metrics, full JSON export/import, and database reset options.
 
 This project was built with [Lovable](https://lovable.dev).
+
+The on-demand station lookup is derived from [Trainline EU's stations.csv](https://github.com/trainline-eu/stations) (revision `a3e4437539deecff25b9d31af04fb3e46730fb4a`), licensed under the [Open Database License 1.0](https://github.com/trainline-eu/stations/blob/master/LICENCE.txt). The generated, filtered data is included in `src/lib/journal/stations.generated.ts`; it downloads from the app's own origin when journal entries, an import, or a new entry need place resolution. Run `python3 scripts/build-station-gazetteer.py stations.csv src/lib/journal/stations.generated.ts` to regenerate it from the source CSV.
 
 **Live app**: https://digitalchronicle.lovable.app
 
