@@ -18,7 +18,7 @@ Key specifications from the project discovery and data model:
 2. Ingestion & Staging Pipeline:
 - Dedicated Staging Hub where uploaded files are parsed, previewed, and reviewed before committing to the main store.
 - Built-in format parsers and presets:
-  * Viaduct rail CSV export (handles station names, local timestamps)
+  * Viaduct rail CSV export (supports `from_station_name`/`to_station_name` and separate departure/arrival dates and times)
   * setlist.fm concert attendance export (JSON/CSV)
   * Generic / Cleaned CSV & JSON parser for pre-processed custom datasets
 - Staging Review step:

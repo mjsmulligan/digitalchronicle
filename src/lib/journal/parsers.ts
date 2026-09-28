@@ -140,14 +140,17 @@ export function parseViaduct(text: string): ParseResult {
     const date = pick(r, ["Date", "Travel date", "Departure date"]);
     const start = normDate(date || pick(r, ["Departure", "Departure time", "Departs"]), pick(r, ["Departure time", "Dep time", "Departs"]));
     if (!start) return out.errors.push(`Row ${sourceRow}: unreadable date`);
-    const from = pick(r, ["Origin", "From", "Departure station", "Origin station"]);
-    const to = pick(r, ["Destination", "To", "Arrival station", "Destination station"]);
+    const from = pick(r, ["Origin", "From", "Departure station", "Origin station", "from_station_name"]);
+    const to = pick(r, ["Destination", "To", "Arrival station", "Destination station", "to_station_name"]);
     if (!from || !to) return out.errors.push(`Row ${sourceRow}: missing stations`);
     const arr = pick(r, ["Arrival time", "Arr time", "Arrives", "Arrival"]);
-    const end = arr ? normDate(arr.length > 8 ? arr : start.slice(0, 10), arr.length > 8 ? "" : arr) ?? undefined : undefined;
+    const arrivalDate = pick(r, ["arrival_date"]);
+    const end = arrivalDate
+      ? normDate(arrivalDate, arr) ?? undefined
+      : arr ? normDate(arr.length > 8 ? arr : start.slice(0, 10), arr.length > 8 ? "" : arr) ?? undefined : undefined;
     const leg: Leg = {
       id: uid(), kind: "leg", mode: "rail", source: "viaduct", tier: 2, start, end,
-      from, to, operator: pick(r, ["Operator", "Company"]), trainNumber: pick(r, ["Train", "Train number", "Service"]),
+      from, to, operator: pick(r, ["Operator", "Company"]), trainNumber: pick(r, ["Train", "Train number", "Service", "train_code"]),
       seat: pick(r, ["Seat", "Coach/Seat"]), journal: pick(r, ["Notes", "Note"]) || undefined,
       dedupeKey: "", createdAt: now(),
       confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),

@@ -8,7 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { BookOpen, Map, Luggage, Inbox, HardDrive, Lock } from "lucide-react";
+import { BookOpen, Map as MapIcon, Luggage, Inbox, HardDrive, Lock } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -101,7 +101,7 @@ function RootShell({ children }: { children: ReactNode }) {
 const NAV = [
   { to: "/", label: "Chronicle", icon: BookOpen },
   { to: "/trips", label: "Trips", icon: Luggage },
-  { to: "/places", label: "Places", icon: Map },
+  { to: "/places", label: "Places", icon: MapIcon },
   { to: "/import", label: "Import", icon: Inbox },
   { to: "/backup", label: "Backup", icon: HardDrive },
 ] as const;
