@@ -46,6 +46,11 @@ export function suggestTitle(c: Entry[]): string {
 }
 
 export async function stageFile(filename: string, text: string, forced?: Exclude<Source, "manual">) {
+  const header = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0].toLowerCase();
+  const columns = new Set(header.split(",").map((cell) => cell.trim()));
+  if (["flight number", "dep time", "arr time", "aircraft"].every((field) => columns.has(field))) {
+    throw new Error("Flightradar24 exports are not supported. Use a generic flight CSV or add flights manually.");
+  }
   const source = forced ?? detectSource(filename, text);
   let res;
   try {

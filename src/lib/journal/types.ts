@@ -1,7 +1,7 @@
 import { timezoneFor } from "./geo";
 import { localToUTC } from "./tz";
 
-export type Source = "manual" | "fr24" | "viaduct" | "setlistfm" | "generic";
+export type Source = "manual" | "viaduct" | "setlistfm" | "generic";
 /** 1 = user manual (sovereign), 2 = primary transit/attendance records, 3 = secondary order/calendar records */
 export type Tier = 1 | 2 | 3;
 export type Mode = "air" | "rail" | "road";
@@ -148,7 +148,6 @@ export type StoreName = (typeof STORES)[number];
 
 export const SOURCE_LABEL: Record<Source, string> = {
   manual: "Manual",
-  fr24: "Flightradar24",
   viaduct: "Viaduct",
   setlistfm: "setlist.fm",
   generic: "Generic",
