@@ -8,7 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { BookOpen, Map as MapIcon, Luggage, Inbox, HardDrive, Lock } from "lucide-react";
+import { BookOpen, Map as MapIcon, Luggage, Inbox, HardDrive, Lock, Sparkles } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
