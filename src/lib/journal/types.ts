@@ -104,6 +104,7 @@ export interface Trip {
   notes: string;
   cover: string;
   createdAt: string;
+  purpose?: Purpose;
 }
 
 export type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-duplicate";
