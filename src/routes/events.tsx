@@ -21,6 +21,10 @@ export const Route = createFileRoute("/events")({
 });
 
 const CATEGORIES: EventCategory[] = ["concert", "gathering", "celebration", "milestone", "memory", "activity"];
+const CATEGORY_PLURAL: Record<EventCategory, string> = {
+  concert: "Concerts", gathering: "Gatherings", celebration: "Celebrations",
+  milestone: "Milestones", memory: "Memories", activity: "Activities",
+};
 
 function field(e: JEvent, key: "artist" | "venue" | "city") {
   return e.overrides?.[key] ?? e[key] ?? "";
