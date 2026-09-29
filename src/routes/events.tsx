@@ -5,7 +5,7 @@ import { EntryCard } from "@/components/journal/EntryCard";
 import { AddEntryDialog } from "@/components/journal/AddEntryDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CATEGORY_LABEL, day, type EventCategory, type JEvent } from "@/lib/journal/types";
+import { day, type EventCategory, type JEvent } from "@/lib/journal/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/events")({
