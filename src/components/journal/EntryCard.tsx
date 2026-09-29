@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { putMany, removeMany, storeFor } from "@/lib/journal/db";
+import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, SOURCE_LABEL, entryTitle, view, type Entry, type EventCategory } from "@/lib/journal/types";
 import { cn } from "@/lib/utils";
 
@@ -40,12 +40,18 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   const [open, setOpen] = useState(false);
   const [journal, setJournal] = useState(entry.journal ?? "");
   const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
+  const { trips } = useJournal();
   const v = view(entry);
   const Icon = entryIcon(v);
+  const trip = trips.find((t) => t.id === entry.tripId);
 
   const save = async () => {
     const clean = Object.fromEntries(Object.entries(ov).filter(([, x]) => x.trim()));
     await putMany(storeFor(entry), [{ ...entry, journal: journal || undefined, overrides: Object.keys(clean).length ? clean : undefined }]);
+  };
+
+  const setTrip = async (tripId: string) => {
+    await putMany(storeFor(entry), [{ ...entry, tripId: tripId || undefined }]);
   };
 
   const meta =
