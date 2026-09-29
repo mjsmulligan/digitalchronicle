@@ -17,7 +17,7 @@ export const Route = createFileRoute("/events")({
       { property: "og:description", content: "Every concert, party, celebration and milestone in one private list." },
     ],
   }),
-  component: Events;
+  component: Events,
 });
 
 const CATEGORIES: EventCategory[] = ["concert", "gathering", "celebration", "milestone", "memory", "activity"];
