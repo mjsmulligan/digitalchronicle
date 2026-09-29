@@ -96,7 +96,7 @@ function Events() {
             onClick={() => setCat(c)}
             className={cn("rounded-full border border-border px-3 py-1 text-sm", cat === c ? "bg-foreground text-background" : "hover:bg-accent")}
           >
-            {CATEGORY_LABEL[c]}s <span className="font-mono text-xs">{counts[c] ?? 0}</span>
+            {CATEGORY_PLURAL[c]} <span className="font-mono text-xs">{counts[c] ?? 0}</span>
           </button>
         ))}
         <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="ml-auto h-8 w-40" />
