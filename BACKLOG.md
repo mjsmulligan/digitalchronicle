@@ -19,10 +19,10 @@ Agreed design decisions that cut across event types. Build these before or along
 ## 1. Active Priorities (Up Next)
 
 ### Trip Management (Phase 1)
-- [ ] **Manual Trip Creation:** Dedicated "+ New Trip" modal on `/trips` (title, start/end dates, destinations, purpose tag).
-- [ ] **Entry Assignment & Detachment:** Dropdown/dialog to add existing flights, stays, concerts, or memories to a trip, or remove an item without dissolving the whole trip.
-- [ ] **Smart Date Gathering:** One-click button on a trip card to detect and associate unassigned entries falling within that trip's date window. Reads and watches (books, films) that fall inside the window are surfaced as suggestions, never assigned automatically.
-- [ ] **Trip Selector on Manual Entries:** Add trip picker directly into the "+ Add Entry" dialog.
+- [x] **Manual Trip Creation:** Dedicated "+ New Trip" modal on `/trips` (title, start/end dates, destinations, purpose tag).
+- [x] **Entry Assignment & Detachment:** Dropdown/dialog to add existing flights, stays, concerts, or memories to a trip, or remove an item without dissolving the whole trip.
+- [x] **Smart Date Gathering:** One-click button on a trip card to detect and associate unassigned entries falling within that trip's date window. Reads and watches (books, films) that fall inside the window are surfaced as suggestions, never assigned automatically.
+- [x] **Trip Selector on Manual Entries:** Add trip picker directly into the "+ Add Entry" dialog.
 
 ---
 
