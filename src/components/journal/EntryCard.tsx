@@ -72,6 +72,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
               <span className="font-mono text-xs text-muted-foreground">{time(v.start)}–{time(v.end)}</span>
             )}
             {entry.overrides && <Badge variant="outline" className="h-4 px-1 text-[10px]">edited</Badge>}
+            {trip && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trip.title}</Badge>}
           </div>
           {!compact && meta && <p className="truncate text-sm text-muted-foreground">{meta}</p>}
           {!open && entry.journal && <p className="mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80">“{entry.journal}”</p>}
@@ -98,6 +99,19 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
               ))}
             </div>
           </details>
+          <label className="block text-xs text-muted-foreground">
+            Trip
+            <select
+              className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={entry.tripId ?? ""}
+              onChange={(e) => setTrip(e.target.value)}
+            >
+              <option value="">No trip</option>
+              {[...trips].sort((a, b) => b.start.localeCompare(a.start)).map((t) => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
+          </label>
           <div className="flex items-center justify-between">
             <span className="font-mono text-[10px] text-muted-foreground">source: {SOURCE_LABEL[entry.source]} · tier {entry.tier}</span>
             <div className="flex gap-2">
