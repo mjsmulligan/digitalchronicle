@@ -63,7 +63,7 @@ Adding a new source means touching only that folder and `registry.ts`.
    import { connector as myservice } from "./myservice/index";
 
    export const CONNECTORS: Connector[] = [
-     setlistfm, viaduct, myservice, generic,   // more-specific before generic
+     setlistfm, viaduct, myservice, generic,   // specific before generic (tiebreaker)
    ];
    ```
 
@@ -73,11 +73,17 @@ Adding a new source means touching only that folder and `registry.ts`.
 6. **Run tests**
 
    ```bash
-   bun test
+   bun run test
    ```
 
-   All existing characterization snapshots must still pass (behaviour-only
-   refactor rule). New connector tests must also pass.
+   This runs vitest via the npm script. All existing characterization snapshots
+   must still pass. New connector tests must also pass.
+
+   In CI (or to catch snapshot drift rather than auto-heal it):
+
+   ```bash
+   bunx vitest run --ci
+   ```
 
 ## File-input `accept` and the drop-zone
 

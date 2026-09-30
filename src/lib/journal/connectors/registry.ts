@@ -14,8 +14,9 @@ import type { Connector } from "./types";
 
 /**
  * All registered file connectors.
- * Order matters: detectConnector picks the first connector whose sniff score
- * exceeds SNIFF_THRESHOLD; put more-specific connectors before generic ones.
+ * Detection picks the connector with the highest sniff score above
+ * SNIFF_THRESHOLD; order is a tiebreaker only.  Put more-specific connectors
+ * before generic as a safeguard when two connectors return equal scores.
  */
 export const CONNECTORS: Connector[] = [setlistfm, viaduct, generic];
 
