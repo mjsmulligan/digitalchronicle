@@ -94,8 +94,8 @@ export async function commitBatch(b: StagingBatch) {
     if (r.status === "new") e = r.entry;
     else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
       const old = byId.get(r.matchId)!;
-      // Replace source data but keep sovereign overrides, journal & trip link
-      e = { ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides, journal: old.journal ?? r.entry.journal } as Entry;
+      // Replace source data but keep sovereign overrides, reflection & trip link
+      e = { ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides, reflection: old.reflection ?? r.entry.reflection } as Entry;
     } else continue;
     idMap.set(r.entry.id, e.id);
     writes[storeFor(e)].push(e);
