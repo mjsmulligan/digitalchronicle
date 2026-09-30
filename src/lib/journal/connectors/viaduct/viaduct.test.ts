@@ -33,7 +33,7 @@ describe("viaduct connector", () => {
     const r = connector.parse({ name: "sample.csv", text: sampleText });
     if (r instanceof Promise) throw new Error("expected sync parse");
     for (const { entry } of r.entries) {
-      expect(entry.dedupeKey).toMatch(/^leg\|/);
+      expect(entry.dedupeKey).toMatch(/^viaduct\|leg\|/);
     }
   });
 
