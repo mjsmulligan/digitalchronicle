@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { putMany } from "@/lib/journal/db";
+import { putMany, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, uid, type EventCategory, type Entry, type Purpose } from "@/lib/journal/types";
 import { eventKey, legKey, stayKey } from "@/lib/journal/parsers";
 import { loadStations, timezoneFor } from "@/lib/journal/geo";
@@ -15,7 +15,8 @@ type Kind = EventCategory | "stay" | "flight" | "train" | "road";
 const KINDS: Kind[] = ["memory", "concert", "gathering", "celebration", "milestone", "activity", "flight", "train", "road", "stay"];
 const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
 
-export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
+export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; tripId?: string }) {
+  const { trips } = useJournal();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("memory");
   const [f, setF] = useState<Record<string, string>>({});
@@ -32,6 +33,7 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
       id: uid(), source: "manual" as const, tier: 1 as const, confidence: "confirmed" as const,
       start: f.time ? `${date}T${f.time}` : date, createdAt: new Date().toISOString(),
       journal: f.journal || undefined, purpose, companions,
+      tripId: (f.tripId || tripId) || undefined,
     };
     let e: Entry;
     if (kind === "stay") {
@@ -111,6 +113,18 @@ export function AddEntryDialog({ defaultDate }: { defaultDate?: string }) {
             </>
           )}
           <Input className="col-span-2" placeholder="Companions (comma separated)" value={f.people ?? ""} onChange={set("people")} />
+          {!tripId && (
+            <select
+              className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm"
+              value={f.tripId ?? ""}
+              onChange={(e) => setF({ ...f, tripId: e.target.value })}
+            >
+              <option value="">No trip</option>
+              {[...trips].sort((a, b) => b.start.localeCompare(a.start)).map((t) => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
+          )}
         </div>
         <Textarea placeholder="Reflection…" className="font-serif" value={f.journal ?? ""} onChange={set("journal")} />
         <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : "Save entry"}</Button>

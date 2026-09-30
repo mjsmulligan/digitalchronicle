@@ -1,11 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import { allEntries, putMany, removeMany, useJournal, storeFor } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
+import { AddTripDialog } from "@/components/journal/AddTripDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { Trip } from "@/lib/journal/types";
+import { Badge } from "@/components/ui/badge";
+import { entryTitle, type Entry, type Purpose, type Trip } from "@/lib/journal/types";
+
+const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
+const day = (e: Entry) => e.start.slice(0, 10);
 
 export const Route = createFileRoute("/trips")({
   head: () => ({
@@ -23,14 +29,46 @@ function TripCard({ trip }: { trip: Trip }) {
   const s = useJournal();
   const [open, setOpen] = useState(false);
   const [t, setT] = useState(trip);
-  const members = allEntries(s).filter((e) => e.tripId === trip.id).sort((a, b) => a.start.localeCompare(b.start));
+  const [dest, setDest] = useState(trip.destinations.join(", "));
+  const [pick, setPick] = useState("");
+
+  const entries = allEntries(s);
+  const members = entries.filter((e) => e.tripId === trip.id).sort((a, b) => a.start.localeCompare(b.start));
+  const unassigned = entries.filter((e) => !e.tripId).sort((a, b) => a.start.localeCompare(b.start));
+  const inWindow = unassigned.filter((e) => day(e) >= trip.start && day(e) <= trip.end);
   const nights = Math.max(0, Math.round((+new Date(trip.end) - +new Date(trip.start)) / 86400000));
   const legs = members.filter((e) => e.kind === "leg");
+
+  const save = async () => {
+    if (t.end < t.start) {
+      toast.error("The end date can't be before the start date.");
+      return;
+    }
+    await putMany("trips", [{ ...t, destinations: dest.split(",").map((d) => d.trim()).filter(Boolean) }]);
+    toast.success("Trip saved.");
+  };
+
+  const attach = async (list: Entry[]) => {
+    for (const e of list) await putMany(storeFor(e), [{ ...e, tripId: trip.id }]);
+  };
+
+  const gather = async () => {
+    if (!inWindow.length) {
+      toast.info("No unassigned entries fall inside these dates.");
+      return;
+    }
+    await attach(inWindow);
+    toast.success(`Added ${inWindow.length} ${inWindow.length === 1 ? "entry" : "entries"} to this trip.`);
+  };
+
   return (
     <article className="rounded-md border border-border bg-card">
       <button onClick={() => setOpen(!open)} className="w-full p-5 text-left">
         <p className="font-mono text-xs text-muted-foreground">{trip.start} → {trip.end} · {nights} nights</p>
-        <h2 className="mt-1 text-2xl">{trip.title}</h2>
+        <div className="mt-1 flex flex-wrap items-baseline gap-2">
+          <h2 className="text-2xl">{trip.title}</h2>
+          {trip.purpose && <Badge variant="secondary" className="capitalize">{trip.purpose}</Badge>}
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">{trip.destinations.join(" · ")}</p>
         <div className="mt-3 flex gap-4 font-mono text-xs">
           <span>{legs.filter((l) => l.kind === "leg" && l.mode === "air").length} flights</span>
@@ -40,17 +78,67 @@ function TripCard({ trip }: { trip: Trip }) {
         </div>
       </button>
       {open && (
-        <div className="space-y-3 border-t border-border p-5">
-          <Input value={t.title} onChange={(e) => setT({ ...t, title: e.target.value })} />
+        <div className="space-y-4 border-t border-border p-5">
+          <div className="grid grid-cols-2 gap-2">
+            <Input className="col-span-2" value={t.title} onChange={(e) => setT({ ...t, title: e.target.value })} placeholder="Trip title" />
+            <label className="text-xs text-muted-foreground">Start<Input type="date" value={t.start} onChange={(e) => setT({ ...t, start: e.target.value })} /></label>
+            <label className="text-xs text-muted-foreground">End<Input type="date" value={t.end} onChange={(e) => setT({ ...t, end: e.target.value })} /></label>
+            <Input className="col-span-2" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Destinations (comma separated)" />
+            <select
+              className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm capitalize"
+              value={t.purpose ?? ""}
+              onChange={(e) => setT({ ...t, purpose: (e.target.value as Purpose) || undefined })}
+            >
+              <option value="">Purpose (optional)</option>
+              {PURPOSES.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}
+            </select>
+          </div>
           <Textarea value={t.notes} onChange={(e) => setT({ ...t, notes: e.target.value })} placeholder="Trip reflections…" className="font-serif" />
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => putMany("trips", [t])}>Save</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={save}>Save</Button>
+            <Button size="sm" variant="outline" onClick={gather}>
+              Gather entries in these dates{inWindow.length ? ` (${inWindow.length})` : ""}
+            </Button>
             <Button size="sm" variant="outline" onClick={async () => {
               for (const m of members) await putMany(storeFor(m), [{ ...m, tripId: undefined }]);
               await removeMany("trips", [trip.id]);
+              toast.success("Trip dissolved. Its entries stay in your chronicle.");
             }}>Dissolve trip</Button>
           </div>
-          <div className="space-y-2">{members.map((m) => <EntryCard key={m.id} entry={m} />)}</div>
+
+          <div className="flex gap-2">
+            <select
+              className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
+              value={pick}
+              onChange={(e) => setPick(e.target.value)}
+            >
+              <option value="">Attach an existing entry…</option>
+              {unassigned.map((e) => (
+                <option key={e.id} value={e.id}>{day(e)} · {entryTitle(e)}</option>
+              ))}
+            </select>
+            <Button size="sm" variant="outline" disabled={!pick} onClick={async () => {
+              const e = unassigned.find((x) => x.id === pick);
+              if (!e) return;
+              await attach([e]);
+              setPick("");
+            }}>Attach</Button>
+          </div>
+
+          <div className="space-y-2">
+            {members.map((m) => (
+              <div key={m.id} className="space-y-1">
+                <EntryCard entry={m} />
+                <button
+                  className="text-xs text-muted-foreground underline"
+                  onClick={() => putMany(storeFor(m), [{ ...m, tripId: undefined }])}
+                >
+                  Remove from trip
+                </button>
+              </div>
+            ))}
+            {!members.length && <p className="text-sm text-muted-foreground">Nothing attached to this trip yet.</p>}
+          </div>
         </div>
       )}
     </article>
@@ -62,11 +150,16 @@ function Trips() {
   const trips = [...s.trips].sort((a, b) => b.start.localeCompare(a.start));
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-4xl font-semibold">Trips</h1>
-      <p className="mb-6 text-muted-foreground">Journeys confirmed from your imports. Unassigned entries still live in the Chronicle.</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-4xl font-semibold">Trips</h1>
+          <p className="mb-6 text-muted-foreground">Journeys you've made or confirmed from imports. Unassigned entries still live in the Chronicle.</p>
+        </div>
+        <AddTripDialog />
+      </div>
       {s.ready && !trips.length && (
         <p className="rounded-md border border-dashed border-border p-8 text-center text-muted-foreground">
-          No trips yet. <Link to="/import" className="text-primary underline">Import travel data</Link> and accept suggested trips.
+          No trips yet. Create one above, or <Link to="/import" className="text-primary underline">import travel data</Link> and accept suggested trips.
         </p>
       )}
       <div className="space-y-4">{trips.map((t) => <TripCard key={t.id} trip={t} />)}</div>
