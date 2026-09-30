@@ -5,7 +5,8 @@ import { Upload, AlertTriangle, Scissors, Merge, Trash2 } from "lucide-react";
 import { useJournal, removeMany } from "@/lib/journal/db";
 import { stageFile, saveBatch, commitBatch, clusterRecords, suggestTitle } from "@/lib/journal/staging";
 import { SAMPLE_VIADUCT, SAMPLE_SETLIST, SAMPLE_GENERIC, SAMPLE_LIFE } from "@/lib/journal/samples";
-import { SOURCE_LABEL, entryTitle, uid, type Source, type StagingBatch, type StageStatus } from "@/lib/journal/types";
+import { entryTitle, uid, type StagingBatch, type StageStatus } from "@/lib/journal/types";
+import { listConnectors, sourceLabel } from "@/lib/journal/connectors/registry";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/import")({
   component: ImportPage,
 });
 
-type Auto = Exclude<Source, "manual"> | "auto";
+type Auto = string; // connector id (e.g. "viaduct") or "auto" for detect-on-drop
 const STATUS: Record<StageStatus, { label: string; cls: string }> = {
   new: { label: "new", cls: "bg-rail/15 text-rail" },
   supersedes: { label: "replaces lower-tier", cls: "bg-air/15 text-air" },
@@ -60,7 +61,7 @@ function BatchReview({ batch }: { batch: StagingBatch }) {
       <header className="flex flex-wrap items-center gap-3 border-b border-border p-4">
         <div className="flex-1">
           <h2 className="text-xl">{b.filename}</h2>
-          <p className="font-mono text-xs text-muted-foreground">{SOURCE_LABEL[b.source]} · {b.records.length} parsed · {b.errors.length} errors · {selected} selected</p>
+          <p className="font-mono text-xs text-muted-foreground">{sourceLabel(b.source)} · {b.records.length} parsed · {b.errors.length} errors · {selected} selected</p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => removeMany("staging", [b.id])}><Trash2 className="h-4 w-4" /> Discard</Button>
         <Button size="sm" disabled={!selected} onClick={async () => {
@@ -160,7 +161,7 @@ function ImportPage() {
     for (const f of Array.from(files)) {
       try {
         const b = await stageFile(f.name, await f.text(), src === "auto" ? undefined : src);
-        toast(`Staged ${b.records.length} records from ${f.name} (${SOURCE_LABEL[b.source]})`);
+        toast(`Staged ${b.records.length} records from ${f.name} (${sourceLabel(b.source)})`);
       } catch (err) {
         toast.error(`Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
@@ -190,13 +191,24 @@ function ImportPage() {
         <Upload className="mx-auto h-6 w-6 text-muted-foreground" />
         <p className="mt-2">Drop CSV or JSON exports here</p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          <select value={src} onChange={(e) => setSrc(e.target.value as Auto)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <select value={src} onChange={(e) => setSrc(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
             <option value="auto">Detect format</option>
-            <option value="viaduct">Viaduct rail CSV</option>
-            <option value="setlistfm">setlist.fm JSON/CSV</option>
-            <option value="generic">Generic / cleaned CSV or JSON</option>
+            {listConnectors().filter((c) => c.kind === "file").map((c) => (
+              <option key={c.id} value={c.id}>{c.label}</option>
+            ))}
           </select>
-          <Button asChild variant="outline"><label className="cursor-pointer">Choose files<input type="file" multiple accept=".csv,.json,.txt" className="hidden" onChange={(e) => e.target.files && handle(e.target.files)} /></label></Button>
+          <Button asChild variant="outline">
+            <label className="cursor-pointer">
+              Choose files
+              <input
+                type="file"
+                multiple
+                accept={[...new Set(listConnectors().flatMap((c) => c.accepts ?? []))].join(",")}
+                className="hidden"
+                onChange={(e) => e.target.files && handle(e.target.files)}
+              />
+            </label>
+          </Button>
           <Button variant="secondary" onClick={samples}>Load sample data</Button>
         </div>
         <p className="mt-4 text-xs text-muted-foreground">

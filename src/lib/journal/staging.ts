@@ -1,8 +1,8 @@
 import { allEntries, getState, putMany, removeMany, storeFor } from "./db";
-import { PARSERS, detectSource } from "./parsers";
+import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations, locate } from "./geo";
 import {
-  day, uid, view, type Cluster, type Entry, type Source, type StagedRecord, type StagingBatch, type Trip,
+  day, uid, view, type Cluster, type Entry, type StagedRecord, type StagingBatch, type Trip,
 } from "./types";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
@@ -45,17 +45,23 @@ export function suggestTitle(c: Entry[]): string {
   return `${dests.slice(0, 3).join(" · ") || "Trip"} — ${month}`;
 }
 
-export async function stageFile(filename: string, text: string, forced?: Exclude<Source, "manual">) {
+export async function stageFile(filename: string, text: string, forced?: string) {
   const header = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0].toLowerCase();
-  const columns = new Set(header.split(",").map((cell) => cell.trim()));
-  if (["flight number", "dep time", "arr time", "aircraft"].every((field) => columns.has(field))) {
-    throw new Error("Flightradar24 exports are not supported. Use a generic flight CSV or add flights manually.");
+
+  // Reject explicitly unsupported formats before any parsing.
+  for (const fmt of UNSUPPORTED_FORMATS) {
+    if (fmt.detect(header)) throw new Error(fmt.message);
   }
-  const source = forced ?? detectSource(filename, text);
+
+  const connector = forced
+    ? getConnector(forced) ?? detectConnector(filename, text)
+    : detectConnector(filename, text);
+  const source = connector.id;
+
   await loadStations();
   let res;
   try {
-    res = PARSERS[source](text);
+    res = await connector.parse({ name: filename, text });
   } catch (err) {
     res = { entries: [], errors: [`Could not parse file: ${(err as Error).message}`] };
   }
