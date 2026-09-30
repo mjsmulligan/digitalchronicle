@@ -1,18 +1,15 @@
 /**
- * Characterization tests — written BEFORE the refactor.
+ * Characterization tests for the three built-in connectors.
  *
- * They import from parsers.ts (current location).  After the refactor,
- * parsers.ts becomes a thin re-export of the connector modules so all imports
- * continue to resolve and the snapshots must be bit-for-bit identical.
+ * Imports directly from the connectors package and registry — parsers.ts is
+ * not used here.
  */
 import { describe, it, expect } from "vitest";
-import {
-  parseViaduct,
-  parseSetlist,
-  parseGeneric,
-  detectSource,
-  type ParseResult,
-} from "@/lib/journal/parsers";
+import { connector as viaductConnector } from "@/lib/journal/connectors/viaduct/index";
+import { connector as setlistConnector } from "@/lib/journal/connectors/setlistfm/index";
+import { connector as genericConnector } from "@/lib/journal/connectors/generic/index";
+import { detectConnector } from "@/lib/journal/connectors/registry";
+import type { ParseResult } from "@/lib/journal/connectors/types";
 import { stageFile } from "@/lib/journal/staging";
 import {
   SAMPLE_VIADUCT,
@@ -22,8 +19,13 @@ import {
 } from "@/lib/journal/samples";
 
 // ---------------------------------------------------------------------------
-// Strip volatile fields so snapshots are deterministic
+// Helpers
 // ---------------------------------------------------------------------------
+function parse(connector: { parse(i: { name: string; text: string }): ParseResult | Promise<ParseResult> }, text: string): ParseResult {
+  return connector.parse({ name: "", text }) as ParseResult;
+}
+
+/** Strip volatile fields so snapshots are deterministic. */
 function strip(r: ParseResult) {
   return {
     errors: r.errors,
@@ -40,11 +42,11 @@ function strip(r: ParseResult) {
 // ---------------------------------------------------------------------------
 describe("parseViaduct", () => {
   it("parses SAMPLE_VIADUCT and matches snapshot", () => {
-    expect(strip(parseViaduct(SAMPLE_VIADUCT))).toMatchSnapshot();
+    expect(strip(parse(viaductConnector, SAMPLE_VIADUCT))).toMatchSnapshot();
   });
 
   it("returns 4 legs with no errors", () => {
-    const r = parseViaduct(SAMPLE_VIADUCT);
+    const r = parse(viaductConnector, SAMPLE_VIADUCT);
     expect(r.errors).toHaveLength(0);
     expect(r.entries).toHaveLength(4);
     for (const { entry } of r.entries) {
@@ -60,11 +62,11 @@ describe("parseViaduct", () => {
 // ---------------------------------------------------------------------------
 describe("parseSetlist", () => {
   it("parses SAMPLE_SETLIST and matches snapshot", () => {
-    expect(strip(parseSetlist(SAMPLE_SETLIST))).toMatchSnapshot();
+    expect(strip(parse(setlistConnector, SAMPLE_SETLIST))).toMatchSnapshot();
   });
 
   it("returns 3 events with no errors", () => {
-    const r = parseSetlist(SAMPLE_SETLIST);
+    const r = parse(setlistConnector, SAMPLE_SETLIST);
     expect(r.errors).toHaveLength(0);
     expect(r.entries).toHaveLength(3);
     for (const { entry } of r.entries) {
@@ -79,11 +81,11 @@ describe("parseSetlist", () => {
 // ---------------------------------------------------------------------------
 describe("parseGeneric (stays)", () => {
   it("parses SAMPLE_GENERIC and matches snapshot", () => {
-    expect(strip(parseGeneric(SAMPLE_GENERIC))).toMatchSnapshot();
+    expect(strip(parse(genericConnector, SAMPLE_GENERIC))).toMatchSnapshot();
   });
 
   it("returns 4 stays with no errors", () => {
-    const r = parseGeneric(SAMPLE_GENERIC);
+    const r = parse(genericConnector, SAMPLE_GENERIC);
     expect(r.errors).toHaveLength(0);
     expect(r.entries).toHaveLength(4);
     for (const { entry } of r.entries) {
@@ -97,11 +99,11 @@ describe("parseGeneric (stays)", () => {
 // ---------------------------------------------------------------------------
 describe("parseGeneric (life events)", () => {
   it("parses SAMPLE_LIFE and matches snapshot", () => {
-    expect(strip(parseGeneric(SAMPLE_LIFE))).toMatchSnapshot();
+    expect(strip(parse(genericConnector, SAMPLE_LIFE))).toMatchSnapshot();
   });
 
   it("returns 5 events with no errors", () => {
-    const r = parseGeneric(SAMPLE_LIFE);
+    const r = parse(genericConnector, SAMPLE_LIFE);
     expect(r.errors).toHaveLength(0);
     expect(r.entries).toHaveLength(5);
     for (const { entry } of r.entries) {
@@ -116,7 +118,7 @@ describe("parseGeneric (life events)", () => {
 describe("parseGeneric (unknown type)", () => {
   it("emits an error for an unrecognised type and produces no entry", () => {
     const csv = `type,start,title\nunknown_type,2026-01-01,Foo`;
-    const r = parseGeneric(csv);
+    const r = parse(genericConnector, csv);
     expect(r.entries).toHaveLength(0);
     expect(r.errors).toHaveLength(1);
     expect(r.errors[0]).toMatch(/unknown type/i);
@@ -133,7 +135,7 @@ describe("parseGeneric (batch-duplicate rows)", () => {
       "concert,2026-05-01,Band A,Venue X,London",
       "concert,2026-05-01,Band A,Venue X,London",
     ].join("\n");
-    const r = parseGeneric(csv);
+    const r = parse(genericConnector, csv);
     expect(r.entries).toHaveLength(2);
     expect(r.errors).toHaveLength(0);
     expect(r.entries[0].entry.dedupeKey).toBe(r.entries[1].entry.dedupeKey);
@@ -141,27 +143,27 @@ describe("parseGeneric (batch-duplicate rows)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// detectSource
+// detectConnector
 // ---------------------------------------------------------------------------
-describe("detectSource", () => {
+describe("detectConnector", () => {
   it("detects viaduct from SAMPLE_VIADUCT content", () => {
-    expect(detectSource("export.csv", SAMPLE_VIADUCT)).toBe("viaduct");
+    expect(detectConnector("export.csv", SAMPLE_VIADUCT).id).toBe("viaduct");
   });
 
   it("detects setlistfm from SAMPLE_SETLIST content", () => {
-    expect(detectSource("attended.json", SAMPLE_SETLIST)).toBe("setlistfm");
+    expect(detectConnector("attended.json", SAMPLE_SETLIST).id).toBe("setlistfm");
   });
 
   it("detects setlistfm from filename alone", () => {
-    expect(detectSource("my-setlist-export.csv", "date,artist,venue\n")).toBe("setlistfm");
+    expect(detectConnector("my-setlist-export.csv", "date,artist,venue\n").id).toBe("setlistfm");
   });
 
   it("falls back to generic for SAMPLE_GENERIC", () => {
-    expect(detectSource("export.csv", SAMPLE_GENERIC)).toBe("generic");
+    expect(detectConnector("export.csv", SAMPLE_GENERIC).id).toBe("generic");
   });
 
   it("falls back to generic for SAMPLE_LIFE", () => {
-    expect(detectSource("life.csv", SAMPLE_LIFE)).toBe("generic");
+    expect(detectConnector("life.csv", SAMPLE_LIFE).id).toBe("generic");
   });
 });
 
