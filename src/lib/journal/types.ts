@@ -33,7 +33,18 @@ interface Base {
   endUTC?: string;
   tripId?: string;
   dedupeKey: string;
-  journal?: string;
+  /** Free-text personal reflection on this entry. Stored in IndexedDB; never exported. */
+  reflection?: string;
+  /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
+  rating?: number;
+  /**
+   * How precisely the date is known.
+   * "day"     — full YYYY-MM-DD known (default assumed when omitted)
+   * "month"   — only YYYY-MM known (e.g. Goodreads "read" month)
+   * "year"    — only YYYY known
+   * "unknown" — date is a best guess / cannot be determined
+   */
+  datePrecision?: "day" | "month" | "year" | "unknown";
   /** Tier 1 manual overrides layered on top of source data */
   overrides?: Record<string, string>;
   createdAt: string;
