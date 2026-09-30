@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { putMany, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, uid, type EventCategory, type Entry, type Purpose } from "@/lib/journal/types";
-import { eventKey, legKey, stayKey } from "@/lib/journal/parsers";
+import { eventKey, legKey, stayKey } from "@/lib/journal/connectors/keys";
 import { loadStations, timezoneFor } from "@/lib/journal/geo";
 import { localToUTC } from "@/lib/journal/tz";
 

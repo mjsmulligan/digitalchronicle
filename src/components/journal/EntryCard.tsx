@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
-import { CATEGORY_LABEL, SOURCE_LABEL, entryTitle, view, type Entry, type EventCategory } from "@/lib/journal/types";
+import { CATEGORY_LABEL, entryTitle, view, type Entry, type EventCategory } from "@/lib/journal/types";
+import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { cn } from "@/lib/utils";
 
 const CAT_ICON: Record<EventCategory, typeof Music> = {
@@ -113,7 +114,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             </select>
           </label>
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] text-muted-foreground">source: {SOURCE_LABEL[entry.source]} · tier {entry.tier}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">source: {sourceLabel(entry.source)} · tier {entry.tier}</span>
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => removeMany(storeFor(entry), [entry.id])}><Trash2 className="h-4 w-4" /></Button>
               <Button size="sm" onClick={save}>Save</Button>

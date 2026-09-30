@@ -1,7 +1,12 @@
 import { timezoneFor } from "./geo";
 import { localToUTC } from "./tz";
 
-export type Source = "manual" | "viaduct" | "setlistfm" | "generic";
+/**
+ * Identifier for the import source that produced an entry.
+ * "manual" is the only reserved value (highest-precedence sovereign edits).
+ * All other values are connector ids registered in connectors/registry.ts.
+ */
+export type Source = string;
 /** 1 = user manual (sovereign), 2 = primary transit/attendance records, 3 = secondary order/calendar records */
 export type Tier = 1 | 2 | 3;
 export type Mode = "air" | "rail" | "road";
@@ -147,12 +152,11 @@ export interface JournalData {
 export const STORES = ["trips", "legs", "stays", "events", "notes", "staging"] as const;
 export type StoreName = (typeof STORES)[number];
 
-export const SOURCE_LABEL: Record<Source, string> = {
-  manual: "Manual",
-  viaduct: "Viaduct",
-  setlistfm: "setlist.fm",
-  generic: "Generic",
-};
+/**
+ * @deprecated Use sourceLabel(id) from connectors/registry.ts instead.
+ * Kept temporarily for any code that hasn't been migrated yet.
+ */
+// SOURCE_LABEL removed — use sourceLabel() from connectors/registry.ts
 
 export function view<T extends Entry>(e: T): T {
   if (!e.overrides) return e;
