@@ -8,7 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { BookOpen, Map as MapIcon, Luggage, Inbox, HardDrive, Lock, Sparkles } from "lucide-react";
+import { BookOpen, Map as MapIcon, Luggage, Inbox, HardDrive, Lock, Sparkles, Library } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -103,6 +103,7 @@ const NAV = [
   { to: "/", label: "Chronicle", icon: BookOpen },
   { to: "/trips", label: "Trips", icon: Luggage },
   { to: "/events", label: "Events", icon: Sparkles },
+  { to: "/culture", label: "Culture", icon: Library },
   { to: "/places", label: "Places", icon: MapIcon },
   { to: "/import", label: "Import", icon: Inbox },
   { to: "/backup", label: "Backup", icon: HardDrive },
