@@ -303,8 +303,8 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
           )}
           <Textarea value={reflection} onChange={(e) => setReflection(e.target.value)} placeholder="Write a reflection…" className="font-serif" />
           <details className="text-sm">
-            <summary className="cursor-pointer text-muted-foreground">Manual corrections (always win over imported data)</summary>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <summary className="cursor-pointer py-2 text-muted-foreground">Manual corrections (always win over imported data)</summary>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {OVERRIDE_FIELDS[entry.kind].map((f) => (
                 <label key={f} className="text-xs text-muted-foreground">
                   {f}
@@ -350,11 +350,11 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             <span className="font-mono text-[10px] text-muted-foreground/50">{sourceLabel(entry.source)} · t{entry.tier}</span>
             <div className="flex items-center gap-2">
               {confirmDelete ? (
-                <>
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="flex items-center gap-1 text-xs text-destructive"><AlertTriangle className="h-3.5 w-3.5" />Delete?</span>
                   <Button size="sm" variant="destructive" onClick={handleDelete}>Yes, delete</Button>
                   <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-                </>
+                </div>
               ) : (
                 <>
                   <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(true)}><Trash2 className="h-4 w-4" /></Button>

@@ -142,7 +142,7 @@ function ImportPage() {
         <Upload className="mx-auto h-6 w-6 text-muted-foreground" />
         <p className="mt-2">Drop CSV or JSON exports here</p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          <select value={src} onChange={(e) => setSrc(e.target.value as Auto)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <select value={src} onChange={(e) => setSrc(e.target.value as Auto)} className="h-9 w-full max-w-xs rounded-md border border-input bg-background px-2 text-sm">
             <option value="auto">Detect format</option>
             <option value="letterboxd">Letterboxd diary/reviews CSV</option>
             <option value="netflix">Netflix viewing history CSV</option>

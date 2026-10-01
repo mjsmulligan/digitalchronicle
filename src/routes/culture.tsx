@@ -197,24 +197,26 @@ function Culture() {
         <AddEntryDialog />
       </header>
 
-      <div className="mb-6 flex flex-wrap gap-1">
-        {pills.map(({ key, label, count }) => (
-          <button
-            key={key}
-            onClick={() => setFilter(key)}
-            className={cn(
-              "rounded-full border border-border px-3 py-1 text-sm",
-              filter === key ? "bg-foreground text-background" : "hover:bg-accent",
-            )}
-          >
-            {label} <span className="font-mono text-xs">{count}</span>
-          </button>
-        ))}
+      <div className="mb-6 space-y-2">
+        <div className="flex flex-wrap gap-1">
+          {pills.map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={cn(
+                "rounded-full border border-border px-3 py-1.5 text-sm",
+                filter === key ? "bg-foreground text-background" : "hover:bg-accent",
+              )}
+            >
+              {label} <span className="font-mono text-xs">{count}</span>
+            </button>
+          ))}
+        </div>
         <Input
           placeholder="Search…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          className="ml-auto h-8 w-40"
+          className="h-8 w-full sm:w-40"
         />
       </div>
 

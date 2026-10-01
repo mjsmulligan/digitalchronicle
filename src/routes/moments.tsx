@@ -89,23 +89,25 @@ function Moments() {
         <AddEntryDialog />
       </header>
 
-      <div className="mb-6 flex flex-wrap gap-1">
-        <button
-          onClick={() => setCat("all")}
-          className={cn("rounded-full border border-border px-3 py-1 text-sm", cat === "all" ? "bg-foreground text-background" : "hover:bg-accent")}
-        >
-          Everything <span className="font-mono text-xs">{moments.length}</span>
-        </button>
-        {CATEGORIES.map((c) => (
+      <div className="mb-6 space-y-2">
+        <div className="flex flex-wrap gap-1">
           <button
-            key={c}
-            onClick={() => setCat(c)}
-            className={cn("rounded-full border border-border px-3 py-1 text-sm", cat === c ? "bg-foreground text-background" : "hover:bg-accent")}
+            onClick={() => setCat("all")}
+            className={cn("rounded-full border border-border px-3 py-1.5 text-sm", cat === "all" ? "bg-foreground text-background" : "hover:bg-accent")}
           >
-            {CATEGORY_PLURAL[c]} <span className="font-mono text-xs">{counts[c] ?? 0}</span>
+            Everything <span className="font-mono text-xs">{moments.length}</span>
           </button>
-        ))}
-        <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="ml-auto h-8 w-40" />
+          {CATEGORIES.map((c) => (
+            <button
+              key={c}
+              onClick={() => setCat(c)}
+              className={cn("rounded-full border border-border px-3 py-1.5 text-sm", cat === c ? "bg-foreground text-background" : "hover:bg-accent")}
+            >
+              {CATEGORY_PLURAL[c]} <span className="font-mono text-xs">{counts[c] ?? 0}</span>
+            </button>
+          ))}
+        </div>
+        <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="h-8 w-full sm:w-40" />
       </div>
 
       {s.ready && moments.length === 0 && (

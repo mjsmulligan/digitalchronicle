@@ -106,7 +106,7 @@ function SelfSetup({ onCreated }: { onCreated: () => void }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void save(); }}
-              className="max-w-xs"
+              className="flex-1 min-w-0"
               autoFocus
             />
             <Button onClick={() => void save()} disabled={!name.trim() || saving}>
@@ -322,8 +322,8 @@ function ContactsImport({ existingPeople }: { existingPeople: Person[] }) {
           {/* Preview list */}
           {drafts.length > 0 && (
             <>
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="flex-1 text-sm text-muted-foreground">
                   {drafts.length} contacts found · {selectedCount} selected
                 </p>
                 <div className="flex gap-2">
@@ -435,7 +435,7 @@ function PeoplePage() {
                 type="button"
                 onClick={() => setFilter(f)}
                 className={cn(
-                  "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
                   filter === f
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/80",

@@ -61,7 +61,7 @@ function TripCard({ trip }: { trip: Trip }) {
             <h2 className="text-2xl">{trip.title}</h2>
             {trip.purpose && <Badge variant="secondary" className="capitalize">{trip.purpose}</Badge>}
           </div>
-          <div className="mt-3 flex gap-4 font-mono text-xs">
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs">
             <span>{legs.filter((l) => l.kind === "leg" && l.mode === "air").length} flights</span>
             <span>{legs.filter((l) => l.kind === "leg" && l.mode === "rail").length} trains</span>
             <span>{members.filter((e) => e.kind === "stay").length} stays</span>
