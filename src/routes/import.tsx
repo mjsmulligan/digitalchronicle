@@ -50,7 +50,7 @@ function BatchReview({ batch }: { batch: StagingBatch }) {
         <Button variant="ghost" size="sm" onClick={() => removeMany("staging", [b.id])}><Trash2 className="h-4 w-4" /> Discard</Button>
         <Button size="sm" disabled={!selected} onClick={async () => {
           const r = await commitBatch(b);
-          toast.success(`Added ${r.count} entries${r.trips ? ` and ${r.trips} trips` : ""} to your journal`);
+          toast.success(`Added ${r.count} entries to your journal`);
         }}>Commit {selected} to journal</Button>
       </header>
 
