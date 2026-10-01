@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as BackupRouteImport } from './routes/backup'
 import { Route as CultureRouteImport } from './routes/culture'
 import { Route as EventsRouteImport } from './routes/events'
+import { Route as MomentsRouteImport } from './routes/moments'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as PlacesRouteImport } from './routes/places'
 import { Route as TripsRouteImport } from './routes/trips'
@@ -37,6 +38,11 @@ const EventsRoute = EventsRouteImport.update({
   path: '/events',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MomentsRoute = MomentsRouteImport.update({
+  id: '/moments',
+  path: '/moments',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ImportRoute = ImportRouteImport.update({
   id: '/import',
   path: '/import',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/culture': typeof CultureRoute
   '/events': typeof EventsRoute
   '/import': typeof ImportRoute
+  '/moments': typeof MomentsRoute
   '/places': typeof PlacesRoute
   '/trips': typeof TripsRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/culture': typeof CultureRoute
   '/events': typeof EventsRoute
   '/import': typeof ImportRoute
+  '/moments': typeof MomentsRoute
   '/places': typeof PlacesRoute
   '/trips': typeof TripsRoute
 }
@@ -78,16 +86,17 @@ export interface FileRoutesById {
   '/culture': typeof CultureRoute
   '/events': typeof EventsRoute
   '/import': typeof ImportRoute
+  '/moments': typeof MomentsRoute
   '/places': typeof PlacesRoute
   '/trips': typeof TripsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/backup' | '/culture' | '/events' | '/import' | '/places' | '/trips'
+  fullPaths: '/' | '/backup' | '/culture' | '/events' | '/import' | '/moments' | '/places' | '/trips'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/backup' | '/culture' | '/events' | '/import' | '/places' | '/trips'
+  to: '/' | '/backup' | '/culture' | '/events' | '/import' | '/moments' | '/places' | '/trips'
   id:
-    '__root__' | '/' | '/backup' | '/culture' | '/events' | '/import' | '/places' | '/trips'
+    '__root__' | '/' | '/backup' | '/culture' | '/events' | '/import' | '/moments' | '/places' | '/trips'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -96,6 +105,7 @@ export interface RootRouteChildren {
   CultureRoute: typeof CultureRoute
   EventsRoute: typeof EventsRoute
   ImportRoute: typeof ImportRoute
+  MomentsRoute: typeof MomentsRoute
   PlacesRoute: typeof PlacesRoute
   TripsRoute: typeof TripsRoute
 }
@@ -137,6 +147,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImportRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/moments': {
+      id: '/moments'
+      path: '/moments'
+      fullPath: '/moments'
+      preLoaderRoute: typeof MomentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/places': {
       id: '/places'
       path: '/places'
@@ -160,6 +177,7 @@ const rootRouteChildren: RootRouteChildren = {
   CultureRoute: CultureRoute,
   EventsRoute: EventsRoute,
   ImportRoute: ImportRoute,
+  MomentsRoute: MomentsRoute,
   PlacesRoute: PlacesRoute,
   TripsRoute: TripsRoute,
 }

@@ -102,7 +102,7 @@ function RootShell({ children }: { children: ReactNode }) {
 const NAV = [
   { to: "/", label: "Chronicle", icon: BookOpen },
   { to: "/trips", label: "Trips", icon: Luggage },
-  { to: "/events", label: "Events", icon: Sparkles },
+  { to: "/moments", label: "Moments", icon: Sparkles },
   { to: "/culture", label: "Culture", icon: Library },
   { to: "/places", label: "Places", icon: MapIcon },
   { to: "/import", label: "Import", icon: Inbox },

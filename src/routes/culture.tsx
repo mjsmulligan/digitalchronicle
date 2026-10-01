@@ -5,26 +5,27 @@ import { EntryCard } from "@/components/journal/EntryCard";
 import { StarRating } from "@/components/journal/StarRating";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { day, view, type Film, type Episode, type Book, type Entry } from "@/lib/journal/types";
+import { day, view, type Film, type Episode, type Book, type JEvent, type Entry } from "@/lib/journal/types";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/culture")({
   head: () => ({
     meta: [
       { title: "Culture — Journal" },
-      { name: "description", content: "Films, TV and books from your journal." },
+      { name: "description", content: "Films, TV, books and concerts from your journal." },
     ],
   }),
   component: Culture,
 });
 
-type CultureKind = "film" | "episode" | "book";
+type CultureKind = "film" | "episode" | "book" | "concert";
 type Filter = "all" | CultureKind | "rewatch";
 
-type CultureEntry = Film | Episode | Book;
+type CultureEntry = Film | Episode | Book | JEvent;
 
 function isCulture(e: Entry): e is CultureEntry {
-  return e.kind === "film" || e.kind === "episode" || e.kind === "book";
+  return e.kind === "film" || e.kind === "episode" || e.kind === "book" ||
+    (e.kind === "event" && (e as JEvent).category === "concert");
 }
 
 function sortDate(e: CultureEntry): string {
@@ -95,12 +96,17 @@ function Culture() {
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
 
+  const concerts = useMemo(
+    () => s.events.filter((e) => e.category === "concert"),
+    [s.events],
+  );
+
   const allCulture = useMemo(
     () =>
-      ([...s.films, ...s.episodes, ...s.books] as CultureEntry[]).sort((a, b) =>
+      ([...s.films, ...s.episodes, ...s.books, ...concerts] as CultureEntry[]).sort((a, b) =>
         sortDate(b).localeCompare(sortDate(a)),
       ),
-    [s.films, s.episodes, s.books],
+    [s.films, s.episodes, s.books, concerts],
   );
 
   const counts = useMemo(
@@ -109,19 +115,24 @@ function Culture() {
       rewatch: s.films.filter((f) => f.rewatch).length,
       episode: s.episodes.length,
       book: s.books.length,
+      concert: concerts.length,
     }),
-    [s.films, s.episodes, s.books],
+    [s.films, s.episodes, s.books, concerts],
   );
 
   const filtered = useMemo(() => {
     const ql = q.trim().toLowerCase();
     return allCulture.filter((e) => {
       if (filter === "rewatch" && !(e.kind === "film" && (e as Film).rewatch)) return false;
-      if (filter !== "all" && filter !== "rewatch" && e.kind !== filter) return false;
+      if (filter === "concert" && !(e.kind === "event" && (e as JEvent).category === "concert")) return false;
+      if (filter !== "all" && filter !== "rewatch" && filter !== "concert" && e.kind !== filter) return false;
       if (!ql) return true;
       const v = view(e);
       const hay = [
-        v.kind === "film" ? v.title : v.kind === "episode" ? `${v.showTitle} ${v.episodeTitle ?? ""}` : `${(v as Book).title} ${(v as Book).author}`,
+        v.kind === "film" ? v.title
+          : v.kind === "episode" ? `${v.showTitle} ${v.episodeTitle ?? ""}`
+          : v.kind === "event" ? `${(v as JEvent).artist} ${(v as JEvent).venue} ${(v as JEvent).city}`
+          : `${(v as Book).title} ${(v as Book).author}`,
         v.kind === "film" ? (v.director ?? "") : v.kind === "book" ? ((v as Book).series ?? "") : "",
         v.reflection ?? "",
       ].join(" ").toLowerCase();
@@ -134,7 +145,10 @@ function Culture() {
   const uniqueTitles = useMemo(() => {
     const titles = new Set(
       filtered.map((e) =>
-        e.kind === "film" ? e.title : e.kind === "episode" ? e.showTitle : e.title,
+        e.kind === "film" ? e.title
+          : e.kind === "episode" ? e.showTitle
+          : e.kind === "event" ? (e as JEvent).artist
+          : (e as Book).title,
       ),
     );
     return titles.size;
@@ -150,6 +164,7 @@ function Culture() {
     { key: "rewatch", label: "Rewatches", count: counts.rewatch },
     { key: "episode", label: "TV", count: counts.episode },
     { key: "book", label: "Books", count: counts.book },
+    { key: "concert", label: "Concerts", count: counts.concert },
   ];
 
   return (
@@ -197,7 +212,7 @@ function Culture() {
         <div className="rounded-md border border-dashed border-border p-10 text-center">
           <h2 className="text-2xl">Nothing logged yet</h2>
           <p className="mt-2 text-muted-foreground">
-            Import a Letterboxd, Netflix, or Goodreads export to populate your culture log.
+            Import a Letterboxd, Netflix, Goodreads, or Setlist.fm export to populate your culture log.
           </p>
           <Button asChild className="mt-4">
             <Link to="/import">Import data</Link>
@@ -210,6 +225,15 @@ function Culture() {
           Nothing matches that filter.
         </p>
       )}
+
+      {/* Concerts view */}
+      {(filter === "all" || filter === "concert") &&
+        filtered.filter((e) => e.kind === "event").length > 0 && (
+          <ConcertsSection
+            concerts={filtered.filter((e) => e.kind === "event") as JEvent[]}
+            showHeading={filter === "all"}
+          />
+        )}
 
       {/* Films view */}
       {(filter === "all" || filter === "film" || filter === "rewatch") &&
@@ -238,6 +262,50 @@ function Culture() {
           />
         )}
     </div>
+  );
+}
+
+// ── Concerts section ──────────────────────────────────────────────────────────
+
+function ConcertsSection({ concerts, showHeading }: { concerts: JEvent[]; showHeading: boolean }) {
+  const byYear = useMemo(() => {
+    const map = new Map<string, JEvent[]>();
+    for (const c of concerts) {
+      const yr = day(c.overrides?.start ?? c.start).slice(0, 4);
+      const arr = map.get(yr) ?? [];
+      arr.push(c);
+      map.set(yr, arr);
+    }
+    return [...map.entries()].sort(([a], [b]) => b.localeCompare(a));
+  }, [concerts]);
+
+  return (
+    <section className="mb-10">
+      {showHeading && (
+        <h2 className="mb-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+          Concerts · {concerts.length}
+        </h2>
+      )}
+      <div className="space-y-8">
+        {byYear.map(([year, list]) => (
+          <div key={year}>
+            {!showHeading && (
+              <h3 className="mb-2 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                {year} · {list.length}
+              </h3>
+            )}
+            {showHeading && (
+              <p className="mb-2 font-mono text-xs text-muted-foreground">{year} · {list.length}</p>
+            )}
+            <div className="space-y-2">
+              {list.map((c) => (
+                <EntryCard key={c.id} entry={c} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
