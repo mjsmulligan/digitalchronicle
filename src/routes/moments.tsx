@@ -3,10 +3,16 @@ import { useMemo, useState } from "react";
 import { useJournal } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
 import { AddEntryDialog } from "@/components/journal/AddEntryDialog";
+import { PersonFilter } from "@/components/journal/PersonFilter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { day, type EventCategory, type JEvent } from "@/lib/journal/types";
+import { day, type Entry, type EventCategory, type JEvent, type Person } from "@/lib/journal/types";
 import { cn } from "@/lib/utils";
+
+function entryHasPerson(e: Entry, person: Person): boolean {
+  if (person.isSelf) return !e.participants || e.participants.includes(person.id);
+  return e.participants?.includes(person.id) ?? false;
+}
 
 export const Route = createFileRoute("/moments")({
   head: () => ({
@@ -35,6 +41,7 @@ function Moments() {
   const s = useJournal();
   const [cat, setCat] = useState<EventCategory | "all">("all");
   const [q, setQ] = useState("");
+  const [personId, setPersonId] = useState<string | null>(null);
 
   const moments = useMemo(
     () =>
@@ -51,15 +58,20 @@ function Moments() {
     return m;
   }, [moments]);
 
+  const activePerson = personId ? s.people.find((p) => p.id === personId) ?? null : null;
+
   const shown = useMemo(() => {
     const ql = q.trim().toLowerCase();
     return moments.filter((e) => {
       if (cat !== "all" && e.category !== cat) return false;
-      if (!ql) return true;
-      const hay = [field(e, "artist"), field(e, "venue"), field(e, "city"), e.tour ?? "", (e.people ?? []).join(" "), (e.companions ?? []).join(" "), e.reflection ?? "", e.journal ?? ""].join(" ").toLowerCase();
-      return hay.includes(ql);
+      if (ql) {
+        const hay = [field(e, "artist"), field(e, "venue"), field(e, "city"), e.tour ?? "", (e.people ?? []).join(" "), (e.companions ?? []).join(" "), e.reflection ?? "", e.journal ?? ""].join(" ").toLowerCase();
+        if (!hay.includes(ql)) return false;
+      }
+      if (activePerson && !entryHasPerson(e, activePerson)) return false;
+      return true;
     });
-  }, [moments, cat, q]);
+  }, [moments, cat, q, activePerson]);
 
   const groups = useMemo(() => {
     const map = new Map<string, JEvent[]>();
@@ -107,6 +119,7 @@ function Moments() {
             </button>
           ))}
         </div>
+        <PersonFilter people={s.people} value={personId} onChange={setPersonId} />
         <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="h-8 w-full sm:w-40" />
       </div>
 
