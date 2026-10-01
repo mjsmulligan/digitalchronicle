@@ -94,7 +94,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             {trip && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trip.title}</Badge>}
           </div>
           {!compact && meta && <p className="truncate text-sm text-muted-foreground">{meta}</p>}
-          {!open && entry.reflection && <p className=”mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80”>&ldquo;{entry.reflection}&rdquo;</p>}
+          {!open && entry.reflection && <p className="mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80">&ldquo;{entry.reflection}&rdquo;</p>}
         </div>
         <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{entryLabel(v)}</span>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
