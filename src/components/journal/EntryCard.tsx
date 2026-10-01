@@ -1,11 +1,11 @@
-import { useState } from "react";
-import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2 } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
-import { CATEGORY_LABEL, entryTitle, view, type Entry, type EventCategory } from "@/lib/journal/types";
+import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type EventCategory, type Person } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { StarRating } from "@/components/journal/StarRating";
 import { cn } from "@/lib/utils";
@@ -48,12 +48,185 @@ const OVERRIDE_FIELDS: Record<Entry["kind"], string[]> = {
   book: ["title", "author", "year", "series", "start"],
 };
 
+// ---------------------------------------------------------------------------
+// Participant picker
+// ---------------------------------------------------------------------------
+
+function normName(s: string) {
+  return s.trim().toLowerCase();
+}
+
+function personMatchesQuery(p: Person, q: string): boolean {
+  const lq = normName(q);
+  if (normName(p.name).includes(lq)) return true;
+  return p.aliases?.some((a) => normName(a).includes(lq)) ?? false;
+}
+
+interface ParticipantPickerProps {
+  /** Current value — mirrors entry.participants */
+  participants: string[] | undefined;
+  onChange: (next: string[] | undefined) => void;
+  people: Person[];
+}
+
+function ParticipantPicker({ participants, onChange, people }: ParticipantPickerProps) {
+  const self = people.find((p) => p.isSelf);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  // Effective chip list: if participants is undefined, show self implicitly
+  const chipIds: string[] =
+    participants === undefined
+      ? self ? [self.id] : []
+      : participants;
+
+  const chips = chipIds.map((id) => people.find((p) => p.id === id)).filter(Boolean) as Person[];
+
+  // Typeahead suggestions: people not already in chipIds
+  const suggestions = query.trim()
+    ? people.filter((p) => !chipIds.includes(p.id) && personMatchesQuery(p, query))
+    : [];
+
+  // Show "Create [name]" option when query doesn't exactly match any suggestion
+  const showCreate =
+    query.trim().length > 0 &&
+    !suggestions.some((p) => normName(p.name) === normName(query));
+
+  function remove(id: string) {
+    if (participants === undefined) {
+      // Self was implicit — removing it makes the list explicit without self
+      if (self && id === self.id) { onChange([]); return; }
+      // Removing other when self was implicit: shouldn't happen, but handle gracefully
+      onChange([]);
+      return;
+    }
+    const next = participants.filter((pid) => pid !== id);
+    onChange(next.length === 0 ? [] : next);
+  }
+
+  function add(person: Person) {
+    const base = participants === undefined ? (self ? [self.id] : []) : [...participants];
+    if (!base.includes(person.id)) onChange([...base, person.id]);
+    setQuery("");
+    setOpen(false);
+    inputRef.current?.focus();
+  }
+
+  async function createAndAdd() {
+    const name = query.trim();
+    if (!name) return;
+    const person: Person = { id: uid(), name, createdAt: new Date().toISOString() };
+    await putMany("people", [person]);
+    add(person);
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const hasSelf = self != null;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">People</p>
+      <div className="flex flex-wrap gap-1.5">
+        {chips.map((p) => (
+          <span
+            key={p.id}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
+              p.isSelf
+                ? "bg-primary/10 text-primary"
+                : "bg-muted text-muted-foreground",
+            )}
+          >
+            {p.name}
+            {p.isSelf && <span className="font-mono text-[9px] opacity-60">you</span>}
+            <button
+              type="button"
+              aria-label={`Remove ${p.name}`}
+              onClick={() => remove(p.id)}
+              className="ml-0.5 rounded-full opacity-60 hover:opacity-100"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        {chips.length === 0 && (
+          <span className="text-xs text-muted-foreground italic">No participants</span>
+        )}
+        {/* Re-add self button when self was explicitly removed */}
+        {hasSelf && self && participants !== undefined && !chipIds.includes(self.id) && (
+          <button
+            type="button"
+            onClick={() => onChange([self.id, ...(participants ?? [])])}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2.5 py-0.5 text-xs text-muted-foreground hover:border-primary hover:text-primary"
+          >
+            <Plus className="h-3 w-3" /> add yourself
+          </button>
+        )}
+      </div>
+
+      {/* Typeahead */}
+      <div className="relative" ref={dropRef}>
+        <Input
+          ref={inputRef}
+          placeholder="Add person…"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+          onFocus={() => { if (query) setOpen(true); }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") { setOpen(false); setQuery(""); }
+            if (e.key === "Enter" && showCreate && !suggestions.length) { e.preventDefault(); void createAndAdd(); }
+          }}
+          className="h-7 text-sm"
+        />
+        {open && (suggestions.length > 0 || showCreate) && (
+          <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
+            {suggestions.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent"
+                onMouseDown={(e) => { e.preventDefault(); add(p); }}
+              >
+                <span>{p.name}</span>
+                {p.aliases?.length ? (
+                  <span className="text-xs text-muted-foreground">{p.aliases.join(", ")}</span>
+                ) : null}
+              </button>
+            ))}
+            {showCreate && (
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 border-t border-border px-3 py-2 text-sm text-muted-foreground hover:bg-accent"
+                onMouseDown={(e) => { e.preventDefault(); void createAndAdd(); }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Create &ldquo;{query.trim()}&rdquo;
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [reflection, setReflection] = useState(entry.reflection ?? "");
   const [dateStarted, setDateStarted] = useState(entry.kind === "book" ? (entry.dateStarted ?? "") : "");
   const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
-  const { trips } = useJournal();
+  const [participants, setParticipants] = useState<string[] | undefined>(entry.participants);
+  const { trips, people } = useJournal();
   const v = view(entry);
   const Icon = entryIcon(v);
   const trip = trips.find((t) => t.id === entry.tripId);
@@ -61,7 +234,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   const save = async () => {
     const clean = Object.fromEntries(Object.entries(ov).filter(([, x]) => x.trim()));
     const extra = entry.kind === "book" ? { dateStarted: dateStarted || undefined } : {};
-    await putMany(storeFor(entry), [{ ...entry, ...extra, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined }]);
+    await putMany(storeFor(entry), [{ ...entry, ...extra, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined, participants }]);
   };
 
   const setTrip = async (tripId: string) => {
@@ -145,6 +318,13 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
               Started reading
               <Input type="date" value={dateStarted} onChange={(e) => setDateStarted(e.target.value)} className="mt-1" />
             </label>
+          )}
+          {people.length > 0 && (
+            <ParticipantPicker
+              participants={participants}
+              onChange={setParticipants}
+              people={people}
+            />
           )}
           <div className="flex items-center justify-between">
             <span className="font-mono text-[10px] text-muted-foreground">source: {sourceLabel(entry.source)} · tier {entry.tier}</span>

@@ -19,6 +19,10 @@ interface Base {
   id: string;
   source: Source;
   tier: Tier;
+  /** Person IDs (from the people store) who were present at this entry.
+   *  undefined / absent → the journal owner (isSelf person) is implicitly present.
+   *  [] → self was explicitly removed; no participants. */
+  participants?: string[];
   /** Local wall-clock time at the start place, "YYYY-MM-DDTHH:mm" (or date only) */
   start: string;
   /** Local wall-clock time at the end place */
@@ -175,6 +179,22 @@ export interface Book extends Base {
 
 export type Entry = Leg | Stay | JEvent | Film | Episode | Book;
 
+/**
+ * A person who appears in journal entries.
+ * Not a contact book — just enough to link entries to the same individual
+ * and support a person-centric view. All data stays in IndexedDB.
+ */
+export interface Person {
+  id: string;
+  name: string;
+  /** Alternative names / nicknames for matching (e.g. "Rob" for "Robert Smith"). */
+  aliases?: string[];
+  notes?: string;
+  /** Marks the journal owner. Exactly one Person should have isSelf: true. */
+  isSelf?: boolean;
+  createdAt: string;
+}
+
 export interface Note {
   id: string;
   /** YYYY-MM-DD day note, or attached to a trip */
@@ -226,9 +246,10 @@ export interface JournalData {
   series: Series[];
   notes: Note[];
   staging: StagingBatch[];
+  people: Person[];
 }
 
-export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging"] as const;
+export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging", "people"] as const;
 export type StoreName = (typeof STORES)[number];
 
 /**
