@@ -78,21 +78,20 @@ Events cover concerts, gatherings, celebrations, milestones, memories, and activ
 
 ### Setlist.fm (tier 2)
 
-Setlist.fm tracks concerts you've attended. It exports a CSV of your attended shows.
+Setlist.fm tracks concerts you've attended. It doesn't offer a native export, but third-party scripts can generate a compatible CSV or JSON from your attended shows page.
 
 **How to export:**
-1. Log in at [setlist.fm](https://www.setlist.fm).
-2. Go to your profile → **Attended concerts**.
-3. Use the export option to download your concert history CSV.
+- Search for "setlist.fm export" or "setlistfm attended concerts scraper" — several community tools exist that produce a file compatible with this connector.
+- The connector accepts both CSV and JSON formats.
 
 **What you get:**
 - Artist name
 - Venue and city
 - Concert date
-- Setlist (song-by-song, where available)
+- Setlist (song-by-song, where available in the source data)
 
 **Notes:**
-- Only concerts with a confirmed setlist are exported — shows you marked as attended without a setlist may not appear.
+- Setlist.fm has no official export API or download. The third-party tools vary in quality — check the staging preview carefully before committing.
 
 ### iCalendar (.ics) (tier 3)
 
