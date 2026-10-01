@@ -48,7 +48,7 @@ function DayNote({ date, note }: { date: string; note?: Note }) {
     return note ? (
       <p onClick={() => setEditing(true)} className="cursor-text whitespace-pre-wrap border-l-2 border-primary pl-3 font-serif text-[15px] italic">{note.text}</p>
     ) : (
-      <button onClick={() => setEditing(true)} className="text-xs text-muted-foreground hover:text-foreground">+ reflection for this day</button>
+      <button onClick={() => setEditing(true)} className="block min-h-[44px] text-xs text-muted-foreground hover:text-foreground">+ reflection for this day</button>
     );
   return (
     <div className="space-y-2">
@@ -96,15 +96,17 @@ function Chronicle() {
           <AddEntryDialog />
         </div>
       </header>
-      <div className="mb-6 flex flex-wrap gap-1">
-        {FILTERS.map((f) => (
-          <button key={f.id} onClick={() => setFilter(f.id)} className={cn("rounded-full border border-border px-3 py-1 text-sm", filter === f.id ? "bg-foreground text-background" : "hover:bg-accent")}>{f.label}</button>
-        ))}
-        <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="ml-auto h-8 w-40" />
+      <div className="mb-6 space-y-2">
+        <div className="flex flex-wrap gap-1">
+          {FILTERS.map((f) => (
+            <button key={f.id} onClick={() => setFilter(f.id)} className={cn("rounded-full border border-border px-3 py-1.5 text-sm", filter === f.id ? "bg-foreground text-background" : "hover:bg-accent")}>{f.label}</button>
+          ))}
+        </div>
+        <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="h-8 w-full sm:w-40" />
       </div>
 
       {s.ready && total === 0 && s.notes.length === 0 && (
-        <div className="rounded-md border border-dashed border-border p-10 text-center">
+        <div className="rounded-md border border-dashed border-border p-6 text-center md:p-10">
           <h2 className="text-2xl">Your journal is empty</h2>
           <p className="mt-2 text-muted-foreground">Add an entry, or import concert, flight, rail and life-event exports.</p>
           <Button asChild className="mt-4"><Link to="/import">Import data or load samples</Link></Button>

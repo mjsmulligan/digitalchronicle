@@ -77,8 +77,8 @@ function Places() {
         </a>
         .
       </p>
-      <div className="overflow-hidden rounded-md border border-border bg-card">
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <div className="overflow-x-auto rounded-md border border-border bg-card">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[600px]">
           {Array.from({ length: 11 }, (_, i) => <line key={"v" + i} x1={i * 100} x2={i * 100} y1={0} y2={H} stroke="var(--border)" strokeWidth={0.5} />)}
           {Array.from({ length: 7 }, (_, i) => <line key={"h" + i} y1={(i * H) / 6} y2={(i * H) / 6} x1={0} x2={W} stroke="var(--border)" strokeWidth={i === 3 ? 1 : 0.5} />)}
           {arcs.map((r, i) => {
@@ -99,20 +99,22 @@ function Places() {
         </svg>
       </div>
       <div className="mt-8 grid gap-8 md:grid-cols-[2fr_1fr]">
-        <table className="w-full text-sm">
-          <thead className="text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-            <tr><th className="py-2">Place</th><th>Appearances</th><th>Why</th></tr>
-          </thead>
-          <tbody>
-            {points.map((p) => (
-              <tr key={p.name} className="border-t border-border">
-                <td className="py-2 font-medium">{p.name}</td>
-                <td className="font-mono">{p.count}</td>
-                <td className="text-muted-foreground">{[...p.kinds].join(", ")}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr><th className="py-2">Place</th><th>Appearances</th><th>Why</th></tr>
+            </thead>
+            <tbody>
+              {points.map((p) => (
+                <tr key={p.name} className="border-t border-border">
+                  <td className="py-2 font-medium">{p.name}</td>
+                  <td className="font-mono">{p.count}</td>
+                  <td className="max-w-[10rem] truncate text-muted-foreground" title={[...p.kinds].join(", ")}>{[...p.kinds].join(", ")}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {unknown.length > 0 && (
           <div>
             <h2 className="text-lg">Not on the map</h2>

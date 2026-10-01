@@ -67,7 +67,7 @@ function Backup() {
       <h1 className="text-4xl font-semibold">Backup & data</h1>
       <p className="mb-6 text-muted-foreground">Everything lives in this browser only — no accounts, no cloud. Export regularly to keep your journal safe.</p>
 
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 xs:grid-cols-3 sm:grid-cols-6">
         {STORES.map((k) => (
           <div key={k} className="rounded-md border border-border bg-card p-3">
             <div className="font-serif text-2xl">{(s[k] as unknown[]).length}</div>
@@ -80,12 +80,12 @@ function Backup() {
       </p>
 
       <div className="mt-8 space-y-4">
-        <div className="flex items-center justify-between rounded-md border border-border bg-card p-4">
-          <div><h2 className="text-lg">Export everything</h2><p className="text-sm text-muted-foreground">One JSON file with every entry, trip, reflection and staged import.</p></div>
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-card p-4">
+          <div className="min-w-0 flex-1"><h2 className="text-lg">Export everything</h2><p className="text-sm text-muted-foreground">One JSON file with every entry, trip, reflection and staged import.</p></div>
           <Button onClick={exportJSON}>Download backup</Button>
         </div>
-        <div className="flex items-center justify-between rounded-md border border-border bg-card p-4">
-          <div><h2 className="text-lg">Restore from backup</h2><p className="text-sm text-muted-foreground">Replaces the current journal with the file's contents.</p></div>
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-card p-4">
+          <div className="min-w-0 flex-1"><h2 className="text-lg">Restore from backup</h2><p className="text-sm text-muted-foreground">Replaces the current journal with the file's contents.</p></div>
           <Button asChild variant="outline">
             <label className="cursor-pointer">
               Choose file
@@ -112,8 +112,8 @@ function Backup() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <div className="flex items-center justify-between rounded-md border border-destructive/40 bg-card p-4">
-          <div><h2 className="text-lg">Reset journal</h2><p className="text-sm text-muted-foreground">Permanently deletes all local data in this browser.</p></div>
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-destructive/40 bg-card p-4">
+          <div className="min-w-0 flex-1"><h2 className="text-lg">Reset journal</h2><p className="text-sm text-muted-foreground">Permanently deletes all local data in this browser.</p></div>
           <AlertDialog>
             <AlertDialogTrigger asChild><Button variant="destructive">Reset</Button></AlertDialogTrigger>
             <AlertDialogContent>

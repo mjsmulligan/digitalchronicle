@@ -99,6 +99,16 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+// Primary routes shown in the mobile bottom tab bar (max 5)
+const BOTTOM_NAV = [
+  { to: "/", label: "Chronicle", icon: BookOpen },
+  { to: "/trips", label: "Trips", icon: Luggage },
+  { to: "/moments", label: "Moments", icon: Sparkles },
+  { to: "/culture", label: "Culture", icon: Library },
+  { to: "/people", label: "People", icon: Users },
+] as const;
+
+// All routes in the desktop sidebar
 const NAV = [
   { to: "/", label: "Chronicle", icon: BookOpen },
   { to: "/trips", label: "Trips", icon: Luggage },
@@ -124,20 +134,21 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen md:flex">
-        <aside className="border-b border-border bg-sidebar md:sticky md:top-0 md:h-screen md:w-56 md:shrink-0 md:border-b-0 md:border-r">
+        {/* ── Desktop sidebar (hidden on mobile) ─────────────────────────── */}
+        <aside className="hidden md:sticky md:top-0 md:flex md:h-screen md:w-56 md:shrink-0 md:flex-col md:border-r md:border-border md:bg-sidebar">
           <div className="px-5 py-5">
             <Link to="/" className="font-serif text-2xl font-semibold tracking-tight">Journal</Link>
             <p className="mt-1 flex items-center gap-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
               <Lock className="h-3 w-3" /> stored only in this browser
             </p>
           </div>
-          <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col">
+          <nav className="flex flex-col gap-1 px-3 pb-3">
             {NAV.map(({ to, label, icon: Icon }) => (
               <Link
                 key={to}
                 to={to}
                 activeOptions={{ exact: to === "/" }}
-                className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
                 activeProps={{ className: "bg-sidebar-accent font-medium text-sidebar-foreground" }}
               >
                 <Icon className="h-4 w-4" /> {label}
@@ -148,7 +159,33 @@ function RootComponent() {
             ))}
           </nav>
         </aside>
-        <main className="min-w-0 flex-1 px-4 py-8 md:px-10">
+
+        {/* ── Mobile header bar (hidden on desktop) ──────────────────────── */}
+        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-border bg-sidebar px-4 py-3 md:hidden">
+          <Link to="/" className="font-serif text-xl font-semibold tracking-tight">Journal</Link>
+          <div className="flex items-center gap-1">
+            <Link
+              to="/import"
+              className="relative flex h-9 w-9 items-center justify-center rounded-md text-sidebar-foreground/70 hover:bg-sidebar-accent"
+              aria-label="Import"
+            >
+              <Inbox className="h-5 w-5" />
+              {staging.length > 0 && (
+                <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary font-mono text-[9px] text-primary-foreground">{staging.length}</span>
+              )}
+            </Link>
+            <Link
+              to="/backup"
+              className="flex h-9 w-9 items-center justify-center rounded-md text-sidebar-foreground/70 hover:bg-sidebar-accent"
+              aria-label="Backup"
+            >
+              <HardDrive className="h-5 w-5" />
+            </Link>
+          </div>
+        </header>
+
+        {/* ── Main content ────────────────────────────────────────────────── */}
+        <main className="min-w-0 flex-1 px-4 pb-24 pt-4 md:px-10 md:py-8">
           {initError ? (
             <div role="alert" className="flex min-h-[60vh] items-center justify-center px-4">
               <div className="max-w-md text-center">
@@ -163,6 +200,22 @@ function RootComponent() {
             </div>
           ) : <Outlet />}
         </main>
+
+        {/* ── Mobile bottom tab bar (hidden on desktop) ──────────────────── */}
+        <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-border bg-sidebar md:hidden">
+          {BOTTOM_NAV.map(({ to, label, icon: Icon }) => (
+            <Link
+              key={to}
+              to={to}
+              activeOptions={{ exact: to === "/" }}
+              className="flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] text-sidebar-foreground/60 hover:text-sidebar-foreground"
+              activeProps={{ className: "flex flex-1 flex-col items-center justify-center gap-0.5 py-2 text-[10px] text-primary font-medium" }}
+            >
+              <Icon className="h-5 w-5" />
+              {label}
+            </Link>
+          ))}
+        </nav>
       </div>
       <Toaster />
     </QueryClientProvider>

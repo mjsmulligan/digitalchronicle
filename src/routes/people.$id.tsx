@@ -75,7 +75,7 @@ function PersonTimeline() {
       {/* Back link */}
       <Link
         to="/people"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+        className="inline-flex min-h-[44px] items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
         People
@@ -112,7 +112,7 @@ function PersonTimeline() {
             type="button"
             onClick={() => setFilter(f)}
             className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+              "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
               filter === f
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground hover:bg-muted/80",

@@ -110,7 +110,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
       <DialogTrigger asChild>
         <Button size="sm"><Plus className="h-4 w-4" /> Add entry</Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto">
         <DialogHeader><DialogTitle>New journal entry</DialogTitle></DialogHeader>
         <div className="space-y-1.5">
           {KIND_GROUPS.map((group) => (
@@ -124,11 +124,12 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        {/* Responsive grid: single column on mobile, two on sm+ */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Input type="date" value={date} onChange={set("date")} />
           <Input type="time" value={f.time ?? ""} onChange={set("time")} />
           <select
-            className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm capitalize"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm capitalize sm:col-span-2"
             value={f.purpose ?? ""}
             onChange={(e) => setF({ ...f, purpose: e.target.value })}
           >
@@ -142,28 +143,28 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
             </>
           ) : isBook ? (
             <>
-              <Input className="col-span-2" placeholder="Title" value={f.title ?? ""} onChange={set("title")} />
-              <Input className="col-span-2" placeholder="Author" value={f.author ?? ""} onChange={set("author")} />
+              <Input className="sm:col-span-2" placeholder="Title" value={f.title ?? ""} onChange={set("title")} />
+              <Input className="sm:col-span-2" placeholder="Author" value={f.author ?? ""} onChange={set("author")} />
               <Input placeholder="Year published" type="number" value={f.year ?? ""} onChange={set("year")} />
               <Input placeholder="Rating (1–5 stars)" type="number" min="0.5" max="5" step="0.5" value={f.rating ?? ""} onChange={set("rating")} />
               <Input placeholder="Series name (optional)" value={f.series ?? ""} onChange={set("series")} />
               <Input placeholder="Series #" type="number" step="0.5" value={f.seriesNumber ?? ""} onChange={set("seriesNumber")} />
-              <label className="col-span-2 text-xs text-muted-foreground">
+              <label className="text-xs text-muted-foreground sm:col-span-2">
                 Started reading (optional)
                 <Input type="date" value={f.dateStarted ?? ""} onChange={set("dateStarted")} className="mt-1 block" />
               </label>
             </>
           ) : isEpisode ? (
             <>
-              <Input className="col-span-2" placeholder="Show title" value={f.showTitle ?? ""} onChange={set("showTitle")} />
+              <Input className="sm:col-span-2" placeholder="Show title" value={f.showTitle ?? ""} onChange={set("showTitle")} />
               <Input placeholder="Season (e.g. Season 2)" value={f.season ?? ""} onChange={set("season")} />
               <Input placeholder="Episode #" type="number" value={f.episodeNumber ?? ""} onChange={set("episodeNumber")} />
-              <Input className="col-span-2" placeholder="Episode title (optional)" value={f.episodeTitle ?? ""} onChange={set("episodeTitle")} />
-              <Input className="col-span-2" placeholder="Rating (1–5 stars)" type="number" min="0.5" max="5" step="0.5" value={f.rating ?? ""} onChange={set("rating")} />
+              <Input className="sm:col-span-2" placeholder="Episode title (optional)" value={f.episodeTitle ?? ""} onChange={set("episodeTitle")} />
+              <Input className="sm:col-span-2" placeholder="Rating (1–5 stars)" type="number" min="0.5" max="5" step="0.5" value={f.rating ?? ""} onChange={set("rating")} />
             </>
           ) : (
             <>
-              <Input className="col-span-2" placeholder={kind === "concert" ? "Artist" : kind === "stay" ? "Place" : "Title"} value={f.title ?? ""} onChange={set("title")} />
+              <Input className="sm:col-span-2" placeholder={kind === "concert" ? "Artist" : kind === "stay" ? "Place" : "Title"} value={f.title ?? ""} onChange={set("title")} />
               {kind !== "stay" && <Input placeholder="Venue / place" value={f.venue ?? ""} onChange={set("venue")} />}
               <Input placeholder="City" value={f.city ?? ""} onChange={set("city")} />
               {kind === "stay" && <Input type="date" value={f.end ?? ""} onChange={set("end")} />}
@@ -171,7 +172,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
           )}
           {!tripId && (
             <select
-              className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm sm:col-span-2"
               value={f.tripId ?? ""}
               onChange={(e) => setF({ ...f, tripId: e.target.value })}
             >
