@@ -5,12 +5,9 @@ import { allEntries, putMany, removeMany, useJournal, storeFor } from "@/lib/jou
 import { EntryCard } from "@/components/journal/EntryCard";
 import { AddTripDialog } from "@/components/journal/AddTripDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { entryTitle, type Entry, type Purpose, type Trip } from "@/lib/journal/types";
+import { entryTitle, type Entry, type Trip } from "@/lib/journal/types";
 
-const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
 const day = (e: Entry) => e.start.slice(0, 10);
 
 export const Route = createFileRoute("/trips")({
