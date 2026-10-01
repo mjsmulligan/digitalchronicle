@@ -56,7 +56,6 @@ export async function saveBatch(b: StagingBatch) {
 export async function commitBatch(b: StagingBatch) {
   const s = getState();
   const byId = new Map(allEntries(s).map((e) => [e.id, e]));
-  const idMap = new Map<string, string>();
   const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [] };
   let count = 0;
   for (const r of b.records) {
