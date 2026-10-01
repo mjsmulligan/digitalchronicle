@@ -1,5 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useJournal } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
@@ -36,6 +36,11 @@ function PersonTimeline() {
 
   const person = people.find((p) => p.id === id);
   if (!person) throw notFound();
+
+  useEffect(() => {
+    document.title = `${person.name} — Journal`;
+    return () => { document.title = "Journal — a private chronicle of your life"; };
+  }, [person.name]);
 
   const allEntries: Entry[] = [...legs, ...stays, ...events, ...films, ...episodes, ...books];
 

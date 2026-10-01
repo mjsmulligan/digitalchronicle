@@ -12,7 +12,11 @@ import { loadStations, timezoneFor } from "@/lib/journal/geo";
 import { localToUTC } from "@/lib/journal/tz";
 
 type Kind = EventCategory | "stay" | "flight" | "train" | "road" | "book" | "episode";
-const KINDS: Kind[] = ["memory", "concert", "gathering", "celebration", "milestone", "activity", "flight", "train", "road", "stay", "book", "episode"];
+const KIND_GROUPS: { label: string; kinds: Kind[] }[] = [
+  { label: "Moments", kinds: ["memory", "concert", "gathering", "celebration", "milestone", "activity"] },
+  { label: "Travel", kinds: ["flight", "train", "road", "stay"] },
+  { label: "Culture", kinds: ["book", "episode"] },
+];
 const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
 
 export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; tripId?: string }) {
@@ -108,9 +112,16 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
       </DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>New journal entry</DialogTitle></DialogHeader>
-        <div className="flex flex-wrap gap-1">
-          {KINDS.map((k) => (
-            <Button key={k} size="sm" variant={k === kind ? "default" : "outline"} onClick={() => setKind(k)} className="capitalize">{k}</Button>
+        <div className="space-y-1.5">
+          {KIND_GROUPS.map((group) => (
+            <div key={group.label}>
+              <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{group.label}</p>
+              <div className="flex flex-wrap gap-1">
+                {group.kinds.map((k) => (
+                  <Button key={k} size="sm" variant={k === kind ? "default" : "outline"} onClick={() => setKind(k)} className="capitalize">{k}</Button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -158,7 +169,6 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
               {kind === "stay" && <Input type="date" value={f.end ?? ""} onChange={set("end")} />}
             </>
           )}
-          <Input className="col-span-2" placeholder="Companions (comma separated)" value={f.people ?? ""} onChange={set("people")} />
           {!tripId && (
             <select
               className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm"
@@ -174,6 +184,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
         </div>
         <Textarea placeholder="Reflection…" className="font-serif" value={f.journal ?? ""} onChange={set("journal")} />
         <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : "Save entry"}</Button>
+        <p className="text-xs text-muted-foreground">Tag people from the entry card after saving.</p>
       </DialogContent>
     </Dialog>
   );

@@ -34,7 +34,7 @@ type F = (typeof FILTERS)[number]["id"];
 
 function matches(e: Entry, f: F) {
   if (f === "all") return true;
-  if (f === "travel") return e.kind !== "event";
+  if (f === "travel") return e.kind === "leg" || e.kind === "stay";
   if (e.kind !== "event") return false;
   if (f === "social") return e.category === "gathering" || e.category === "celebration";
   if (f === "memory") return e.category === "memory" || e.category === "activity";
@@ -92,7 +92,7 @@ function Chronicle() {
           <p className="text-muted-foreground">{total} entries · {s.notes.length} reflections · {s.trips.length} trips</p>
         </div>
         <div className="flex gap-2">
-          <Input type="date" className="w-40" onChange={(e) => setNewDay(e.target.value)} title="Jump to / write about a day" />
+          <Input type="date" className="w-40" onChange={(e) => setNewDay(e.target.value)} aria-label="Jump to or write about a day" title="Jump to or write about a day" />
           <AddEntryDialog />
         </div>
       </header>

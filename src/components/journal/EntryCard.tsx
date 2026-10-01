@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2, X, Plus } from "lucide-react";
+import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2, X, Plus, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -226,15 +227,34 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   const [dateStarted, setDateStarted] = useState(entry.kind === "book" ? (entry.dateStarted ?? "") : "");
   const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
   const [participants, setParticipants] = useState<string[] | undefined>(entry.participants);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const { trips, people } = useJournal();
   const v = view(entry);
   const Icon = entryIcon(v);
   const trip = trips.find((t) => t.id === entry.tripId);
 
   const save = async () => {
-    const clean = Object.fromEntries(Object.entries(ov).filter(([, x]) => x.trim()));
-    const extra = entry.kind === "book" ? { dateStarted: dateStarted || undefined } : {};
-    await putMany(storeFor(entry), [{ ...entry, ...extra, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined, participants }]);
+    if (saving) return;
+    setSaving(true);
+    try {
+      const clean = Object.fromEntries(Object.entries(ov).filter(([, x]) => x.trim()));
+      const extra = entry.kind === "book" ? { dateStarted: dateStarted || undefined } : {};
+      await putMany(storeFor(entry), [{ ...entry, ...extra, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined, participants }]);
+      toast.success("Entry saved");
+    } catch (err) {
+      toast.error(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    try {
+      await removeMany(storeFor(entry), [entry.id]);
+    } catch (err) {
+      toast.error(`Could not delete: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   const setTrip = async (tripId: string) => {
@@ -327,10 +347,20 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             />
           )}
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] text-muted-foreground">source: {sourceLabel(entry.source)} · tier {entry.tier}</span>
-            <div className="flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => removeMany(storeFor(entry), [entry.id])}><Trash2 className="h-4 w-4" /></Button>
-              <Button size="sm" onClick={save}>Save</Button>
+            <span className="font-mono text-[10px] text-muted-foreground/50">{sourceLabel(entry.source)} · t{entry.tier}</span>
+            <div className="flex items-center gap-2">
+              {confirmDelete ? (
+                <>
+                  <span className="flex items-center gap-1 text-xs text-destructive"><AlertTriangle className="h-3.5 w-3.5" />Delete?</span>
+                  <Button size="sm" variant="destructive" onClick={handleDelete}>Yes, delete</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
+                </>
+              ) : (
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(true)}><Trash2 className="h-4 w-4" /></Button>
+                  <Button size="sm" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
+                </>
+              )}
             </div>
           </div>
         </div>

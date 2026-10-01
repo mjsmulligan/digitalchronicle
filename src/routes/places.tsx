@@ -1,8 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { allEntries, useJournal } from "@/lib/journal/db";
 import { locate } from "@/lib/journal/geo";
 import { view } from "@/lib/journal/types";
+import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/places")({
   head: () => ({
@@ -47,10 +48,24 @@ function Places() {
 
   const color = (m: string) => (m === "air" ? "var(--air)" : m === "rail" ? "var(--rail)" : "var(--road)");
 
+  const { ready } = s;
+
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="text-4xl font-semibold">Places</h1>
       <p className="mb-6 text-muted-foreground">{points.length} mapped places · drawn offline, nothing leaves your browser.</p>
+
+      {ready && points.length === 0 && (
+        <div className="rounded-md border border-dashed border-border p-10 text-center">
+          <h2 className="text-2xl">No travel data yet</h2>
+          <p className="mt-2 text-muted-foreground">
+            Import flights, trains, stays, or events to see where your life has taken you.
+          </p>
+          <Button asChild className="mt-4">
+            <Link to="/import">Import travel data</Link>
+          </Button>
+        </div>
+      )}
       <p className="mb-4 text-xs text-muted-foreground">
         Station locations:{" "}
         <a className="underline" href="https://github.com/trainline-eu/stations" target="_blank" rel="noreferrer">
