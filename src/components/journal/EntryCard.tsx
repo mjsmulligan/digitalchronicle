@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, entryTitle, view, type Entry, type EventCategory } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
+import { StarRating } from "@/components/journal/StarRating";
 import { cn } from "@/lib/utils";
 
 const CAT_ICON: Record<EventCategory, typeof Music> = {
@@ -88,6 +89,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             {v.kind === "leg" && (time(v.start) || time(v.end)) && (
               <span className="font-mono text-xs text-muted-foreground">{time(v.start)}–{time(v.end)}</span>
             )}
+            {"rating" in entry && <StarRating rating={entry.rating} className="self-center" />}
             {entry.overrides && <Badge variant="outline" className="h-4 px-1 text-[10px]">edited</Badge>}
             {trip && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trip.title}</Badge>}
           </div>
