@@ -37,23 +37,8 @@ const STATUS: Record<StageStatus, { label: string; cls: string }> = {
 function BatchReview({ batch }: { batch: StagingBatch }) {
   const [b, setB] = useState(batch);
   const update = (n: StagingBatch) => { setB(n); void saveBatch(n); };
-  const byId = new Map(b.records.map((r) => [r.entry.id, r.entry]));
   const selected = b.records.filter((r) => r.selected).length;
-
-  const recluster = (gap = b.gapDays, recs = b.records) => update({ ...b, records: recs, gapDays: gap, clusters: clusterRecords(recs, gap) });
-  const split = (ci: number, at: number) => {
-    const c = b.clusters[ci];
-    const a = c.recordIds.slice(0, at), z = c.recordIds.slice(at);
-    const mk = (ids: string[]) => ({ id: uid(), recordIds: ids, accepted: c.accepted, title: suggestTitle(ids.map((i) => byId.get(i)!)) });
-    const cl = [...b.clusters]; cl.splice(ci, 1, mk(a), mk(z));
-    update({ ...b, clusters: cl });
-  };
-  const merge = (ci: number) => {
-    const cl = [...b.clusters];
-    const ids = [...cl[ci].recordIds, ...cl[ci + 1].recordIds];
-    cl.splice(ci, 2, { ...cl[ci], recordIds: ids, title: suggestTitle(ids.map((i) => byId.get(i)!)) });
-    update({ ...b, clusters: cl });
-  };
+  const setRecords = (recs: StagingBatch["records"]) => update({ ...b, records: recs });
 
   return (
     <section className="rounded-md border border-border bg-card">
