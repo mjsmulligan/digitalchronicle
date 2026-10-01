@@ -77,7 +77,7 @@ function BatchReview({ batch }: { batch: StagingBatch }) {
               return (
                 <li key={r.entry.id} className={cn("flex gap-3 py-2", disabled && "opacity-60")}>
                   <Checkbox checked={r.selected} disabled={disabled} onCheckedChange={(v) => {
-                    const recs = [...b.records]; recs[i] = { ...r, selected: !!v }; recluster(b.gapDays, recs);
+                    const recs = [...b.records]; recs[i] = { ...r, selected: !!v }; setRecords(recs);
                   }} />
                   <Icon className={cn("mt-0.5 h-4 w-4", entryColor(r.entry))} />
                   <div className="min-w-0 flex-1">
