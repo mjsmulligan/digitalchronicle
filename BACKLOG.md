@@ -34,6 +34,17 @@ The data model and connectors are in place; the views haven't been built yet.
 - [ ] **Star rendering** — display `rating` (0–10) as stars (value ÷ 2) in EntryCard and list views. Half-star display where the value has a decimal.
 - [ ] **`dateStarted` UI** — expose the optional reading start date on Book entries so spans can be tracked.
 
+### People
+
+A `companions` string array already exists on every entry type but is purely free-text with no lookup, dedup, or person-centric view.
+
+- [ ] **People store** — a `Person` record in IndexedDB (id, name, aliases, notes). Not a contact book; just enough to link entries to the same individual across imports and manual adds.
+- [ ] **Name resolution on import** — when a connector surfaces companion names (e.g. Foursquare, future sources), match against existing People by name/alias rather than creating duplicate strings. Suggestions only; never auto-linked.
+- [ ] **Companion picker in entry UI** — replace the free-text companions input with a typeahead that resolves against the People store and falls back to creating a new person on the fly.
+- [ ] **Person view** — all entries associated with a person in a single timeline: trips travelled together, concerts attended, meals shared. Accessible from any entry card that lists them.
+- [ ] **People index** — a browsable list of people with a count of shared events and the most recent one. Entry point to individual person views.
+- [ ] **Privacy note** — people data is stored only in browser IndexedDB alongside all other journal data. No names or associations leave the device.
+
 ### Trip Management
 - [x] **Manual Trip Creation**
 - [x] **Entry Assignment & Detachment**
@@ -69,7 +80,6 @@ Direct browser-to-service connections. All tokens and credentials stay on-device
 ## 4. Data Model (Outstanding)
 
 - [ ] **Field-level dedup resolution** — the current tier model assigns precedence to a whole entry. Cross-source imports (e.g. Netflix has the accurate watch date; Letterboxd has the rating and review) could benefit from field-level merging: take the non-null value for each field from the higher-quality source. The `reflection` field is already preserved this way in `commitBatch`; generalise the pattern. Accepted limitation for now: Letterboxd (tier 2) supersedes Netflix (tier 3) wholesale.
-- [ ] **Participants** — names found in source data offered as suggestions to add, never pre-seeded. Lightweight add/edit of people on any entry.
 - [ ] **`Read Count` from Goodreads** — Goodreads exports a `Read Count` column. A count > 1 implies re-reads that aren't individually dated. Currently imported as a single entry; consider surfacing the count as metadata or prompting the user to add re-read entries.
 - [ ] **Private Notes from Goodreads** — currently dropped. Consider mapping to a second reflection or a private tag.
 
