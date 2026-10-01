@@ -1,7 +1,12 @@
 import { timezoneFor } from "./geo";
 import { localToUTC } from "./tz";
 
-export type Source = "manual" | "viaduct" | "setlistfm" | "generic";
+/**
+ * Identifier for the import source that produced an entry.
+ * "manual" is the only reserved value (highest-precedence sovereign edits).
+ * All other values are connector ids registered in connectors/registry.ts.
+ */
+export type Source = string;
 /** 1 = user manual (sovereign), 2 = primary transit/attendance records, 3 = secondary order/calendar records */
 export type Tier = 1 | 2 | 3;
 export type Mode = "air" | "rail" | "road";
@@ -28,7 +33,18 @@ interface Base {
   endUTC?: string;
   tripId?: string;
   dedupeKey: string;
-  journal?: string;
+  /** Free-text personal reflection on this entry. Stored in IndexedDB; never exported. */
+  reflection?: string;
+  /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
+  rating?: number;
+  /**
+   * How precisely the date is known.
+   * "day"     — full YYYY-MM-DD known (default assumed when omitted)
+   * "month"   — only YYYY-MM known (e.g. Goodreads "read" month)
+   * "year"    — only YYYY known
+   * "unknown" — date is a best guess / cannot be determined
+   */
+  datePrecision?: "day" | "month" | "year" | "unknown";
   /** Tier 1 manual overrides layered on top of source data */
   overrides?: Record<string, string>;
   createdAt: string;
@@ -100,7 +116,6 @@ export interface Trip {
   title: string;
   start: string;
   end: string;
-  destinations: string[];
   notes: string;
   cover: string;
   createdAt: string;
@@ -117,13 +132,6 @@ export interface StagedRecord {
   selected: boolean;
 }
 
-export interface Cluster {
-  id: string;
-  title: string;
-  recordIds: string[];
-  accepted: boolean;
-}
-
 export interface StagingBatch {
   id: string;
   source: Source;
@@ -131,8 +139,6 @@ export interface StagingBatch {
   createdAt: string;
   records: StagedRecord[];
   errors: string[];
-  clusters: Cluster[];
-  gapDays: number;
 }
 
 export interface JournalData {
@@ -147,12 +153,11 @@ export interface JournalData {
 export const STORES = ["trips", "legs", "stays", "events", "notes", "staging"] as const;
 export type StoreName = (typeof STORES)[number];
 
-export const SOURCE_LABEL: Record<Source, string> = {
-  manual: "Manual",
-  viaduct: "Viaduct",
-  setlistfm: "setlist.fm",
-  generic: "Generic",
-};
+/**
+ * @deprecated Use sourceLabel(id) from connectors/registry.ts instead.
+ * Kept temporarily for any code that hasn't been migrated yet.
+ */
+// SOURCE_LABEL removed — use sourceLabel() from connectors/registry.ts
 
 export function view<T extends Entry>(e: T): T {
   if (!e.overrides) return e;
