@@ -17,7 +17,7 @@ When two sources describe the same event, the higher-tier source always wins:
 |------|---------|---------|
 | 1 | Your own manual edit — sovereign | Any entry you type directly |
 | 2 | Primary curated record | Letterboxd, Goodreads, Setlist.fm, Viaduct |
-| 3 | Automated secondary record | Netflix viewing history |
+| 3 | Automated secondary record | Netflix viewing history, iCalendar exports |
 
 A tier 2 import of a film you already imported from Netflix will supersede the Netflix record. Your manual edits and reflections are always preserved regardless of tier.
 
@@ -97,6 +97,34 @@ Setlist.fm tracks concerts you've attended. It exports a CSV of your attended sh
 **Notes:**
 - Only concerts with a confirmed setlist are exported — shows you marked as attended without a setlist may not appear.
 
+### iCalendar (.ics) (tier 3)
+
+Any calendar application can export an iCal file. This is useful for bulk-importing personal events from Google Calendar, Apple Calendar, or Outlook.
+
+**How to export:**
+
+*Google Calendar:* Settings → Import & Export → **Export**. Unzip the download and import the `.ics` file for the calendar you want.
+
+*Apple Calendar:* File → Export → Export. Choose the calendar to export.
+
+*Outlook:* File → Open & Export → Import/Export → Export to a file → iCalendar Format.
+
+**What you get:**
+- Timed events and all-day events as journal entries
+- Multi-day all-day events (2+ days) automatically classified as **Stays** — useful for hotel bookings, trips, or time away from home
+- Single-day events classified by keyword inference (concert, birthday, gathering, etc.)
+- Event description imported as a reflection
+- Venue and city extracted from the LOCATION field (split on the last comma)
+- Timezones from DTSTART TZID parameters preserved
+
+**What is skipped:**
+- Recurring events (RRULE) — these produce too many entries. Add significant individual occurrences manually.
+- Events without a SUMMARY (title)
+
+**Tips:**
+- Export only the calendars that contain personal life events — avoid importing work calendars unless you want to review and deselect meetings in staging.
+- The staging review is your friend here: calendar exports typically include a lot of noise. Use **Select importable** to highlight only new entries, then deselect anything irrelevant before committing.
+
 ### Manual entry (tier 1)
 
 Use **Add entry** and choose a category: Concert, Gathering, Celebration, Milestone, Memory, or Activity.
@@ -155,7 +183,7 @@ Netflix provides a raw viewing history export. It has no ratings or metadata bey
 
 ### Manual entry (tier 1)
 
-Use **Add entry → Film** (not yet in the quick-add dialog; can be added via import staging with a single-row CSV).
+Films can't yet be added through the quick-add dialog. Use Letterboxd import, or add via staging with a single-row generic CSV.
 
 ---
 
@@ -188,7 +216,7 @@ Same export file as for Films — `NetflixViewingHistory.csv`. Episodes and film
 
 ### Manual entry (tier 1)
 
-Episodes can't currently be added through the quick-add dialog — use the Netflix import or add via staging.
+Use **Add entry → Episode** in the journal. Fill in show title, season, episode number, episode title, and watch date.
 
 ---
 
@@ -225,7 +253,7 @@ Goodreads is the primary source for book data.
 
 ### Manual entry (tier 1)
 
-Books can't currently be added through the quick-add dialog — use the Goodreads import.
+Use **Add entry → Book** in the journal. Fill in title, author, year, series details, rating, and read date. An optional "started reading" date can also be recorded.
 
 ---
 
