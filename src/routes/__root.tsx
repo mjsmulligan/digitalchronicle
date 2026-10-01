@@ -150,12 +150,16 @@ function RootComponent() {
         </aside>
         <main className="min-w-0 flex-1 px-4 py-8 md:px-10">
           {initError ? (
-            <div role="alert">
-              <p>Could not load the journal or offline station lookup: {initError}</p>
-              <Button onClick={() => {
-                setInitError(null);
-                void initJournal().catch((error: unknown) => setInitError(error instanceof Error ? error.message : String(error)));
-              }}>Try again</Button>
+            <div role="alert" className="flex min-h-[60vh] items-center justify-center px-4">
+              <div className="max-w-md text-center">
+                <h1 className="text-xl font-semibold tracking-tight text-foreground">Couldn't open your journal</h1>
+                <p className="mt-2 text-sm text-muted-foreground">There was a problem loading local storage. Your data is still in this browser.</p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">{initError}</p>
+                <Button className="mt-6" onClick={() => {
+                  setInitError(null);
+                  void initJournal().catch((error: unknown) => setInitError(error instanceof Error ? error.message : String(error)));
+                }}>Try again</Button>
+              </div>
             </div>
           ) : <Outlet />}
         </main>

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useJournal } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
 import { StarRating } from "@/components/journal/StarRating";
+import { AddEntryDialog } from "@/components/journal/AddEntryDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { day, view, type Film, type Episode, type Book, type JEvent, type Entry } from "@/lib/journal/types";
@@ -109,24 +110,11 @@ function Culture() {
     [s.films, s.episodes, s.books, concerts],
   );
 
-  const counts = useMemo(
-    () => ({
-      film: s.films.length,
-      rewatch: s.films.filter((f) => f.rewatch).length,
-      episode: s.episodes.length,
-      book: s.books.length,
-      concert: concerts.length,
-    }),
-    [s.films, s.episodes, s.books, concerts],
-  );
-
-  const filtered = useMemo(() => {
+  // Search-only filtered list (not kind-filtered) — used for pill counts
+  const searchFiltered = useMemo(() => {
     const ql = q.trim().toLowerCase();
+    if (!ql) return allCulture;
     return allCulture.filter((e) => {
-      if (filter === "rewatch" && !(e.kind === "film" && (e as Film).rewatch)) return false;
-      if (filter === "concert" && !(e.kind === "event" && (e as JEvent).category === "concert")) return false;
-      if (filter !== "all" && filter !== "rewatch" && filter !== "concert" && e.kind !== filter) return false;
-      if (!ql) return true;
       const v = view(e);
       const hay = [
         v.kind === "film" ? v.title
@@ -138,7 +126,28 @@ function Culture() {
       ].join(" ").toLowerCase();
       return hay.includes(ql);
     });
-  }, [allCulture, filter, q]);
+  }, [allCulture, q]);
+
+  const counts = useMemo(
+    () => ({
+      all: searchFiltered.length,
+      film: searchFiltered.filter((e) => e.kind === "film").length,
+      rewatch: searchFiltered.filter((e) => e.kind === "film" && (e as Film).rewatch).length,
+      episode: searchFiltered.filter((e) => e.kind === "episode").length,
+      book: searchFiltered.filter((e) => e.kind === "book").length,
+      concert: searchFiltered.filter((e) => e.kind === "event" && (e as JEvent).category === "concert").length,
+    }),
+    [searchFiltered],
+  );
+
+  const filtered = useMemo(() => {
+    return searchFiltered.filter((e) => {
+      if (filter === "rewatch" && !(e.kind === "film" && (e as Film).rewatch)) return false;
+      if (filter === "concert" && !(e.kind === "event" && (e as JEvent).category === "concert")) return false;
+      if (filter !== "all" && filter !== "rewatch" && filter !== "concert" && e.kind !== filter) return false;
+      return true;
+    });
+  }, [searchFiltered, filter]);
 
   const avg = useMemo(() => avgRating(filtered), [filtered]);
   const ratedCount = filtered.filter((e) => e.rating !== undefined).length;
@@ -159,7 +168,7 @@ function Culture() {
   // ── Render helpers ────────────────────────────────────────────────────────
 
   const pills: { key: Filter; label: string; count: number }[] = [
-    { key: "all", label: "Everything", count: allCulture.length },
+    { key: "all", label: "Everything", count: counts.all },
     { key: "film", label: "Films", count: counts.film },
     { key: "rewatch", label: "Rewatches", count: counts.rewatch },
     { key: "episode", label: "TV", count: counts.episode },
@@ -185,6 +194,7 @@ function Culture() {
             )}
           </p>
         </div>
+        <AddEntryDialog />
       </header>
 
       <div className="mb-6 flex flex-wrap gap-1">

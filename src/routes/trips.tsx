@@ -6,6 +6,10 @@ import { EntryCard } from "@/components/journal/EntryCard";
 import { AddTripDialog } from "@/components/journal/AddTripDialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { entryTitle, type Entry, type Trip } from "@/lib/journal/types";
 
 const day = (e: Entry) => e.start.slice(0, 10);
@@ -26,6 +30,7 @@ function TripCard({ trip }: { trip: Trip }) {
   const s = useJournal();
   const [open, setOpen] = useState(false);
   const [pick, setPick] = useState("");
+  const [dissolveOpen, setDissolveOpen] = useState(false);
 
   const entries = allEntries(s);
   const members = entries.filter((e) => e.tripId === trip.id).sort((a, b) => a.start.localeCompare(b.start));
@@ -72,12 +77,27 @@ function TripCard({ trip }: { trip: Trip }) {
             <Button size="sm" variant="outline" onClick={gather}>
               Gather entries in these dates{inWindow.length ? ` (${inWindow.length})` : ""}
             </Button>
-            <Button size="sm" variant="outline" onClick={async () => {
-              for (const m of members) await putMany(storeFor(m), [{ ...m, tripId: undefined }]);
-              await removeMany("trips", [trip.id]);
-              toast.success("Trip dissolved. Its entries stay in your chronicle.");
-            }}>Dissolve trip</Button>
+            <Button size="sm" variant="outline" onClick={() => setDissolveOpen(true)}>Dissolve trip</Button>
           </div>
+
+          <AlertDialog open={dissolveOpen} onOpenChange={setDissolveOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Dissolve "{trip.title}"?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The trip record will be removed, but all {members.length} {members.length === 1 ? "entry" : "entries"} stay in your chronicle unaffected.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={async () => {
+                  for (const m of members) await putMany(storeFor(m), [{ ...m, tripId: undefined }]);
+                  await removeMany("trips", [trip.id]);
+                  toast.success("Trip dissolved. Its entries stay in your chronicle.");
+                }}>Dissolve</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           <div className="flex gap-2">
             <select
