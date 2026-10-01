@@ -22,6 +22,7 @@ export function placeLabel(e: Entry): string {
   if (v.kind === "stay") return v.city ?? v.place;
   if (v.kind === "film") return v.title;
   if (v.kind === "episode") return v.showTitle;
+  if (v.kind === "book") return v.title;
   return v.city || v.venue;
 }
 

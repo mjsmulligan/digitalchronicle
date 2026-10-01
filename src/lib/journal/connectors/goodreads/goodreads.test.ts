@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { connector } from "./index";
 import type { Book } from "../../types";
+import type { ParseResult } from "../types";
 
 const fixtureText = readFileSync(
   join(__dirname, "fixtures/goodreads_library_export.csv"),
@@ -21,7 +22,8 @@ describe("goodreads connector — metadata", () => {
 });
 
 describe("goodreads connector — parse", () => {
-  const result = connector.parse({ text: fixtureText, filename: "goodreads_library_export.csv" });
+  // goodreads parse() is synchronous; cast to avoid the Promise<ParseResult> union
+  const result = connector.parse({ name: "goodreads_library_export.csv", text: fixtureText }) as ParseResult;
 
   it("imports only 'read' shelf entries (skips currently-reading, to-read)", () => {
     // Fixture has 6 rows: 4 read, 1 currently-reading. Sense and Sensibility has
@@ -128,21 +130,23 @@ describe("goodreads connector — parse", () => {
 });
 
 describe("goodreads connector — sniff", () => {
+  const sniff = connector.sniff!;
+
   it("scores 0.97 for canonical export filename", () => {
-    expect(connector.sniff("goodreads_library_export.csv", "")).toBe(0.97);
+    expect(sniff("goodreads_library_export.csv", "")).toBe(0.97);
   });
 
   it("scores 0.97 for any filename containing 'goodreads'", () => {
-    expect(connector.sniff("my_goodreads_backup.csv", "")).toBe(0.97);
+    expect(sniff("my_goodreads_backup.csv", "")).toBe(0.97);
   });
 
   it("scores 0.9 for header containing 'Book Id' and 'Exclusive Shelf'", () => {
     expect(
-      connector.sniff("unknown.csv", "Book Id,Title,Author,Exclusive Shelf"),
+      sniff("unknown.csv", "Book Id,Title,Author,Exclusive Shelf"),
     ).toBe(0.9);
   });
 
   it("scores 0 for unrelated files", () => {
-    expect(connector.sniff("diary.csv", "Date,Name,Watched Date,Rating")).toBe(0);
+    expect(sniff("diary.csv", "Date,Name,Watched Date,Rating")).toBe(0);
   });
 });

@@ -27,7 +27,7 @@ function Backup() {
   const s = useJournal();
   const [est, setEst] = useState<{ usage?: number; quota?: number }>({});
   useEffect(() => { navigator.storage?.estimate?.().then(setEst); }, [s]);
-  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, notes: s.notes, staging: s.staging };
+  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, films: s.films, episodes: s.episodes, books: s.books, series: s.series, notes: s.notes, staging: s.staging, people: s.people };
   const size = new Blob([JSON.stringify(data)]).size;
 
   const exportJSON = () => {
