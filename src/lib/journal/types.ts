@@ -235,6 +235,18 @@ export interface StagingBatch {
   errors: string[];
 }
 
+export interface PlaceRecord {
+  id: string;
+  /** Normalised upper-case code or name, e.g. "DUB", "LONDON ST PANCRAS" */
+  code: string;
+  name: string;
+  lat: number;
+  lon: number;
+  /** IANA timezone, e.g. "Europe/Dublin". Optional — map still works without it. */
+  timezone?: string;
+  createdAt: string;
+}
+
 export interface JournalData {
   trips: Trip[];
   legs: Leg[];
@@ -247,9 +259,10 @@ export interface JournalData {
   notes: Note[];
   staging: StagingBatch[];
   people: Person[];
+  places: PlaceRecord[];
 }
 
-export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging", "people"] as const;
+export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging", "people", "places"] as const;
 export type StoreName = (typeof STORES)[number];
 
 /**

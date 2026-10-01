@@ -30,7 +30,7 @@ function Backup() {
   const [restoreOpen, setRestoreOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { navigator.storage?.estimate?.().then(setEst); }, [s]);
-  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, films: s.films, episodes: s.episodes, books: s.books, series: s.series, notes: s.notes, staging: s.staging, people: s.people };
+  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, films: s.films, episodes: s.episodes, books: s.books, series: s.series, notes: s.notes, staging: s.staging, people: s.people, places: s.places };
   const size = new Blob([JSON.stringify(data)]).size;
 
   const exportJSON = () => {
