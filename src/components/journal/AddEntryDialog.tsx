@@ -11,8 +11,8 @@ import { eventKey, legKey, stayKey } from "@/lib/journal/connectors/keys";
 import { loadStations, timezoneFor } from "@/lib/journal/geo";
 import { localToUTC } from "@/lib/journal/tz";
 
-type Kind = EventCategory | "stay" | "flight" | "train" | "road";
-const KINDS: Kind[] = ["memory", "concert", "gathering", "celebration", "milestone", "activity", "flight", "train", "road", "stay"];
+type Kind = EventCategory | "stay" | "flight" | "train" | "road" | "book" | "episode";
+const KINDS: Kind[] = ["memory", "concert", "gathering", "celebration", "milestone", "activity", "flight", "train", "road", "stay", "book", "episode"];
 const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
 
 export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; tripId?: string }) {
@@ -49,16 +49,39 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
         from: f.from || "?", to: f.to || "?", startTz: tz, endTz: timezoneFor(f.to || ""),
         startUTC: localToUTC(base.start, tz), dedupeKey: "",
       };
+    } else if (kind === "book") {
+      const norm = (s: string) => s.toLowerCase().trim();
+      e = {
+        ...base, kind: "book", title: f.title || "Untitled", author: f.author || "",
+        year: f.year ? parseInt(f.year) : undefined,
+        rating: f.rating ? parseFloat(f.rating) * 2 : undefined,
+        series: f.series || undefined,
+        seriesNumber: f.seriesNumber ? parseFloat(f.seriesNumber) : undefined,
+        dateStarted: f.dateStarted || undefined,
+        dedupeKey: `book|${norm(f.title || "")}|${norm(f.author || "")}|${date}`,
+      };
+    } else if (kind === "episode") {
+      const norm = (s: string) => s.toLowerCase().trim();
+      e = {
+        ...base, kind: "episode", showTitle: f.showTitle || "Unknown Show",
+        season: f.season || undefined,
+        episodeNumber: f.episodeNumber ? parseInt(f.episodeNumber) : undefined,
+        episodeTitle: f.episodeTitle || undefined,
+        rating: f.rating ? parseFloat(f.rating) * 2 : undefined,
+        dedupeKey: `episode|${norm(f.showTitle || "")}|${norm(f.season || "")}|${norm(f.episodeTitle || "")}|${date}`,
+      };
     } else {
       const tz = timezoneFor(f.city || "");
       e = {
-        ...base, kind: "event", category: kind, artist: f.title || CATEGORY_LABEL[kind],
+        ...base, kind: "event", category: kind as EventCategory, artist: f.title || CATEGORY_LABEL[kind as EventCategory],
         venue: f.venue || "", city: f.city || "", people: companions,
         startTz: tz, startUTC: localToUTC(base.start, tz), dedupeKey: "",
       };
     }
-    e.dedupeKey = e.kind === "leg" ? legKey(e) : e.kind === "stay" ? stayKey(e) : eventKey(e);
-    await putMany(e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : "events", [e]);
+    if (e.kind !== "book" && e.kind !== "episode") {
+      e.dedupeKey = e.kind === "leg" ? legKey(e) : e.kind === "stay" ? stayKey(e) : eventKey(e);
+    }
+    await putMany(e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : e.kind === "book" ? "books" : e.kind === "episode" ? "episodes" : "events", [e]);
     setF({});
     setOpen(false);
   };
@@ -76,6 +99,8 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
   };
 
   const isLeg = kind === "flight" || kind === "train" || kind === "road";
+  const isBook = kind === "book";
+  const isEpisode = kind === "episode";
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -103,6 +128,27 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
             <>
               <Input placeholder="From (e.g. LHR)" value={f.from ?? ""} onChange={set("from")} />
               <Input placeholder="To (e.g. BER)" value={f.to ?? ""} onChange={set("to")} />
+            </>
+          ) : isBook ? (
+            <>
+              <Input className="col-span-2" placeholder="Title" value={f.title ?? ""} onChange={set("title")} />
+              <Input className="col-span-2" placeholder="Author" value={f.author ?? ""} onChange={set("author")} />
+              <Input placeholder="Year published" type="number" value={f.year ?? ""} onChange={set("year")} />
+              <Input placeholder="Rating (1–5 stars)" type="number" min="0.5" max="5" step="0.5" value={f.rating ?? ""} onChange={set("rating")} />
+              <Input placeholder="Series name (optional)" value={f.series ?? ""} onChange={set("series")} />
+              <Input placeholder="Series #" type="number" step="0.5" value={f.seriesNumber ?? ""} onChange={set("seriesNumber")} />
+              <label className="col-span-2 text-xs text-muted-foreground">
+                Started reading (optional)
+                <Input type="date" value={f.dateStarted ?? ""} onChange={set("dateStarted")} className="mt-1 block" />
+              </label>
+            </>
+          ) : isEpisode ? (
+            <>
+              <Input className="col-span-2" placeholder="Show title" value={f.showTitle ?? ""} onChange={set("showTitle")} />
+              <Input placeholder="Season (e.g. Season 2)" value={f.season ?? ""} onChange={set("season")} />
+              <Input placeholder="Episode #" type="number" value={f.episodeNumber ?? ""} onChange={set("episodeNumber")} />
+              <Input className="col-span-2" placeholder="Episode title (optional)" value={f.episodeTitle ?? ""} onChange={set("episodeTitle")} />
+              <Input className="col-span-2" placeholder="Rating (1–5 stars)" type="number" min="0.5" max="5" step="0.5" value={f.rating ?? ""} onChange={set("rating")} />
             </>
           ) : (
             <>
