@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { putMany, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, uid, type EventCategory, type Entry, type Purpose } from "@/lib/journal/types";
-import { eventKey, legKey, stayKey } from "@/lib/journal/connectors/keys";
+import { eventKey, legKey, stayKey } from "@/lib/journal/parsers";
 import { loadStations, timezoneFor } from "@/lib/journal/geo";
 import { localToUTC } from "@/lib/journal/tz";
 
@@ -32,7 +32,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
     const base = {
       id: uid(), source: "manual" as const, tier: 1 as const, confidence: "confirmed" as const,
       start: f.time ? `${date}T${f.time}` : date, createdAt: new Date().toISOString(),
-      reflection: f.reflection || undefined, purpose, companions,
+      journal: f.journal || undefined, purpose, companions,
       tripId: (f.tripId || tripId) || undefined,
     };
     let e: Entry;
@@ -57,7 +57,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
         startTz: tz, startUTC: localToUTC(base.start, tz), dedupeKey: "",
       };
     }
-    e.dedupeKey = e.kind === "leg" ? legKey(e, "manual") : e.kind === "stay" ? stayKey(e, "manual") : eventKey(e, "manual");
+    e.dedupeKey = e.kind === "leg" ? legKey(e) : e.kind === "stay" ? stayKey(e) : eventKey(e);
     await putMany(e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : "events", [e]);
     setF({});
     setOpen(false);
@@ -126,7 +126,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
             </select>
           )}
         </div>
-        <Textarea placeholder="Reflection…" className="font-serif" value={f.reflection ?? ""} onChange={set("reflection")} />
+        <Textarea placeholder="Reflection…" className="font-serif" value={f.journal ?? ""} onChange={set("journal")} />
         <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : "Save entry"}</Button>
       </DialogContent>
     </Dialog>

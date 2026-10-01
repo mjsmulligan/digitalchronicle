@@ -35,6 +35,8 @@ interface Base {
   dedupeKey: string;
   /** Free-text personal reflection on this entry. Stored in IndexedDB; never exported. */
   reflection?: string;
+  /** @deprecated Legacy name for `reflection`; still written by existing UI and parsers. */
+  journal?: string;
   /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
   /**
@@ -162,7 +164,6 @@ export interface Trip {
   title: string;
   start: string;
   end: string;
-  destinations: string[];
   notes: string;
   cover: string;
   createdAt: string;
@@ -179,13 +180,6 @@ export interface StagedRecord {
   selected: boolean;
 }
 
-export interface Cluster {
-  id: string;
-  title: string;
-  recordIds: string[];
-  accepted: boolean;
-}
-
 export interface StagingBatch {
   id: string;
   source: Source;
@@ -193,8 +187,6 @@ export interface StagingBatch {
   createdAt: string;
   records: StagedRecord[];
   errors: string[];
-  clusters: Cluster[];
-  gapDays: number;
 }
 
 export interface JournalData {

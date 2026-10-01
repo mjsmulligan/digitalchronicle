@@ -11,4 +11,3 @@
 
 - Journal data lives only in browser IndexedDB (src/lib/journal/db.ts); no cloud sync — privacy requirement.
 - Imports go through staging batches; precedence tier 1 manual > 2 primary > 3 secondary.
-- Adding a new import source: create one folder under src/lib/journal/connectors/, implement the Connector interface, add a fixture and a test, then register it in registry.ts. See src/lib/journal/connectors/README.md for the full checklist.
