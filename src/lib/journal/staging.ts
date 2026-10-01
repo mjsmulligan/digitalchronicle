@@ -67,31 +67,12 @@ export async function commitBatch(b: StagingBatch) {
       // Replace source data but keep sovereign overrides, journal & trip link
       e = { ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides, journal: old.journal ?? r.entry.journal } as Entry;
     } else continue;
-    idMap.set(r.entry.id, e.id);
     writes[storeFor(e)].push(e);
     count++;
-  }
-  const trips: Trip[] = [];
-  const all = Object.values(writes).flat();
-  const find = (id: string) => all.find((e) => e.id === (idMap.get(id) ?? id));
-  for (const c of b.clusters) {
-    if (!c.accepted) continue;
-    const members = c.recordIds.map(find).filter(Boolean) as Entry[];
-    if (!members.length) continue;
-    members.sort((a, b) => a.start.localeCompare(b.start));
-    const trip: Trip = {
-      id: uid(), title: c.title, start: day(members[0].start),
-      end: day(members.reduce((m, e) => ((e.end ?? e.start) > m ? e.end ?? e.start : m), members[0].start)),
-      destinations: [...new Set(members.map(placeLabel))], notes: "", cover: "", createdAt: new Date().toISOString(),
-    };
-    trip.cover = `${members.filter((e) => e.kind === "leg").length} legs · ${members.filter((e) => e.kind === "event").length} events · ${trip.destinations.length} places`;
-    members.forEach((m) => (m.tripId = trip.id));
-    trips.push(trip);
   }
   await putMany("legs", writes.legs);
   await putMany("stays", writes.stays);
   await putMany("events", writes.events);
-  await putMany("trips", trips);
   await removeMany("staging", [b.id]);
-  return { count, trips: trips.length };
+  return { count };
 }
