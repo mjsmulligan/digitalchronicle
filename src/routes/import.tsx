@@ -3,9 +3,10 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Upload, AlertTriangle, Scissors, Merge, Trash2 } from "lucide-react";
 import { useJournal, removeMany } from "@/lib/journal/db";
-import { stageFile, saveBatch, commitBatch, clusterRecords, suggestTitle } from "@/lib/journal/staging";
+import { stageFile, saveBatch, commitBatch } from "@/lib/journal/staging";
 import { SAMPLE_VIADUCT, SAMPLE_SETLIST, SAMPLE_GENERIC, SAMPLE_LIFE } from "@/lib/journal/samples";
-import { SOURCE_LABEL, entryTitle, uid, type Source, type StagingBatch, type StageStatus } from "@/lib/journal/types";
+import { entryTitle, uid, type Source, type StagingBatch, type StageStatus } from "@/lib/journal/types";
+import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -45,7 +46,7 @@ function BatchReview({ batch }: { batch: StagingBatch }) {
       <header className="flex flex-wrap items-center gap-3 border-b border-border p-4">
         <div className="flex-1">
           <h2 className="text-xl">{b.filename}</h2>
-          <p className="font-mono text-xs text-muted-foreground">{SOURCE_LABEL[b.source]} · {b.records.length} parsed · {b.errors.length} errors · {selected} selected</p>
+          <p className="font-mono text-xs text-muted-foreground">{sourceLabel(b.source)} · {b.records.length} parsed · {b.errors.length} errors · {selected} selected</p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => removeMany("staging", [b.id])}><Trash2 className="h-4 w-4" /> Discard</Button>
         <Button size="sm" disabled={!selected} onClick={async () => {
@@ -111,7 +112,7 @@ function ImportPage() {
     for (const f of Array.from(files)) {
       try {
         const b = await stageFile(f.name, await f.text(), src === "auto" ? undefined : src);
-        toast(`Staged ${b.records.length} records from ${f.name} (${SOURCE_LABEL[b.source]})`);
+        toast(`Staged ${b.records.length} records from ${f.name} (${sourceLabel(b.source)})`);
       } catch (err) {
         toast.error(`Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
       }
