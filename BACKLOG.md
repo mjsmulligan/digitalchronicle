@@ -41,8 +41,8 @@ A `companions` string array already exists on every entry type but is purely fre
 - [ ] **People store** — a `Person` record in IndexedDB (id, name, aliases, notes). Not a contact book; just enough to link entries to the same individual across imports and manual adds.
 - [ ] **Name resolution on import** — when a connector surfaces companion names (e.g. Foursquare, future sources), match against existing People by name/alias rather than creating duplicate strings. Suggestions only; never auto-linked.
 - [ ] **Companion picker in entry UI** — replace the free-text companions input with a typeahead that resolves against the People store and falls back to creating a new person on the fly.
-- [ ] **Person view** — all entries associated with a person in a single timeline: trips travelled together, concerts attended, meals shared. Accessible from any entry card that lists them.
-- [ ] **People index** — a browsable list of people with a count of shared events and the most recent one. Entry point to individual person views.
+- [ ] **People nav link** — a dedicated `/people` page in the main nav. Shows an index of all people with event count and most recent shared moment. Filter pills mirror the other views: All, Trips, Culture, Moments.
+- [ ] **Person view** — clicking a person opens their timeline: trips travelled together, concerts attended, books read around the same time, meals shared. Accessible from the People index and from any entry card that lists them.
 - [ ] **Privacy note** — people data is stored only in browser IndexedDB alongside all other journal data. No names or associations leave the device.
 
 ### Trip Management
