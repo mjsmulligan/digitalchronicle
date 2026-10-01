@@ -2,7 +2,7 @@ import { allEntries, getState, putMany, removeMany, storeFor } from "./db";
 import { PARSERS, detectSource } from "./parsers";
 import { loadStations, locate } from "./geo";
 import {
-  day, uid, view, type Cluster, type Entry, type Source, type StagedRecord, type StagingBatch, type Trip,
+  uid, view, type Entry, type Source, type StagedRecord, type StagingBatch,
 } from "./types";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
@@ -18,31 +18,9 @@ function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>)
 
 export function placeLabel(e: Entry): string {
   const v = view(e);
-  if (v.kind === "leg") return locate(v.to)?.name.replace(/ (Heathrow|Gatwick|Brandenburg|CDG|Schiphol|Haneda|Narita|Kansai|JFK|Fiumicino|Hbf|Centraal|Nord|Midi|St Pancras|hl\.n\.)$/, "") ?? v.toName ?? v.to;
+  if (v.kind === "leg") return locate(v.to)?.name ?? v.toName ?? v.to;
   if (v.kind === "stay") return v.city ?? v.place;
   return v.city || v.venue;
-}
-
-export function clusterRecords(records: StagedRecord[], gapDays: number): Cluster[] {
-  const items = records.filter((r) => r.selected && (r.status === "new" || r.status === "supersedes")).map((r) => r.entry).sort((a, b) => a.start.localeCompare(b.start));
-  const clusters: Entry[][] = [];
-  let lastEnd = 0;
-  for (const e of items) {
-    const s = new Date(day(e.start) + "T00:00").getTime();
-    const en = new Date(day(e.end ?? e.start) + "T00:00").getTime();
-    if (!clusters.length || s - lastEnd > gapDays * 86400000) clusters.push([]);
-    clusters[clusters.length - 1].push(e);
-    lastEnd = Math.max(s === lastEnd ? lastEnd : s, en);
-  }
-  return clusters.map((c) => ({ id: uid(), title: suggestTitle(c), recordIds: c.map((e) => e.id), accepted: c.some((e) => e.kind !== "event") }));
-}
-
-export function suggestTitle(c: Entry[]): string {
-  const origin = c.find((e) => e.kind === "leg");
-  const home = origin?.kind === "leg" ? placeLabel({ ...origin, to: origin.from } as Entry) : "";
-  const dests = [...new Set(c.map(placeLabel))].filter((d) => d && d !== home);
-  const month = new Date(day(c[0].start) + "T00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" });
-  return `${dests.slice(0, 3).join(" · ") || "Trip"} — ${month}`;
 }
 
 export async function stageFile(filename: string, text: string, forced?: Exclude<Source, "manual">) {
