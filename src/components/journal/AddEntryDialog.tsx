@@ -79,7 +79,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
       };
     }
     if (e.kind !== "book" && e.kind !== "episode") {
-      e.dedupeKey = e.kind === "leg" ? legKey(e) : e.kind === "stay" ? stayKey(e) : eventKey(e);
+      e.dedupeKey = e.kind === "leg" ? legKey(e, "manual") : e.kind === "stay" ? stayKey(e, "manual") : eventKey(e, "manual");
     }
     await putMany(e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : e.kind === "book" ? "books" : e.kind === "episode" ? "episodes" : "events", [e]);
     setF({});

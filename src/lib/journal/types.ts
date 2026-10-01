@@ -271,8 +271,8 @@ export function view<T extends Entry>(e: T): T {
       v.endTz = timezoneFor(v.to);
       v.endUTC = v.end ? localToUTC(v.end, v.endTz) : undefined;
     }
-  } else if ("city" in keys || "start" in keys || "end" in keys) {
-    const tz = timezoneFor(v.city ?? "");
+  } else if (("city" in keys || "start" in keys || "end" in keys) && (v.kind === "stay" || v.kind === "event")) {
+    const tz = timezoneFor((v as { city?: string }).city ?? "");
     v.startTz = tz;
     v.startUTC = localToUTC(v.start, tz);
     v.endTz = v.end ? tz : undefined;

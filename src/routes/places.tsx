@@ -40,7 +40,7 @@ function Places() {
         const a = locate(e.from), b = locate(e.to);
         if (a && b) arcs.push({ a: [a.lon, a.lat], b: [b.lon, b.lat], mode: e.mode });
       } else if (e.kind === "stay") add(e.city ?? e.place, "stay");
-      else add(e.city, e.category);
+      else if (e.kind === "event") add(e.city, e.category);
     });
     return { points: [...pts.values()].sort((a, b) => b.count - a.count), arcs, unknown: [...unknown.entries()] };
   }, [s]);
