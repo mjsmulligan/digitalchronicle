@@ -8,12 +8,11 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 
 Agreed design decisions that cut across event types. Build these before or alongside the Books, Films and importer work so they are not retrofitted per category.
 
-- [x] **Shared `rating` field on every event type.** Single optional number, normalised to 0-10 internally and displayed as stars (value / 2). Blank means unrated, never a default. The original value and scale from the source are kept in the provenance record (for example "4 of 5", "8.6 of 10"). One decimal place allowed.
-- [x] **Shared `reflection` field on every event type.** Free text, generalising the existing Manual Overrides & Notes idea beyond days and trips. Imported reviews (Goodreads, Letterboxd) land here with a provenance marker. If edited in the app, the edit becomes the current text and the imported original is kept as the source version, so a re-import never overwrites it (same principle as Tier 1 manual overrides). *(Renamed from `journal` — `sourceRef` on Base covers the row-level provenance; the "re-import never overwrites" contract is enforced in `commitBatch` via the Tier 1 manual override pattern.)*
-- [x] **Date precision flag** (day, month, year, unknown) on every entry. UTC, local time and timezone only where a real time exists. Needed for date-only sources such as Goodreads and Letterboxd.
-- [ ] **Provenance on every imported fact** (source name plus original row reference), consistent with the existing parsed-source-record retention. *`sourceRef` field exists on Base; connectors need to populate it consistently.*
+- [ ] **Shared `rating` field on every event type.** Single optional number, normalised to 0-10 internally and displayed as stars (value / 2). Blank means unrated, never a default. The original value and scale from the source are kept in the provenance record (for example "4 of 5", "8.6 of 10"). One decimal place allowed.
+- [ ] **Shared `reflection` field on every event type.** Free text, generalising the existing Manual Overrides & Notes idea beyond days and trips. Imported reviews (Goodreads, Letterboxd) land here with a provenance marker. If edited in the app, the edit becomes the current text and the imported original is kept as the source version, so a re-import never overwrites it (same principle as Tier 1 manual overrides).
+- [ ] **Date precision flag** (day, month, year, unknown) on every entry. UTC, local time and timezone only where a real time exists. Needed for date-only sources such as Goodreads and Letterboxd.
+- [ ] **Provenance on every imported fact** (source name plus original row reference), consistent with the existing parsed-source-record retention.
 - [ ] **Participants:** names found in source data are offered as suggestions to add, never pre-seeded. Lightweight add/edit of people on any entry.
-- [ ] **Field-level dedup resolution.** The current tier model assigns a single precedence to a whole entry. Cross-source imports (e.g. Netflix has the accurate watch date; Letterboxd has the rating and review) require field-level merging — take the non-null value for each field from the higher-quality source. The `reflection` field is already preserved this way in `commitBatch`; generalise this pattern. Accepted limitation for now: Letterboxd tier 2, Netflix tier 3; Letterboxd supersedes Netflix.
 
 ---
 

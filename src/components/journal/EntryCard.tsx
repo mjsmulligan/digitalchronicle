@@ -5,8 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
-import { CATEGORY_LABEL, entryTitle, view, type Entry, type EventCategory } from "@/lib/journal/types";
-import { sourceLabel } from "@/lib/journal/connectors/registry";
+import { CATEGORY_LABEL, SOURCE_LABEL, entryTitle, view, type Entry, type EventCategory } from "@/lib/journal/types";
 import { cn } from "@/lib/utils";
 
 const CAT_ICON: Record<EventCategory, typeof Music> = {
@@ -39,7 +38,7 @@ const OVERRIDE_FIELDS: Record<Entry["kind"], string[]> = {
 
 export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean }) {
   const [open, setOpen] = useState(false);
-  const [reflection, setReflection] = useState(entry.reflection ?? "");
+  const [journal, setJournal] = useState(entry.journal ?? "");
   const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
   const { trips } = useJournal();
   const v = view(entry);
@@ -48,7 +47,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
 
   const save = async () => {
     const clean = Object.fromEntries(Object.entries(ov).filter(([, x]) => x.trim()));
-    await putMany(storeFor(entry), [{ ...entry, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined }]);
+    await putMany(storeFor(entry), [{ ...entry, journal: journal || undefined, overrides: Object.keys(clean).length ? clean : undefined }]);
   };
 
   const setTrip = async (tripId: string) => {
@@ -76,7 +75,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             {trip && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trip.title}</Badge>}
           </div>
           {!compact && meta && <p className="truncate text-sm text-muted-foreground">{meta}</p>}
-          {!open && entry.reflection && <p className=”mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80”>”{entry.reflection}”</p>}
+          {!open && entry.journal && <p className="mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80">“{entry.journal}”</p>}
         </div>
         <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{entryLabel(v)}</span>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
@@ -88,7 +87,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
               {v.setlist.map((s, i) => <li key={i}>{s}</li>)}
             </ol>
           )}
-          <Textarea value={reflection} onChange={(e) => setReflection(e.target.value)} placeholder="Write a reflection…" className="font-serif" />
+          <Textarea value={journal} onChange={(e) => setJournal(e.target.value)} placeholder="Write a reflection…" className="font-serif" />
           <details className="text-sm">
             <summary className="cursor-pointer text-muted-foreground">Manual corrections (always win over imported data)</summary>
             <div className="mt-2 grid grid-cols-2 gap-2">
@@ -114,7 +113,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             </select>
           </label>
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] text-muted-foreground">source: {sourceLabel(entry.source)} · tier {entry.tier}</span>
+            <span className="font-mono text-[10px] text-muted-foreground">source: {SOURCE_LABEL[entry.source]} · tier {entry.tier}</span>
             <div className="flex gap-2">
               <Button size="sm" variant="ghost" onClick={() => removeMany(storeFor(entry), [entry.id])}><Trash2 className="h-4 w-4" /></Button>
               <Button size="sm" onClick={save}>Save</Button>

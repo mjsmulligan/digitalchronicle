@@ -116,7 +116,6 @@ export interface Trip {
   title: string;
   start: string;
   end: string;
-  destinations: string[];
   notes: string;
   cover: string;
   createdAt: string;
@@ -133,13 +132,6 @@ export interface StagedRecord {
   selected: boolean;
 }
 
-export interface Cluster {
-  id: string;
-  title: string;
-  recordIds: string[];
-  accepted: boolean;
-}
-
 export interface StagingBatch {
   id: string;
   source: Source;
@@ -147,8 +139,6 @@ export interface StagingBatch {
   createdAt: string;
   records: StagedRecord[];
   errors: string[];
-  clusters: Cluster[];
-  gapDays: number;
 }
 
 export interface JournalData {

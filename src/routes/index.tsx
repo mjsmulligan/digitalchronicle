@@ -73,7 +73,7 @@ function Chronicle() {
     const get = (d: string) => map.get(d) ?? (map.set(d, { entries: [] }), map.get(d)!);
     const ql = q.toLowerCase();
     if (filter !== "notes")
-      allEntries(s).filter((e) => matches(e, filter) && (!ql || (entryTitle(e) + (e.reflection ?? "")).toLowerCase().includes(ql))).forEach((e) => get(day(e.overrides?.start ?? e.start)).entries.push(e));
+      allEntries(s).filter((e) => matches(e, filter) && (!ql || (entryTitle(e) + (e.journal ?? "")).toLowerCase().includes(ql))).forEach((e) => get(day(e.overrides?.start ?? e.start)).entries.push(e));
     s.notes.filter((n) => n.date && (!ql || n.text.toLowerCase().includes(ql))).forEach((n) => {
       if (filter === "all" || filter === "notes" || map.has(n.date!)) get(n.date!).note = n;
     });
