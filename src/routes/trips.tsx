@@ -28,8 +28,6 @@ export const Route = createFileRoute("/trips")({
 function TripCard({ trip }: { trip: Trip }) {
   const s = useJournal();
   const [open, setOpen] = useState(false);
-  const [t, setT] = useState(trip);
-  const [dest, setDest] = useState(trip.destinations.join(", "));
   const [pick, setPick] = useState("");
 
   const entries = allEntries(s);
@@ -38,15 +36,6 @@ function TripCard({ trip }: { trip: Trip }) {
   const inWindow = unassigned.filter((e) => day(e) >= trip.start && day(e) <= trip.end);
   const nights = Math.max(0, Math.round((+new Date(trip.end) - +new Date(trip.start)) / 86400000));
   const legs = members.filter((e) => e.kind === "leg");
-
-  const save = async () => {
-    if (t.end < t.start) {
-      toast.error("The end date can't be before the start date.");
-      return;
-    }
-    await putMany("trips", [{ ...t, destinations: dest.split(",").map((d) => d.trim()).filter(Boolean) }]);
-    toast.success("Trip saved.");
-  };
 
   const attach = async (list: Entry[]) => {
     for (const e of list) await putMany(storeFor(e), [{ ...e, tripId: trip.id }]);
