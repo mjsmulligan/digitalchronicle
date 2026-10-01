@@ -20,6 +20,8 @@ export function placeLabel(e: Entry): string {
   const v = view(e);
   if (v.kind === "leg") return locate(v.to)?.name.replace(/ (Heathrow|Gatwick|Brandenburg|CDG|Schiphol|Haneda|Narita|Kansai|JFK|Fiumicino|Hbf|Centraal|Nord|Midi|St Pancras|hl\.n\.)$/, "") ?? v.toName ?? v.to;
   if (v.kind === "stay") return v.city ?? v.place;
+  if (v.kind === "film") return v.title;
+  if (v.kind === "episode") return v.showTitle;
   return v.city || v.venue;
 }
 
@@ -86,7 +88,7 @@ export async function commitBatch(b: StagingBatch) {
   const s = getState();
   const byId = new Map(allEntries(s).map((e) => [e.id, e]));
   const idMap = new Map<string, string>();
-  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [] };
+  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [], films: [], episodes: [] };
   let count = 0;
   for (const r of b.records) {
     if (!r.selected) continue;
@@ -121,6 +123,8 @@ export async function commitBatch(b: StagingBatch) {
   await putMany("legs", writes.legs);
   await putMany("stays", writes.stays);
   await putMany("events", writes.events);
+  await putMany("films", writes.films);
+  await putMany("episodes", writes.episodes);
   await putMany("trips", trips);
   await removeMany("staging", [b.id]);
   return { count, trips: trips.length };
