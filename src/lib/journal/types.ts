@@ -35,6 +35,8 @@ interface Base {
   dedupeKey: string;
   /** Free-text personal reflection on this entry. Stored in IndexedDB; never exported. */
   reflection?: string;
+  /** @deprecated Legacy name for `reflection`; still written by existing UI and parsers. */
+  journal?: string;
   /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
   /**
