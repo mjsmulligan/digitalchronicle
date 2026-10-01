@@ -17,7 +17,7 @@ When two sources describe the same event, the higher-tier source always wins:
 |------|---------|---------|
 | 1 | Your own manual edit — sovereign | Any entry you type directly |
 | 2 | Primary curated record | Letterboxd, Goodreads, Setlist.fm, Viaduct |
-| 3 | Automated secondary record | Netflix viewing history |
+| 3 | Automated secondary record | Netflix viewing history, iCalendar exports |
 
 A tier 2 import of a film you already imported from Netflix will supersede the Netflix record. Your manual edits and reflections are always preserved regardless of tier.
 
@@ -29,23 +29,20 @@ Legs are individual transport segments: a flight, a train ride, or a road trip.
 
 ### Viaduct (tier 2)
 
-Viaduct is a travel booking aggregator. It exports a structured CSV of all your bookings.
+[Viaduct](https://viaduct.world) is a free, web-based digital logbook and mapping platform for train enthusiasts and travellers to record, track, and visualise their rail journeys.
 
 **How to export:**
-1. Log in to your Viaduct account.
-2. Go to **My Trips → Export**.
-3. Download `viaduct_export.csv`.
+1. Log in to your Viaduct account at [viaduct.world](https://viaduct.world).
+2. Go to your logbook and use the export option to download your journey history as a CSV.
 
 **What you get:**
-- Flight segments with airline, flight number, aircraft type, and seat
-- Train segments with operator and train number
-- Road segments
+- Rail segments with operator and train number
 - Departure and arrival times in local timezones
-- Trip groupings carried over from Viaduct
+- Station names used as origin and destination
 
 **Notes:**
 - Times are imported as local wall-clock time and stored with IANA timezone data.
-- If a city or airport code can't be resolved to a timezone, the time is stored as date-only.
+- If a station name can't be resolved to a timezone, the time is stored as date-only.
 
 ### Manual entry (tier 1)
 
@@ -61,7 +58,7 @@ A stay is a period spent in one place — a hotel, an Airbnb, staying with frien
 
 ### Viaduct (tier 2)
 
-Viaduct exports include accommodation bookings alongside flights and trains. Same export file as for Legs — stays are parsed out automatically.
+Viaduct is focused on rail journeys — accommodation bookings are not part of its export. Add stays manually or via the iCalendar connector if you have hotel bookings in your calendar.
 
 **What you get:**
 - Property name and city
@@ -81,21 +78,48 @@ Events cover concerts, gatherings, celebrations, milestones, memories, and activ
 
 ### Setlist.fm (tier 2)
 
-Setlist.fm tracks concerts you've attended. It exports a CSV of your attended shows.
+Setlist.fm tracks concerts you've attended. It doesn't offer a native export, but third-party scripts can generate a compatible CSV or JSON from your attended shows page.
 
 **How to export:**
-1. Log in at [setlist.fm](https://www.setlist.fm).
-2. Go to your profile → **Attended concerts**.
-3. Use the export option to download your concert history CSV.
+- Search for "setlist.fm export" or "setlistfm attended concerts scraper" — several community tools exist that produce a file compatible with this connector.
+- The connector accepts both CSV and JSON formats.
 
 **What you get:**
 - Artist name
 - Venue and city
 - Concert date
-- Setlist (song-by-song, where available)
+- Setlist (song-by-song, where available in the source data)
 
 **Notes:**
-- Only concerts with a confirmed setlist are exported — shows you marked as attended without a setlist may not appear.
+- Setlist.fm has no official export API or download. The third-party tools vary in quality — check the staging preview carefully before committing.
+
+### iCalendar (.ics) (tier 3)
+
+Any calendar application can export an iCal file. This is useful for bulk-importing personal events from Google Calendar, Apple Calendar, or Outlook.
+
+**How to export:**
+
+*Google Calendar:* Settings → Import & Export → **Export**. Unzip the download and import the `.ics` file for the calendar you want.
+
+*Apple Calendar:* File → Export → Export. Choose the calendar to export.
+
+*Outlook:* File → Open & Export → Import/Export → Export to a file → iCalendar Format.
+
+**What you get:**
+- Timed events and all-day events as journal entries
+- Multi-day all-day events (2+ days) automatically classified as **Stays** — useful for hotel bookings, trips, or time away from home
+- Single-day events classified by keyword inference (concert, birthday, gathering, etc.)
+- Event description imported as a reflection
+- Venue and city extracted from the LOCATION field (split on the last comma)
+- Timezones from DTSTART TZID parameters preserved
+
+**What is skipped:**
+- Recurring events (RRULE) — these produce too many entries. Add significant individual occurrences manually.
+- Events without a SUMMARY (title)
+
+**Tips:**
+- Export only the calendars that contain personal life events — avoid importing work calendars unless you want to review and deselect meetings in staging.
+- The staging review is your friend here: calendar exports typically include a lot of noise. Use **Select importable** to highlight only new entries, then deselect anything irrelevant before committing.
 
 ### Manual entry (tier 1)
 
@@ -155,7 +179,7 @@ Netflix provides a raw viewing history export. It has no ratings or metadata bey
 
 ### Manual entry (tier 1)
 
-Use **Add entry → Film** (not yet in the quick-add dialog; can be added via import staging with a single-row CSV).
+Films can't yet be added through the quick-add dialog. Use Letterboxd import, or add via staging with a single-row generic CSV.
 
 ---
 
@@ -188,7 +212,7 @@ Same export file as for Films — `NetflixViewingHistory.csv`. Episodes and film
 
 ### Manual entry (tier 1)
 
-Episodes can't currently be added through the quick-add dialog — use the Netflix import or add via staging.
+Use **Add entry → Episode** in the journal. Fill in show title, season, episode number, episode title, and watch date.
 
 ---
 
@@ -225,7 +249,7 @@ Goodreads is the primary source for book data.
 
 ### Manual entry (tier 1)
 
-Books can't currently be added through the quick-add dialog — use the Goodreads import.
+Use **Add entry → Book** in the journal. Fill in title, author, year, series details, rating, and read date. An optional "started reading" date can also be recorded.
 
 ---
 

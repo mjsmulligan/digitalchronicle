@@ -147,6 +147,7 @@ function ImportPage() {
             <option value="letterboxd">Letterboxd diary/reviews CSV</option>
             <option value="netflix">Netflix viewing history CSV</option>
             <option value="goodreads">Goodreads library export CSV</option>
+            <option value="icalendar">iCalendar (.ics)</option>
             <option value="viaduct">Viaduct rail CSV</option>
             <option value="setlistfm">setlist.fm JSON/CSV</option>
             <option value="generic">Generic / cleaned CSV or JSON</option>
