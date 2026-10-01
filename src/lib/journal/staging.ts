@@ -44,8 +44,7 @@ export async function stageFile(filename: string, text: string, forced?: Exclude
     const c = classify(entry, existing, seen);
     return { entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" };
   });
-  const batch: StagingBatch = { id: uid(), source, filename, createdAt: new Date().toISOString(), records, errors: res.errors, clusters: [], gapDays: 2 };
-  batch.clusters = clusterRecords(records, batch.gapDays);
+  const batch: StagingBatch = { id: uid(), source, filename, createdAt: new Date().toISOString(), records, errors: res.errors };
   await putMany("staging", [batch]);
   return batch;
 }
