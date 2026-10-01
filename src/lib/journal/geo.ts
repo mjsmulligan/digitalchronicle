@@ -1,5 +1,21 @@
-// Offline gazetteer — places are resolved on demand by the user and stored in IndexedDB.
-// The static station dataset has been removed to keep the JS bundle small.
+// Offline gazetteer — no external place lookups, keeps journal data local.
+// stations.generated.ts is lazy-loaded only when needed (e.g. on the Places page).
+type Stations = typeof import("./stations.generated").STATIONS;
+let stations: Stations | undefined;
+let stationPromise: Promise<void> | undefined;
+
+export function loadStations(): Promise<void> {
+  if (stations) return Promise.resolve();
+  stationPromise ??= import("./stations.generated")
+    .then(({ STATIONS }) => {
+      stations = STATIONS;
+    })
+    .catch((error: unknown) => {
+      stationPromise = undefined;
+      throw error;
+    });
+  return stationPromise;
+}
 
 export interface PlaceInfo {
   name: string;
@@ -21,21 +37,17 @@ export function normKey(s: string) {
 
 /**
  * Resolve a raw source value (code or name) to its gazetteer entry.
- * Always returns undefined — place resolution is now on-demand via the Places page.
- * Kept as a stub so connector code that calls it still compiles unchanged.
+ * Requires loadStations() to have been called first for station lookups.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function locate(_code: string): PlaceInfo | undefined {
-  return undefined;
+export function locate(code: string): PlaceInfo | undefined {
+  const key = normKey(code);
+  const station = stations?.[key];
+  if (!station) return undefined;
+  const [name, lat, lon, timezone] = station;
+  return { name, lat, lon, timezone };
 }
 
-/** Convenience: just the timezone for a code. Always returns undefined (see locate). */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function timezoneFor(_code: string): string | undefined {
-  return undefined;
-}
-
-/** No-op kept for call-site compatibility. */
-export function loadStations(): Promise<void> {
-  return Promise.resolve();
+/** Convenience: just the timezone for a code. Returns undefined if stations not loaded. */
+export function timezoneFor(code: string): string | undefined {
+  return locate(code)?.timezone;
 }
