@@ -118,19 +118,26 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
               ))}
             </div>
           </details>
-          <label className="block text-xs text-muted-foreground">
-            Trip
-            <select
-              className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={entry.tripId ?? ""}
-              onChange={(e) => setTrip(e.target.value)}
-            >
-              <option value="">No trip</option>
-              {[...trips].sort((a, b) => b.start.localeCompare(a.start)).map((t) => (
-                <option key={t.id} value={t.id}>{t.title}</option>
-              ))}
-            </select>
-          </label>
+          {entry.kind !== "film" && entry.kind !== "episode" && entry.kind !== "book" && (
+            <label className="block text-xs text-muted-foreground">
+              Trip
+              <select
+                className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={entry.tripId ?? ""}
+                onChange={(e) => setTrip(e.target.value)}
+              >
+                <option value="">No trip</option>
+                {[...trips].sort((a, b) => b.start.localeCompare(a.start)).map((t) => (
+                  <option key={t.id} value={t.id}>{t.title}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {entry.kind === "book" && entry.series && (
+            <p className="text-xs text-muted-foreground">
+              Series: <span className="font-medium">{entry.series}{entry.seriesNumber !== undefined ? ` #${entry.seriesNumber}` : ""}</span>
+            </p>
+          )}
           <div className="flex items-center justify-between">
             <span className="font-mono text-[10px] text-muted-foreground">source: {sourceLabel(entry.source)} · tier {entry.tier}</span>
             <div className="flex gap-2">
