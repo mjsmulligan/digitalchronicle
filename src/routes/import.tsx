@@ -61,13 +61,13 @@ function BatchReview({ batch }: { batch: StagingBatch }) {
         </div>
       )}
 
-      <div className="grid gap-0 lg:grid-cols-[3fr_2fr]">
+      <div>
         <div className="p-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Records</h3>
             <div className="flex gap-2 text-xs">
-              <button className="underline" onClick={() => recluster(b.gapDays, b.records.map((r) => ({ ...r, selected: r.status === "new" || r.status === "supersedes" })))}>select importable</button>
-              <button className="underline" onClick={() => recluster(b.gapDays, b.records.map((r) => ({ ...r, selected: false })))}>none</button>
+              <button className="underline" onClick={() => setRecords(b.records.map((r) => ({ ...r, selected: r.status === "new" || r.status === "supersedes" })))}>select importable</button>
+              <button className="underline" onClick={() => setRecords(b.records.map((r) => ({ ...r, selected: false })))}>none</button>
             </div>
           </div>
           <ul className="divide-y divide-border">
