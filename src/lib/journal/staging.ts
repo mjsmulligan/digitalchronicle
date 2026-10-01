@@ -1,6 +1,5 @@
 import { allEntries, getState, putMany, removeMany, storeFor } from "./db";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
-import { loadStations, locate } from "./geo";
 import {
   uid, view, type Entry, type StagedRecord, type StagingBatch,
 } from "./types";
@@ -18,7 +17,7 @@ function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>)
 
 export function placeLabel(e: Entry): string {
   const v = view(e);
-  if (v.kind === "leg") return locate(v.to)?.name ?? v.toName ?? v.to;
+  if (v.kind === "leg") return v.toName ?? v.to;
   if (v.kind === "stay") return v.city ?? v.place;
   if (v.kind === "film") return v.title;
   if (v.kind === "episode") return v.showTitle;
@@ -39,7 +38,6 @@ export async function stageFile(filename: string, text: string, forced?: string)
     : detectConnector(filename, text);
   const source = connector.id;
 
-  await loadStations();
   let res;
   try {
     res = await connector.parse({ name: filename, text });

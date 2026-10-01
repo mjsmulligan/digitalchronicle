@@ -1,9 +1,8 @@
 import { useSyncExternalStore } from "react";
-import { STORES, type JournalData, type StoreName, type Entry, type StagingBatch } from "./types";
-import { loadStations } from "./geo";
+import { STORES, type JournalData, type StoreName, type Entry, type PlaceRecord } from "./types";
 
 const DB_NAME = "waypoint-journal";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 function openDB(): Promise<IDBDatabase> {
@@ -45,7 +44,7 @@ async function getAll<T>(store: StoreName): Promise<T[]> {
 export interface State extends JournalData {
   ready: boolean;
 }
-const empty = (): State => ({ ready: false, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [] });
+const empty = (): State => ({ ready: false, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [] });
 const SERVER = empty();
 let state: State = empty();
 const listeners = new Set<() => void>();
@@ -55,26 +54,11 @@ function emit(next: Partial<State>) {
 }
 
 let initPromise: Promise<void> | undefined;
-function hasPlace(e: Entry): boolean {
-  if (e.kind === "leg") return !!(e.from || e.to || e.overrides?.from || e.overrides?.to);
-  if (e.kind === "film" || e.kind === "episode" || e.kind === "book") return false;
-  return !!(e.city || e.overrides?.city || (e.kind === "stay" && (e.place || e.overrides?.place)));
-}
-
-function hasJournalPlaces(data: Partial<JournalData>): boolean {
-  return (
-    [...(data.legs ?? []), ...(data.stays ?? []), ...(data.events ?? [])].some(hasPlace) ||
-    (data.staging ?? []).some((batch) => batch.records.some((record) => hasPlace(record.entry)))
-  );
-}
 
 export function initJournal(): Promise<void> {
   initPromise ??= (async () => {
     const data: Partial<State> = {};
     for (const s of STORES) (data as Record<string, unknown>)[s] = await getAll(s);
-    if (hasJournalPlaces(data)) {
-      await loadStations();
-    }
     emit({ ...data, ready: true });
   })().catch((error: unknown) => {
     initPromise = undefined;
@@ -101,8 +85,6 @@ export function getState() {
 type Row = { id: string };
 export async function putMany(store: StoreName, items: (Row & Record<string, any>)[] | any[]) {
   if (!items.length) return;
-  if ((store === "legs" || store === "stays" || store === "events") && (items as Entry[]).some(hasPlace)) await loadStations();
-  if (store === "staging" && (items as StagingBatch[]).some((batch) => batch.records.some((record) => hasPlace(record.entry)))) await loadStations();
   await tx([store], (t) => items.forEach((i) => t.objectStore(store).put(i)));
   const map = new Map((state[store] as Row[]).map((r) => [r.id, r]));
   items.forEach((i) => map.set(i.id, i));
@@ -116,7 +98,6 @@ export async function removeMany(store: StoreName, ids: string[]) {
 }
 
 export async function replaceAll(data: JournalData) {
-  if (hasJournalPlaces(data)) await loadStations();
   await tx([...STORES], (t) => {
     for (const s of STORES) {
       const os = t.objectStore(s);
@@ -128,8 +109,10 @@ export async function replaceAll(data: JournalData) {
 }
 
 export async function clearAll() {
-  await replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [] });
+  await replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [] });
 }
+
+export type { PlaceRecord };
 
 export function storeFor(e: Entry): StoreName {
   if (e.kind === "leg") return "legs";

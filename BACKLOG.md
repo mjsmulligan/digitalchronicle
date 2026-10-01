@@ -35,7 +35,7 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 
 ### People — remaining
 
-- [ ] **People filter pills on Chronicle, Culture, and Moments** — a "person" pill that narrows the feed to entries a specific person was part of. Mirrors how category filters work today.
+- [x] **People filter pills on Chronicle, Culture, and Moments** — a "person" pill that narrows the feed to entries a specific person was part of. Mirrors how category filters work today.
 - [ ] **Name resolution on import** — when a connector surfaces companion names, match against existing People by name/alias. Suggestions only; never auto-linked.
 
 ### Trip Management
