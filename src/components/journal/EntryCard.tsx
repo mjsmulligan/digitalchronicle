@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, ChevronDown, Trash2 } from "lucide-react";
+import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,12 +18,13 @@ export function entryIcon(e: Entry) {
   if (e.kind === "stay") return BedDouble;
   if (e.kind === "film") return Clapperboard;
   if (e.kind === "episode") return Tv;
+  if (e.kind === "book") return BookOpen;
   return CAT_ICON[e.category ?? "activity"];
 }
 export function entryColor(e: Entry) {
   if (e.kind === "leg") return e.mode === "air" ? "text-air" : e.mode === "rail" ? "text-rail" : "text-road";
   if (e.kind === "stay") return "text-stay";
-  if (e.kind === "film" || e.kind === "episode") return "text-muted-foreground";
+  if (e.kind === "film" || e.kind === "episode" || e.kind === "book") return "text-muted-foreground";
   return e.category === "milestone" ? "text-primary" : "text-gig";
 }
 export function entryLabel(e: Entry) {
@@ -31,6 +32,7 @@ export function entryLabel(e: Entry) {
   if (e.kind === "stay") return "Stay";
   if (e.kind === "film") return e.rewatch ? "Rewatch" : "Film";
   if (e.kind === "episode") return "Episode";
+  if (e.kind === "book") return e.series ? "Series" : "Book";
   return CATEGORY_LABEL[e.category ?? "activity"];
 }
 
@@ -42,6 +44,7 @@ const OVERRIDE_FIELDS: Record<Entry["kind"], string[]> = {
   event: ["artist", "venue", "city", "start"],
   film: ["title", "year", "director", "start"],
   episode: ["showTitle", "season", "episodeTitle", "start"],
+  book: ["title", "author", "year", "series", "start"],
 };
 
 export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean }) {
@@ -71,7 +74,9 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
           ? [v.director, v.year && String(v.year)].filter(Boolean).join(" · ")
           : v.kind === "episode"
             ? [v.season, v.episodeNumber && `Ep ${v.episodeNumber}`].filter(Boolean).join(" · ")
-            : [v.category === "concert" ? v.venue : v.venue, v.city, v.people?.join(", ")].filter(Boolean).join(" · ");
+            : v.kind === "book"
+              ? [v.series && `${v.series}${v.seriesNumber ? ` #${v.seriesNumber}` : ""}`, v.year && String(v.year)].filter(Boolean).join(" · ")
+              : [v.category === "concert" ? v.venue : v.venue, v.city, v.people?.join(", ")].filter(Boolean).join(" · ");
 
   return (
     <div className="rounded-md border border-border bg-card">
