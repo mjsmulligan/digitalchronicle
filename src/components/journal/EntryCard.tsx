@@ -51,6 +51,7 @@ const OVERRIDE_FIELDS: Record<Entry["kind"], string[]> = {
 export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [reflection, setReflection] = useState(entry.reflection ?? "");
+  const [dateStarted, setDateStarted] = useState(entry.kind === "book" ? (entry.dateStarted ?? "") : "");
   const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
   const { trips } = useJournal();
   const v = view(entry);
@@ -59,7 +60,8 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
 
   const save = async () => {
     const clean = Object.fromEntries(Object.entries(ov).filter(([, x]) => x.trim()));
-    await putMany(storeFor(entry), [{ ...entry, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined }]);
+    const extra = entry.kind === "book" ? { dateStarted: dateStarted || undefined } : {};
+    await putMany(storeFor(entry), [{ ...entry, ...extra, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined }]);
   };
 
   const setTrip = async (tripId: string) => {
@@ -137,6 +139,12 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             <p className="text-xs text-muted-foreground">
               Series: <span className="font-medium">{entry.series}{entry.seriesNumber !== undefined ? ` #${entry.seriesNumber}` : ""}</span>
             </p>
+          )}
+          {entry.kind === "book" && (
+            <label className="block text-xs text-muted-foreground">
+              Started reading
+              <Input type="date" value={dateStarted} onChange={(e) => setDateStarted(e.target.value)} className="mt-1" />
+            </label>
           )}
           <div className="flex items-center justify-between">
             <span className="font-mono text-[10px] text-muted-foreground">source: {sourceLabel(entry.source)} · tier {entry.tier}</span>
