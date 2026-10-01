@@ -3,7 +3,7 @@ import { STORES, type JournalData, type StoreName, type Entry, type StagingBatch
 import { loadStations } from "./geo";
 
 const DB_NAME = "waypoint-journal";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 function openDB(): Promise<IDBDatabase> {
@@ -45,7 +45,7 @@ async function getAll<T>(store: StoreName): Promise<T[]> {
 export interface State extends JournalData {
   ready: boolean;
 }
-const empty = (): State => ({ ready: false, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [] });
+const empty = (): State => ({ ready: false, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [] });
 const SERVER = empty();
 let state: State = empty();
 const listeners = new Set<() => void>();
@@ -128,7 +128,7 @@ export async function replaceAll(data: JournalData) {
 }
 
 export async function clearAll() {
-  await replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [] });
+  await replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [] });
 }
 
 export function storeFor(e: Entry): StoreName {
