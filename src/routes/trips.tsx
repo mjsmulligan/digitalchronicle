@@ -52,39 +52,26 @@ function TripCard({ trip }: { trip: Trip }) {
 
   return (
     <article className="rounded-md border border-border bg-card">
-      <button onClick={() => setOpen(!open)} className="w-full p-5 text-left">
-        <p className="font-mono text-xs text-muted-foreground">{trip.start} → {trip.end} · {nights} nights</p>
-        <div className="mt-1 flex flex-wrap items-baseline gap-2">
-          <h2 className="text-2xl">{trip.title}</h2>
-          {trip.purpose && <Badge variant="secondary" className="capitalize">{trip.purpose}</Badge>}
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">{trip.destinations.join(" · ")}</p>
-        <div className="mt-3 flex gap-4 font-mono text-xs">
-          <span>{legs.filter((l) => l.kind === "leg" && l.mode === "air").length} flights</span>
-          <span>{legs.filter((l) => l.kind === "leg" && l.mode === "rail").length} trains</span>
-          <span>{members.filter((e) => e.kind === "stay").length} stays</span>
-          <span>{members.filter((e) => e.kind === "event").length} events</span>
-        </div>
-      </button>
+      <div className="flex items-start gap-3 p-5">
+        <button onClick={() => setOpen(!open)} className="min-w-0 flex-1 text-left">
+          <p className="font-mono text-xs text-muted-foreground">{trip.start} → {trip.end} · {nights} nights</p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-2">
+            <h2 className="text-2xl">{trip.title}</h2>
+            {trip.purpose && <Badge variant="secondary" className="capitalize">{trip.purpose}</Badge>}
+          </div>
+          <div className="mt-3 flex gap-4 font-mono text-xs">
+            <span>{legs.filter((l) => l.kind === "leg" && l.mode === "air").length} flights</span>
+            <span>{legs.filter((l) => l.kind === "leg" && l.mode === "rail").length} trains</span>
+            <span>{members.filter((e) => e.kind === "stay").length} stays</span>
+            <span>{members.filter((e) => e.kind === "event").length} events</span>
+          </div>
+        </button>
+        <AddTripDialog trip={trip} />
+      </div>
       {open && (
         <div className="space-y-4 border-t border-border p-5">
-          <div className="grid grid-cols-2 gap-2">
-            <Input className="col-span-2" value={t.title} onChange={(e) => setT({ ...t, title: e.target.value })} placeholder="Trip title" />
-            <label className="text-xs text-muted-foreground">Start<Input type="date" value={t.start} onChange={(e) => setT({ ...t, start: e.target.value })} /></label>
-            <label className="text-xs text-muted-foreground">End<Input type="date" value={t.end} onChange={(e) => setT({ ...t, end: e.target.value })} /></label>
-            <Input className="col-span-2" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Destinations (comma separated)" />
-            <select
-              className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm capitalize"
-              value={t.purpose ?? ""}
-              onChange={(e) => setT({ ...t, purpose: (e.target.value as Purpose) || undefined })}
-            >
-              <option value="">Purpose (optional)</option>
-              {PURPOSES.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}
-            </select>
-          </div>
-          <Textarea value={t.notes} onChange={(e) => setT({ ...t, notes: e.target.value })} placeholder="Trip reflections…" className="font-serif" />
+          {trip.notes && <p className="whitespace-pre-wrap font-serif text-sm text-muted-foreground">{trip.notes}</p>}
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={save}>Save</Button>
             <Button size="sm" variant="outline" onClick={gather}>
               Gather entries in these dates{inWindow.length ? ` (${inWindow.length})` : ""}
             </Button>
