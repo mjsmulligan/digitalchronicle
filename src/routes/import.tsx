@@ -144,6 +144,9 @@ function ImportPage() {
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
           <select value={src} onChange={(e) => setSrc(e.target.value as Auto)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
             <option value="auto">Detect format</option>
+            <option value="letterboxd">Letterboxd diary/reviews CSV</option>
+            <option value="netflix">Netflix viewing history CSV</option>
+            <option value="goodreads">Goodreads library export CSV</option>
             <option value="viaduct">Viaduct rail CSV</option>
             <option value="setlistfm">setlist.fm JSON/CSV</option>
             <option value="generic">Generic / cleaned CSV or JSON</option>
