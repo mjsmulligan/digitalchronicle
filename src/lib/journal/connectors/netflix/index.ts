@@ -95,6 +95,19 @@ function parseNetflix(text: string): ParseResult {
   const out: ParseResult = { entries: [], errors: [] };
   const rows = csvRows(text);
 
+  // Two-pass classification for ambiguous 2-part titles ("Show: Episode Title").
+  // If the same first segment appears with 2+ distinct second segments, it's a
+  // show — classify those rows as episodes. Singletons remain as films.
+  const twoPartPrefixCount = new Map<string, number>();
+  for (const { row: r } of rows) {
+    const rawTitle = (r["Title"] as string | undefined)?.trim() ?? "";
+    const parts = rawTitle.split(":").map((p) => p.trim());
+    if (parts.length === 2) {
+      const prefix = norm(parts[0]);
+      twoPartPrefixCount.set(prefix, (twoPartPrefixCount.get(prefix) ?? 0) + 1);
+    }
+  }
+
   rows.forEach(({ row: r, sourceRow }) => {
     const rawTitle = (r["Title"] as string | undefined)?.trim() ?? "";
     const rawDate = (r["Date"] as string | undefined)?.trim() ?? "";
@@ -110,7 +123,13 @@ function parseNetflix(text: string): ParseResult {
       return;
     }
 
-    const parsed = parseTitle(rawTitle);
+    // Override 2-part titles where the prefix is a known show (seen 2+ times)
+    const parts = rawTitle.split(":").map((p) => p.trim());
+    const is2PartShow = parts.length === 2 && (twoPartPrefixCount.get(norm(parts[0])) ?? 0) >= 2;
+
+    const parsed = is2PartShow
+      ? { kind: "episode" as const, showTitle: parts[0], season: "", episodeTitle: parts[1] }
+      : parseTitle(rawTitle);
 
     if (parsed.kind === "film") {
       const film: Film = {
