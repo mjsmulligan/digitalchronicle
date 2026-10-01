@@ -97,40 +97,6 @@ function BatchReview({ batch }: { batch: StagingBatch }) {
           </ul>
         </div>
 
-        <div className="border-t border-border bg-muted/40 p-4 lg:border-l lg:border-t-0">
-          <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Suggested trips</h3>
-          <label className="my-2 flex items-center gap-2 text-xs">
-            Group when gap ≤
-            <Input type="number" min={0} max={30} value={b.gapDays} onChange={(e) => recluster(Number(e.target.value))} className="h-7 w-16" />
-            days
-          </label>
-          <p className="mb-3 text-xs text-muted-foreground">Groups with travel are pre-accepted; everyday moments stay unattached unless you tick them.</p>
-          <div className="space-y-3">
-            {b.clusters.map((c, ci) => (
-              <div key={c.id} className={cn("rounded-md border bg-card p-3", c.accepted ? "border-primary" : "border-border")}>
-                <div className="flex items-center gap-2">
-                  <Checkbox checked={c.accepted} onCheckedChange={(v) => { const cl = [...b.clusters]; cl[ci] = { ...c, accepted: !!v }; update({ ...b, clusters: cl }); }} />
-                  <Input value={c.title} onChange={(e) => { const cl = [...b.clusters]; cl[ci] = { ...c, title: e.target.value }; update({ ...b, clusters: cl }); }} className="h-7 text-sm" />
-                </div>
-                <ul className="mt-2 space-y-0.5 text-xs">
-                  {c.recordIds.map((id, k) => {
-                    const e = byId.get(id);
-                    return e ? (
-                      <li key={id}>
-                        {k > 0 && <button onClick={() => split(ci, k)} className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary"><Scissors className="h-3 w-3" />split here</button>}
-                        <span className="font-mono text-muted-foreground">{e.start.slice(5, 10)}</span> {entryTitle(e)}
-                      </li>
-                    ) : null;
-                  })}
-                </ul>
-                {ci < b.clusters.length - 1 && (
-                  <button onClick={() => merge(ci)} className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground hover:text-primary"><Merge className="h-3 w-3" />merge with next</button>
-                )}
-              </div>
-            ))}
-            {!b.clusters.length && <p className="text-xs text-muted-foreground">Nothing selected to group.</p>}
-          </div>
-        </div>
       </div>
     </section>
   );
