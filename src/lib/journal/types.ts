@@ -120,8 +120,8 @@ export interface Film extends Base {
 }
 
 /**
- * A single episode watch event. Show grouping is handled by `showId` (pointing
- * at a Show container), mirroring the way tripId links entries to a Trip.
+ * A single episode watch event. Series grouping is handled by `seriesId` (pointing
+ * at a Series container), mirroring the way tripId links entries to a Trip.
  *
  * dedupeKey: `episode|{normShowTitle}|{normSeason}|{normEpTitle}|{watchedDate}`
  */
@@ -132,22 +132,48 @@ export interface Episode extends Base {
   season?: string;
   episodeTitle?: string;
   episodeNumber?: number;
-  /** Reference to a Show container */
-  showId?: string;
+  /** Reference to a Series container */
+  seriesId?: string;
 }
 
 /**
- * A TV series container — groups episodes the same way Trip groups legs/stays.
- * Not an entry itself; never appears in the Entry union.
+ * A series container — groups episodes (TV) or volumes (books) the same way
+ * Trip groups legs/stays. Not an entry itself; never appears in the Entry union.
  */
-export interface Show {
+export interface Series {
   id: string;
-  kind: "show";
+  kind: "series";
   title: string;
+  /** "tv" for television shows; "book" for book series */
+  mediaType?: "tv" | "book";
   createdAt: string;
 }
 
-export type Entry = Leg | Stay | JEvent | Film | Episode;
+/**
+ * A book read event. `start` = Date Read (completion date — "when this happened").
+ * An optional `dateStarted` can capture when reading began without overloading Base.end.
+ *
+ * dedupeKey: `book|{normTitle}|{normAuthor}|{dateRead}`
+ */
+export interface Book extends Base {
+  kind: "book";
+  /** Clean title — series suffix stripped, e.g. "Bridgerton" not "Bridgerton (Bridgertons, #1)" */
+  title: string;
+  author: string;
+  /** Original Publication Year */
+  year?: number;
+  goodreadsId?: string;
+  /** Parsed series name, e.g. "Bridgertons" */
+  series?: string;
+  /** Series position, e.g. 6 or 7.5 */
+  seriesNumber?: number;
+  /** Reference to a Series container */
+  seriesId?: string;
+  /** When reading started (YYYY-MM-DD). Separate from Base.start which is the completion date. */
+  dateStarted?: string;
+}
+
+export type Entry = Leg | Stay | JEvent | Film | Episode | Book;
 
 export interface Note {
   id: string;
@@ -196,12 +222,13 @@ export interface JournalData {
   events: JEvent[];
   films: Film[];
   episodes: Episode[];
-  shows: Show[];
+  books: Book[];
+  series: Series[];
   notes: Note[];
   staging: StagingBatch[];
 }
 
-export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "shows", "notes", "staging"] as const;
+export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging"] as const;
 export type StoreName = (typeof STORES)[number];
 
 /**
@@ -247,5 +274,6 @@ export function entryTitle(e: Entry): string {
   if (v.kind === "stay") return v.place;
   if (v.kind === "film") return v.year ? `${v.title} (${v.year})` : v.title;
   if (v.kind === "episode") return v.episodeTitle ? `${v.showTitle}: ${v.episodeTitle}` : v.showTitle;
+  if (v.kind === "book") return v.author ? `${v.title} — ${v.author}` : v.title;
   return v.category === "concert" && v.venue ? `${v.artist} @ ${v.venue}` : v.artist;
 }

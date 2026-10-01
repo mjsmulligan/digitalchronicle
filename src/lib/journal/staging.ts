@@ -64,7 +64,7 @@ export async function saveBatch(b: StagingBatch) {
 export async function commitBatch(b: StagingBatch) {
   const s = getState();
   const byId = new Map(allEntries(s).map((e) => [e.id, e]));
-  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [], films: [], episodes: [] };
+  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [], films: [], episodes: [], books: [] };
   let count = 0;
   for (const r of b.records) {
     if (!r.selected) continue;
@@ -83,6 +83,7 @@ export async function commitBatch(b: StagingBatch) {
   await putMany("events", writes.events);
   await putMany("films", writes.films);
   await putMany("episodes", writes.episodes);
+  await putMany("books", writes.books);
   await removeMany("staging", [b.id]);
   return { count };
 }

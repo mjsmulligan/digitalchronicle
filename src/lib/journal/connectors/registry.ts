@@ -11,6 +11,7 @@ import { connector as viaduct } from "./viaduct/index";
 import { connector as setlistfm } from "./setlistfm/index";
 import { connector as letterboxd } from "./letterboxd/index";
 import { connector as netflix } from "./netflix/index";
+import { connector as goodreads } from "./goodreads/index";
 import { connector as generic } from "./generic/index";
 import type { Connector } from "./types";
 
@@ -20,7 +21,7 @@ import type { Connector } from "./types";
  * SNIFF_THRESHOLD; order is a tiebreaker only.  Put more-specific connectors
  * before generic as a safeguard when two connectors return equal scores.
  */
-export const CONNECTORS: Connector[] = [setlistfm, viaduct, letterboxd, netflix, generic];
+export const CONNECTORS: Connector[] = [setlistfm, viaduct, letterboxd, netflix, goodreads, generic];
 
 /**
  * Formats that are explicitly unsupported — checked before detection so the
