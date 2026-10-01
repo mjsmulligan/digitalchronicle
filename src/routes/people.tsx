@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useRef, useCallback } from "react";
 import { Users, Upload, ChevronDown, ChevronUp, X, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -185,7 +185,11 @@ function PersonCard({
   const { count, lastDate } = personEntryCount(person, selfId, entries, filter);
 
   return (
-    <div className="flex items-center gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm">
+    <Link
+      to="/people/$id"
+      params={{ id: person.id }}
+      className="flex items-center gap-3 rounded-md border border-border bg-card px-4 py-3 text-sm hover:bg-accent transition-colors"
+    >
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
         {person.name.charAt(0).toUpperCase()}
       </div>
@@ -207,7 +211,7 @@ function PersonCard({
           <div className="font-mono text-[11px] text-muted-foreground">no entries yet</div>
         )}
       </div>
-    </div>
+    </Link>
   );
 }
 
