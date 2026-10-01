@@ -4,10 +4,16 @@ import { useJournal } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
 import { StarRating } from "@/components/journal/StarRating";
 import { AddEntryDialog } from "@/components/journal/AddEntryDialog";
+import { PersonFilter } from "@/components/journal/PersonFilter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { day, view, type Film, type Episode, type Book, type JEvent, type Entry } from "@/lib/journal/types";
+import { day, view, type Film, type Episode, type Book, type JEvent, type Entry, type Person } from "@/lib/journal/types";
 import { cn } from "@/lib/utils";
+
+function entryHasPerson(e: Entry, person: Person): boolean {
+  if (person.isSelf) return !e.participants || e.participants.includes(person.id);
+  return e.participants?.includes(person.id) ?? false;
+}
 
 export const Route = createFileRoute("/culture")({
   head: () => ({
@@ -96,6 +102,7 @@ function Culture() {
   const s = useJournal();
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
+  const [personId, setPersonId] = useState<string | null>(null);
 
   const concerts = useMemo(
     () => s.events.filter((e) => e.category === "concert"),
@@ -140,14 +147,17 @@ function Culture() {
     [searchFiltered],
   );
 
+  const activePerson = personId ? s.people.find((p) => p.id === personId) ?? null : null;
+
   const filtered = useMemo(() => {
     return searchFiltered.filter((e) => {
       if (filter === "rewatch" && !(e.kind === "film" && (e as Film).rewatch)) return false;
       if (filter === "concert" && !(e.kind === "event" && (e as JEvent).category === "concert")) return false;
       if (filter !== "all" && filter !== "rewatch" && filter !== "concert" && e.kind !== filter) return false;
+      if (activePerson && !entryHasPerson(e, activePerson)) return false;
       return true;
     });
-  }, [searchFiltered, filter]);
+  }, [searchFiltered, filter, activePerson]);
 
   const avg = useMemo(() => avgRating(filtered), [filtered]);
   const ratedCount = filtered.filter((e) => e.rating !== undefined).length;
@@ -212,6 +222,7 @@ function Culture() {
             </button>
           ))}
         </div>
+        <PersonFilter people={s.people} value={personId} onChange={setPersonId} />
         <Input
           placeholder="Search…"
           value={q}
