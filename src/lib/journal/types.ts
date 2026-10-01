@@ -101,7 +101,53 @@ export interface JEvent extends Base {
   setlist?: string[];
 }
 
-export type Entry = Leg | Stay | JEvent;
+/**
+ * A film watch event. The film metadata and the viewing record are the same
+ * thing — there is no separate Film record. A rewatch is a separate Film entry
+ * with a different dedupeKey (date differs).
+ *
+ * dedupeKey: `film|{normTitle}|{year}|{watchedDate}` — source-agnostic so that
+ * Letterboxd (tier 2) supersedes Netflix (tier 3) for the same watch.
+ */
+export interface Film extends Base {
+  kind: "film";
+  title: string;
+  /** Release year (not watch year) */
+  year?: number;
+  director?: string;
+  /** True when the source explicitly flags this as a rewatch */
+  rewatch?: boolean;
+}
+
+/**
+ * A single episode watch event. Show grouping is handled by `showId` (pointing
+ * at a Show container), mirroring the way tripId links entries to a Trip.
+ *
+ * dedupeKey: `episode|{normShowTitle}|{normSeason}|{normEpTitle}|{watchedDate}`
+ */
+export interface Episode extends Base {
+  kind: "episode";
+  showTitle: string;
+  /** Raw season label, e.g. "Season 4", "Limited Series" */
+  season?: string;
+  episodeTitle?: string;
+  episodeNumber?: number;
+  /** Reference to a Show container */
+  showId?: string;
+}
+
+/**
+ * A TV series container — groups episodes the same way Trip groups legs/stays.
+ * Not an entry itself; never appears in the Entry union.
+ */
+export interface Show {
+  id: string;
+  kind: "show";
+  title: string;
+  createdAt: string;
+}
+
+export type Entry = Leg | Stay | JEvent | Film | Episode;
 
 export interface Note {
   id: string;
@@ -148,11 +194,14 @@ export interface JournalData {
   legs: Leg[];
   stays: Stay[];
   events: JEvent[];
+  films: Film[];
+  episodes: Episode[];
+  shows: Show[];
   notes: Note[];
   staging: StagingBatch[];
 }
 
-export const STORES = ["trips", "legs", "stays", "events", "notes", "staging"] as const;
+export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "shows", "notes", "staging"] as const;
 export type StoreName = (typeof STORES)[number];
 
 /**
@@ -196,5 +245,7 @@ export function entryTitle(e: Entry): string {
   const v = view(e);
   if (v.kind === "leg") return `${v.from} → ${v.to}`;
   if (v.kind === "stay") return v.place;
+  if (v.kind === "film") return v.year ? `${v.title} (${v.year})` : v.title;
+  if (v.kind === "episode") return v.episodeTitle ? `${v.showTitle}: ${v.episodeTitle}` : v.showTitle;
   return v.category === "concert" && v.venue ? `${v.artist} @ ${v.venue}` : v.artist;
 }

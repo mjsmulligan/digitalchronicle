@@ -3,7 +3,7 @@ import { STORES, type JournalData, type StoreName, type Entry, type StagingBatch
 import { loadStations } from "./geo";
 
 const DB_NAME = "waypoint-journal";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 function openDB(): Promise<IDBDatabase> {
@@ -45,7 +45,7 @@ async function getAll<T>(store: StoreName): Promise<T[]> {
 export interface State extends JournalData {
   ready: boolean;
 }
-const empty = (): State => ({ ready: false, trips: [], legs: [], stays: [], events: [], notes: [], staging: [] });
+const empty = (): State => ({ ready: false, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], shows: [], notes: [], staging: [] });
 const SERVER = empty();
 let state: State = empty();
 const listeners = new Set<() => void>();
@@ -57,6 +57,7 @@ function emit(next: Partial<State>) {
 let initPromise: Promise<void> | undefined;
 function hasPlace(e: Entry): boolean {
   if (e.kind === "leg") return !!(e.from || e.to || e.overrides?.from || e.overrides?.to);
+  if (e.kind === "film" || e.kind === "episode") return false;
   return !!(e.city || e.overrides?.city || (e.kind === "stay" && (e.place || e.overrides?.place)));
 }
 
@@ -127,13 +128,17 @@ export async function replaceAll(data: JournalData) {
 }
 
 export async function clearAll() {
-  await replaceAll({ trips: [], legs: [], stays: [], events: [], notes: [], staging: [] });
+  await replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], shows: [], notes: [], staging: [] });
 }
 
 export function storeFor(e: Entry): StoreName {
-  return e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : "events";
+  if (e.kind === "leg") return "legs";
+  if (e.kind === "stay") return "stays";
+  if (e.kind === "film") return "films";
+  if (e.kind === "episode") return "episodes";
+  return "events";
 }
 
 export function allEntries(s: JournalData): Entry[] {
-  return [...s.legs, ...s.stays, ...s.events];
+  return [...s.legs, ...s.stays, ...s.events, ...s.films, ...s.episodes];
 }

@@ -13,6 +13,7 @@ Agreed design decisions that cut across event types. Build these before or along
 - [ ] **Date precision flag** (day, month, year, unknown) on every entry. UTC, local time and timezone only where a real time exists. Needed for date-only sources such as Goodreads and Letterboxd.
 - [ ] **Provenance on every imported fact** (source name plus original row reference), consistent with the existing parsed-source-record retention.
 - [ ] **Participants:** names found in source data are offered as suggestions to add, never pre-seeded. Lightweight add/edit of people on any entry.
+- [ ] **Field-level dedup resolution.** The current tier model assigns a single precedence to a whole entry. Cross-source imports (e.g. Netflix has the accurate watch date; Letterboxd has the rating and review) require field-level merging — take the non-null value for each field from the higher-quality source. The `reflection` field is already preserved this way in `commitBatch`; generalise this pattern. Accepted limitation for now: Letterboxd tier 2, Netflix tier 3; Letterboxd supersedes Netflix.
 
 ---
 
