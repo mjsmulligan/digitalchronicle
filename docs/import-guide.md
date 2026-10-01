@@ -29,23 +29,20 @@ Legs are individual transport segments: a flight, a train ride, or a road trip.
 
 ### Viaduct (tier 2)
 
-Viaduct is a travel booking aggregator. It exports a structured CSV of all your bookings.
+[Viaduct](https://viaduct.world) is a free, web-based digital logbook and mapping platform for train enthusiasts and travellers to record, track, and visualise their rail journeys.
 
 **How to export:**
-1. Log in to your Viaduct account.
-2. Go to **My Trips → Export**.
-3. Download `viaduct_export.csv`.
+1. Log in to your Viaduct account at [viaduct.world](https://viaduct.world).
+2. Go to your logbook and use the export option to download your journey history as a CSV.
 
 **What you get:**
-- Flight segments with airline, flight number, aircraft type, and seat
-- Train segments with operator and train number
-- Road segments
+- Rail segments with operator and train number
 - Departure and arrival times in local timezones
-- Trip groupings carried over from Viaduct
+- Station names used as origin and destination
 
 **Notes:**
 - Times are imported as local wall-clock time and stored with IANA timezone data.
-- If a city or airport code can't be resolved to a timezone, the time is stored as date-only.
+- If a station name can't be resolved to a timezone, the time is stored as date-only.
 
 ### Manual entry (tier 1)
 
@@ -61,7 +58,7 @@ A stay is a period spent in one place — a hotel, an Airbnb, staying with frien
 
 ### Viaduct (tier 2)
 
-Viaduct exports include accommodation bookings alongside flights and trains. Same export file as for Legs — stays are parsed out automatically.
+Viaduct is focused on rail journeys — accommodation bookings are not part of its export. Add stays manually or via the iCalendar connector if you have hotel bookings in your calendar.
 
 **What you get:**
 - Property name and city
