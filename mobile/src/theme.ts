@@ -217,8 +217,11 @@ export const common = {
     alignItems: "center" as const,
   },
 
-  /** Standard dark header options */
+  /** Standard dark header options — spread into Stack.Screen options.
+   *  Includes headerShown: true so screens override the root layout's
+   *  global headerShown: false default. */
   header: {
+    headerShown: true,
     headerStyle: { backgroundColor: colors.surface },
     headerTintColor: colors.textBright,
     headerShadowVisible: false,

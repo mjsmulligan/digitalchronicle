@@ -14,7 +14,7 @@ import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
 import { uid, type Purpose } from "@chronicle/journal/types";
-import { colors, text, spacing, radius } from "../../src/theme";
+import { colors, text, spacing, radius, common } from "../../src/theme";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -82,9 +82,7 @@ export default function NewTripScreen() {
       <Stack.Screen
         options={{
           title: "New Trip",
-          headerStyle: { backgroundColor: "#1e293b" },
-          headerTintColor: "#f8fafc",
-          headerShadowVisible: false,
+          ...common.header,
           headerRight: () => (
             <Pressable
               onPress={handleSave}
