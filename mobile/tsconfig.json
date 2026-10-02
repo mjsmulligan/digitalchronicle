@@ -1,0 +1,32 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@chronicle/journal/types": [
+        "../src/lib/journal/types"
+      ],
+      "@chronicle/journal/storage": [
+        "../src/lib/journal/storage"
+      ],
+      "@chronicle/journal/db": [
+        "../src/lib/journal/db"
+      ],
+      "@chronicle/journal/staging": [
+        "../src/lib/journal/staging"
+      ],
+      "@chronicle/journal/connectors/*": [
+        "../src/lib/journal/connectors/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    ".expo/types/**/*.d.ts",
+    "expo-env.d.ts",
+    ".expo/types/**/*.ts"
+  ]
+}

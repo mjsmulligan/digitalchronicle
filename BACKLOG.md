@@ -74,11 +74,50 @@ Direct browser-to-service connections. All tokens and credentials stay on-device
 
 ---
 
-## 5. Mobile & Packaging (Future)
+## 5. React Native (Expo) — Mobile Companion
 
-- [ ] **Capacitor Hybrid Shell** — package the client bundle into an Android APK with native performance and offline-first reliability.
-- [ ] **Android System "Share To" Intent** — register the app to accept `.csv`, `.ics`, and `.json` files directly from mobile downloads or email attachments into the Staging Hub.
-- [ ] **Persistent Storage Durability** — explore Origin Private File System (OPFS) or a native SQLite plugin via Capacitor to prevent accidental browser cache eviction.
+Chronicle is transitioning to a native iOS and Android app via a **pragmatic hybrid monorepo**: the root web app (TanStack Start + Vite + Tailwind + shadcn/ui) stays intact and the `src/lib/journal/` core engine remains the single source of truth, shared with a new `./mobile` Expo project.
+
+### Why React Native over Capacitor — four pillars
+
+1. **Virtualization & performance** — `FlashList` / `@shopify/flash-list` handles lifetime logs (thousands of days, concerts, trips) without janking. A web view cannot efficiently virtualise this volume.
+2. **Durable local storage** — `expo-sqlite` with FTS5 gives a proper embedded SQL engine, avoiding IndexedDB eviction on low-storage Android devices that silently wipe browser data.
+3. **On-device native sources** — system Calendar (`expo-calendar`), Location visits (`expo-location`), and the native Share Sheet intent give Chronicle data that a web app can never access.
+4. **Rich media sandbox** — photos, audio notes, and ticket PDFs stored in the native app sandbox persist reliably via `expo-file-system` / `expo-media-library`.
+
+### Repo structure
+
+```
+digitalchronicle/          ← existing web root (TanStack Start)
+  src/lib/journal/         ← shared core engine (connectors, staging, types)
+    storage.ts             ← StorageAdapter interface (NEW — web + mobile share this)
+    db.ts                  ← IDBAdapter implements StorageAdapter (web only)
+  mobile/                  ← Expo companion app (NEW)
+    metro.config.js        ← watchFolders + nodeModulesPaths for shared src/
+    tsconfig.json          ← path aliases: @chronicle/journal → ../src/lib/journal
+    src/lib/storage/
+      SQLiteAdapter.ts     ← SQLiteAdapter implements StorageAdapter (mobile)
+```
+
+### Phase 1 — Storage abstraction (in progress)
+
+- [x] **`StorageAdapter` interface** — `src/lib/journal/storage.ts`; CRUD for all stores; shared by web and mobile.
+- [x] **`IDBAdapter` class** — `db.ts` refactored so IndexedDB is one concrete implementation; `setAdapter()` lets mobile inject its own adapter before `initJournal()`.
+- [x] **`mobile/` scaffold** — Expo project with TypeScript, `expo-sqlite`, Metro monorepo config, and a basic `SQLiteAdapter` implementation.
+
+### Phase 2 — Native shell
+
+- [ ] **Expo Router navigation** — Tab bar: Chronicle · Trips · Culture · Moments · People.
+- [ ] **Share Sheet intent handler** — accept `.csv`, `.ics`, `.vcf`, `.json` from iOS/Android Share → deposit into Staging Hub.
+- [ ] **`expo-calendar` integration** — pull system Calendar events on permission grant; feed into iCalendar connector.
+- [ ] **Offline-first sync indicator** — badge on import tab showing unreviewed Staging records.
+
+### Phase 3 — Rich media & search
+
+- [ ] **Full-text search** — SQLite FTS5 virtual table over entry titles, reflections, and setlists; search bar on Chronicle view.
+- [ ] **Photo attachments** — attach photos from `expo-media-library` to entries; thumbnails in entry cards.
+- [ ] **Audio notes** — short voice memos attached to entries via `expo-av`.
+- [ ] **Ticket PDF vault** — store and view ticket PDFs in the native file sandbox.
 
 ---
 

@@ -1,20 +1,14 @@
 // Offline gazetteer — no external place lookups, keeps journal data local.
-// stations.generated.ts is lazy-loaded only when needed (e.g. on the Places page).
-type Stations = typeof import("./stations.generated").STATIONS;
-let stations: Stations | undefined;
-let stationPromise: Promise<void> | undefined;
+// Station data is a static JSON import so both Vite and Metro resolve it at
+// bundle time without dynamic-import path issues.
+import STATIONS_JSON from "./stations.generated.json";
 
+type StationTuple = [string, number, number, string]; // [name, lat, lon, timezone]
+const STATIONS = STATIONS_JSON as Record<string, StationTuple>;
+
+/** No-op on this side — data is already loaded statically.  Kept for API compat. */
 export function loadStations(): Promise<void> {
-  if (stations) return Promise.resolve();
-  stationPromise ??= import("./stations.generated")
-    .then(({ STATIONS }) => {
-      stations = STATIONS;
-    })
-    .catch((error: unknown) => {
-      stationPromise = undefined;
-      throw error;
-    });
-  return stationPromise;
+  return Promise.resolve();
 }
 
 // The hand-curated entries take precedence over the bundled station dataset.
@@ -90,7 +84,7 @@ export function locate(code: string): PlaceInfo | undefined {
   const key = normKey(code);
   const curated = PLACES[key];
   if (curated) return curated;
-  const station = stations?.[key];
+  const station = STATIONS[key];
   if (!station) return undefined;
   const [name, lat, lon, timezone] = station;
   return { name, lat, lon, timezone };

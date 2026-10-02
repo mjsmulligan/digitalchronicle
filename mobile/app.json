@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Chronicle",
+    "slug": "chronicle",
+    "scheme": "chronicle",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#0f172a"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.chronicle.app"
+    },
+    "android": {
+      "package": "com.chronicle.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "data": [
+            { "mimeType": "text/csv" },
+            { "mimeType": "text/calendar" },
+            { "mimeType": "text/x-vcard" },
+            { "mimeType": "application/json" },
+            { "mimeType": "application/octet-stream" }
+          ],
+          "category": ["DEFAULT", "BROWSABLE"]
+        },
+        {
+          "action": "SEND",
+          "data": [
+            { "mimeType": "text/csv" },
+            { "mimeType": "text/calendar" },
+            { "mimeType": "text/x-vcard" },
+            { "mimeType": "application/json" },
+            { "mimeType": "*/*" }
+          ],
+          "category": ["DEFAULT"]
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-document-picker"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

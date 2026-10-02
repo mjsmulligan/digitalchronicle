@@ -1,0 +1,35 @@
+{
+  "name": "chronicle-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/vector-icons": "^15.1.1",
+    "expo": "~57.0.0",
+    "expo-asset": "*",
+    "expo-constants": "~57.0.20",
+    "expo-document-picker": "^57.0.3",
+    "expo-file-system": "^57.0.7",
+    "expo-linking": "~57.0.11",
+    "expo-router": "~57.0.24",
+    "expo-sqlite": "~57.0.3",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-web": "^0.21.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@types/react": "~19.0.0",
+    "babel-plugin-module-resolver": "^5.0.0",
+    "typescript": "^5.3.0"
+  }
+}
