@@ -1,5 +1,6 @@
 import { allEntries, getState, putMany, removeMany, storeFor } from "./db";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
+import { loadStations } from "./geo";
 import {
   uid, view, type Entry, type StagedRecord, type StagingBatch,
 } from "./types";
@@ -26,6 +27,9 @@ export function placeLabel(e: Entry): string {
 }
 
 export async function stageFile(filename: string, text: string, forced?: string) {
+  // Connectors resolve place names against the gazetteer during parsing —
+  // make sure it's loaded (lazy-loaded module) before we start.
+  await loadStations();
   const header = text.replace(/^﻿/, "").split(/\r?\n/, 1)[0].toLowerCase();
 
   // Reject explicitly unsupported formats before any parsing.
