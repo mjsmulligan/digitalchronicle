@@ -252,12 +252,19 @@ export default function ImportScreen() {
   const processUri = async (uri: string, filename: string) => {
     setPhase("parsing");
     setError(null);
+    // Yield to the JS event loop so the "parsing…" spinner renders before
+    // the heavy stageFile work begins. Without this, React batches the state
+    // update and the UI stays frozen on "idle" until everything finishes.
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
     try {
       // fetch() handles file:// and content:// URIs in React Native,
       // including Expo Go's sandboxed DocumentPicker paths.
       const response = await fetch(uri);
       if (!response.ok) throw new Error(`Could not read file (HTTP ${response.status})`);
       const text = await response.text();
+      // Yield again after the file read so the thread isn't starved before
+      // the connector parse + dedup pass (can be several seconds for large files).
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
       const batch = await stageFile(filename, text);
       setFreshBatch(batch);
       setPhase("review");
