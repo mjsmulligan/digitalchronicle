@@ -19,6 +19,9 @@
       ],
       "@chronicle/journal/connectors/*": [
         "../src/lib/journal/connectors/*"
+      ],
+      "@chronicle/journal/contacts": [
+        "../src/lib/journal/contacts"
       ]
     }
   },

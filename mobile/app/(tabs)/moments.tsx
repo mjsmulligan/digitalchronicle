@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import { CATEGORY_LABEL, view, type JEvent, type EventCategory } from "@chronicle/journal/types";
 
@@ -65,8 +66,12 @@ function FilterPill({
 
 function MomentRow({ event }: { event: JEvent }) {
   const v = view(event) as JEvent;
+  const router = useRouter();
   return (
-    <View style={styles.row}>
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      onPress={() => router.push(`/entry/${event.id}`)}
+    >
       <Text style={styles.rowEmoji}>{CATEGORY_EMOJI[v.category]}</Text>
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle} numberOfLines={1}>
@@ -76,7 +81,8 @@ function MomentRow({ event }: { event: JEvent }) {
           {[v.venue, v.city].filter(Boolean).join(", ")} · {v.start.slice(0, 10)}
         </Text>
       </View>
-    </View>
+      <Text style={styles.rowChevron}>›</Text>
+    </Pressable>
   );
 }
 
@@ -158,10 +164,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "#1e293b",
     gap: 12,
   },
+  rowPressed: { backgroundColor: "#1a2535" },
   rowEmoji: { fontSize: 20, lineHeight: 26 },
   rowBody: { flex: 1 },
   rowTitle: { color: "#f1f5f9", fontSize: 15, fontWeight: "500", marginBottom: 3 },
   rowSub: { color: "#64748b", fontSize: 12 },
+  rowChevron: { color: "#334155", fontSize: 20, lineHeight: 26 },
   empty: {
     flex: 1,
     alignItems: "center",

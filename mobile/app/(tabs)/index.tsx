@@ -4,12 +4,13 @@
  */
 import { useMemo } from "react";
 import {
-  FlatList,
+  Pressable,
   SectionList,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry } from "@chronicle/journal/types";
 
@@ -37,8 +38,12 @@ interface DaySection {
 
 function EntryRow({ entry }: { entry: Entry }) {
   const v = view(entry);
+  const router = useRouter();
   return (
-    <View style={styles.row}>
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      onPress={() => router.push(`/entry/${entry.id}`)}
+    >
       <Text style={styles.rowEmoji}>{kindLabel(entry)}</Text>
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle} numberOfLines={1}>
@@ -48,7 +53,8 @@ function EntryRow({ entry }: { entry: Entry }) {
           <Text style={styles.rowMeta}>{"★".repeat(Math.round(v.rating / 2))}</Text>
         )}
       </View>
-    </View>
+      <Text style={styles.rowChevron}>›</Text>
+    </Pressable>
   );
 }
 
@@ -84,7 +90,7 @@ export default function ChronicleScreen() {
         <Text style={styles.emptyIcon}>📖</Text>
         <Text style={styles.emptyTitle}>Your journal is empty</Text>
         <Text style={styles.emptyHint}>
-          Import a CSV or ICS file on the web to start your Chronicle.
+          Tap the import icon above to add your first entries.
         </Text>
       </View>
     );
@@ -130,10 +136,12 @@ const styles = StyleSheet.create({
     borderBottomColor: "#1e293b",
     gap: 12,
   },
+  rowPressed: { backgroundColor: "#1e293b" },
   rowEmoji: { fontSize: 18, lineHeight: 24 },
   rowBody: { flex: 1 },
   rowTitle: { color: "#f1f5f9", fontSize: 15, fontWeight: "500" },
   rowMeta: { color: "#f59e0b", fontSize: 12, marginTop: 2 },
+  rowChevron: { color: "#334155", fontSize: 20, lineHeight: 24 },
   empty: {
     flex: 1,
     backgroundColor: "#0f172a",

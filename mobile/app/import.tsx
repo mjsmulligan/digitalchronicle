@@ -26,7 +26,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { useJournal, removeMany } from "@chronicle/journal/db";
+import { useJournal, removeMany, type CommitProgress } from "@chronicle/journal/db";
 import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
 import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatus } from "@chronicle/journal/types";
 
@@ -105,20 +105,32 @@ function RecordRow({
   );
 }
 
+// How many rows to render initially; user can expand to see all.
+const INITIAL_VISIBLE = 100;
+
 function BatchReview({
   batch,
+  commitProgress,
   onCommit,
   onDiscard,
 }: {
   batch: StagingBatch;
+  commitProgress: CommitProgress | null;
   onCommit: (count: number) => void;
   onDiscard: () => void;
 }) {
   const [b, setB] = useState(batch);
-  const [committing, setCommitting] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+
+  const committing = commitProgress?.batchId === batch.id;
+  const progressPct = committing && commitProgress!.total > 0
+    ? commitProgress!.done / commitProgress!.total
+    : 0;
 
   const selected = b.records.filter((r) => r.selected).length;
   const importable = b.records.filter((r) => isSelectable(r.status)).length;
+  const visibleRecords = b.records.slice(0, visibleCount);
+  const hiddenCount = b.records.length - visibleCount;
 
   const update = useCallback(
     (next: StagingBatch) => {
@@ -146,15 +158,33 @@ function BatchReview({
     update({ ...b, records: b.records.map((r) => ({ ...r, selected: false })) });
 
   const handleCommit = async () => {
-    setCommitting(true);
     try {
       const result = await commitBatch(b);
       onCommit(result.count);
     } catch (err) {
       Alert.alert("Commit failed", String(err));
-      setCommitting(false);
     }
   };
+
+  // While committing, collapse the full card to a slim progress indicator
+  if (committing) {
+    return (
+      <View style={styles.commitProgressCard}>
+        <View style={styles.commitProgressTop}>
+          <ActivityIndicator size="small" color="#6366f1" />
+          <View style={styles.commitProgressText}>
+            <Text style={styles.batchFilename} numberOfLines={1}>{b.filename}</Text>
+            <Text style={styles.commitProgressCount}>
+              Saving {commitProgress!.done} of {commitProgress!.total} entries…
+            </Text>
+          </View>
+        </View>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${Math.round(progressPct * 100)}%` }]} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.batchContainer}>
@@ -197,9 +227,10 @@ function BatchReview({
         </Pressable>
       </View>
 
-      {/* Record list */}
+      {/* Record list — capped at INITIAL_VISIBLE to avoid rendering thousands
+          of rows at once (FlatList can't virtualise when scrollEnabled=false). */}
       <FlatList
-        data={b.records}
+        data={visibleRecords}
         keyExtractor={(r) => r.entry.id}
         renderItem={({ item, index }) => (
           <RecordRow
@@ -209,22 +240,30 @@ function BatchReview({
         )}
         style={styles.recordList}
         scrollEnabled={false}
+        ListFooterComponent={
+          hiddenCount > 0 ? (
+            <Pressable
+              style={styles.loadMoreBtn}
+              onPress={() => setVisibleCount((n) => n + INITIAL_VISIBLE)}
+            >
+              <Text style={styles.loadMoreText}>
+                Show next {Math.min(INITIAL_VISIBLE, hiddenCount)} of {hiddenCount} remaining
+              </Text>
+            </Pressable>
+          ) : null
+        }
       />
 
       {/* Commit button */}
       <View style={styles.commitBar}>
         <Pressable
-          style={[styles.commitBtn, (!selected || committing) && styles.commitBtnDisabled]}
-          disabled={!selected || committing}
+          style={[styles.commitBtn, !selected && styles.commitBtnDisabled]}
+          disabled={!selected}
           onPress={handleCommit}
         >
-          {committing ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.commitBtnText}>
-              Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
-            </Text>
-          )}
+          <Text style={styles.commitBtnText}>
+            Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -350,7 +389,7 @@ export default function ImportScreen() {
       {phase === "parsing" && (
         <View style={styles.parsing}>
           <ActivityIndicator color="#6366f1" />
-          <Text style={styles.parsingText}>Parsing file…</Text>
+          <Text style={styles.parsingText}>Parsing file… this may take a moment for large imports</Text>
         </View>
       )}
 
@@ -366,6 +405,7 @@ export default function ImportScreen() {
         <BatchReview
           key={batch.id}
           batch={batch}
+          commitProgress={journal.commitProgress}
           onCommit={handleCommit}
           onDiscard={() => handleDiscard(batch.id)}
         />
@@ -466,6 +506,13 @@ const styles = StyleSheet.create({
   quickActionText: { color: "#6366f1", fontSize: 12, fontWeight: "600" },
 
   recordList: {},
+  loadMoreBtn: {
+    padding: 14,
+    alignItems: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#334155",
+  },
+  loadMoreText: { color: "#6366f1", fontSize: 13, fontWeight: "600" },
   recordRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -493,4 +540,32 @@ const styles = StyleSheet.create({
   },
   commitBtnDisabled: { opacity: 0.4 },
   commitBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+
+  commitProgressCard: {
+    backgroundColor: "#1e293b",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#334155",
+    padding: 14,
+    marginBottom: 20,
+    gap: 10,
+  },
+  commitProgressTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  commitProgressText: { flex: 1 },
+  commitProgressCount: { color: "#64748b", fontSize: 12, marginTop: 2 },
+  progressTrack: {
+    height: 4,
+    backgroundColor: "#334155",
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#6366f1",
+    borderRadius: 2,
+  },
 });

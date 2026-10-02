@@ -3,7 +3,8 @@
  * Each card shows date range, title, purpose, and a leg/stay/event count.
  */
 import { useMemo } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Trip } from "@chronicle/journal/types";
 
@@ -27,8 +28,12 @@ const PURPOSE_ICON: Record<string, string> = {
 
 function TripCard({ trip, entryCount }: { trip: Trip; entryCount: number }) {
   const n = nights(trip);
+  const router = useRouter();
   return (
-    <View style={styles.card}>
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={() => router.push(`/trip/${trip.id}`)}
+    >
       <View style={styles.cardHeader}>
         <Text style={styles.dateRange}>
           {trip.start} → {trip.end}
@@ -49,7 +54,7 @@ function TripCard({ trip, entryCount }: { trip: Trip; entryCount: number }) {
           {entryCount} {entryCount === 1 ? "entry" : "entries"}
         </Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -107,6 +112,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#334155",
   },
+  cardPressed: { opacity: 0.7 },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",

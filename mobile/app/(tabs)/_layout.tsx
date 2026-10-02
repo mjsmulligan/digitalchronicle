@@ -1,6 +1,6 @@
 import { Tabs, Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Pressable } from "react-native";
+import { Pressable, View } from "react-native";
 
 const THEME = {
   bg: "#0f172a",
@@ -51,11 +51,18 @@ export default function TabLayout() {
           tabBarLabel: "Chronicle",
           tabBarIcon: ({ focused }) => tabIcon(focused, "book", "book-outline"),
           headerRight: () => (
-            <Link href="/import" asChild>
-              <Pressable style={{ marginRight: 16 }}>
-                <Ionicons name="cloud-upload-outline" size={22} color={THEME.active} />
-              </Pressable>
-            </Link>
+            <View style={{ flexDirection: "row", gap: 4, marginRight: 8 }}>
+              <Link href="/import" asChild>
+                <Pressable style={{ padding: 8 }}>
+                  <Ionicons name="cloud-upload-outline" size={22} color={THEME.active} />
+                </Pressable>
+              </Link>
+              <Link href="/settings" asChild>
+                <Pressable style={{ padding: 8 }}>
+                  <Ionicons name="settings-outline" size={22} color={THEME.inactive} />
+                </Pressable>
+              </Link>
+            </View>
           ),
         }}
       />
@@ -65,6 +72,13 @@ export default function TabLayout() {
           title: "Trips",
           tabBarIcon: ({ focused }) =>
             tabIcon(focused, "airplane", "airplane-outline"),
+          headerRight: () => (
+            <Link href="/trip/new" asChild>
+              <Pressable style={{ padding: 8, marginRight: 8 }}>
+                <Ionicons name="add" size={26} color={THEME.active} />
+              </Pressable>
+            </Link>
+          ),
         }}
       />
       <Tabs.Screen
@@ -88,6 +102,13 @@ export default function TabLayout() {
           title: "People",
           tabBarIcon: ({ focused }) =>
             tabIcon(focused, "people", "people-outline"),
+          headerRight: () => (
+            <Link href="/import-people" asChild>
+              <Pressable style={{ padding: 8, marginRight: 8 }}>
+                <Ionicons name="person-add-outline" size={22} color={THEME.active} />
+              </Pressable>
+            </Link>
+          ),
         }}
       />
     </Tabs>

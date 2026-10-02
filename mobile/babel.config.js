@@ -13,6 +13,7 @@ module.exports = function (api) {
             "@chronicle/journal/db": "../src/lib/journal/db",
             "@chronicle/journal/staging": "../src/lib/journal/staging",
             "@chronicle/journal/connectors": "../src/lib/journal/connectors",
+            "@chronicle/journal/contacts": "../src/lib/journal/contacts",
           },
           extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
         },

@@ -89,10 +89,17 @@ export function setAdapter(a: StorageAdapter): void {
 
 // ─── React state layer ────────────────────────────────────────────────────────
 
+export interface CommitProgress {
+  batchId: string;
+  done: number;
+  total: number;
+}
+
 export interface State extends JournalData {
   ready: boolean;
+  commitProgress: CommitProgress | null;
 }
-const empty = (): State => ({ ready: false, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [] });
+const empty = (): State => ({ ready: false, commitProgress: null, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [] });
 const SERVER = empty();
 let state: State = empty();
 const listeners = new Set<() => void>();
@@ -151,6 +158,11 @@ export function getState() {
 }
 
 type DbRow = { id: string };
+/** Update the in-progress commit indicator. Pass null to clear. */
+export function setCommitProgress(progress: CommitProgress | null): void {
+  emit({ commitProgress: progress });
+}
+
 export async function putMany(store: StoreName, items: (DbRow & Record<string, any>)[] | any[]) {
   if (!items.length) return;
   if ((store === "legs" || store === "stays" || store === "events") && (items as Entry[]).some(hasPlace)) await loadStations();
