@@ -87,14 +87,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="moments"
-        options={{
-          title: "Moments",
-          tabBarIcon: ({ focused }) =>
-            tabIcon(focused, "star", "star-outline"),
-        }}
-      />
-      <Tabs.Screen
         name="people"
         options={{
           title: "People",
