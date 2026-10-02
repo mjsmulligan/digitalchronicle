@@ -1,7 +1,7 @@
 import { Tabs, Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
-import { colors } from "../../src/theme";
+import { colors, fonts, common } from "../../src/theme";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -26,6 +26,12 @@ export default function TabLayout() {
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.textBright,
         headerShadowVisible: false,
+        headerTitleStyle: {
+          fontFamily: fonts.serifSemiBold,
+          fontWeight: "600",
+          fontSize: 18,
+          color: colors.textBright,
+        },
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,

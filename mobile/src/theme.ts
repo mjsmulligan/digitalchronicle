@@ -5,6 +5,29 @@
  * Palette: warm dark (coffee/leather backgrounds, parchment text, terracotta accent).
  * Mirrors the character of the web version's warm parchment theme in dark mode.
  */
+import { Platform } from "react-native";
+
+// ─── Fonts ────────────────────────────────────────────────────────────────────
+//
+// Serif: Noto Serif (Android) / Georgia (iOS) — warm, book-ish, matches the
+// web version's editorial feel. These are system-resident fonts that need no
+// loading. To upgrade to Lora, install @expo-google-fonts/lora, load the
+// variants in _layout.tsx, then swap these strings:
+//   serifBold → "Lora_700Bold", serifSemiBold → "Lora_600SemiBold", etc.
+//
+// Sans: undefined here = system default (Roboto on Android, SF Pro on iOS).
+// To upgrade to Inter, swap undefined with the Inter_* variant strings.
+
+export const fonts = {
+  /** Bold serif — trip titles, screen hero text, empty-state headings */
+  serifBold:     Platform.select({ ios: "Georgia", default: "serif" }) as string,
+  /** Semi-bold serif — modal titles, card headings */
+  serifSemiBold: Platform.select({ ios: "Georgia", default: "serif" }) as string,
+  /** Medium serif — subtitles, longform pull-quotes */
+  serifMedium:   Platform.select({ ios: "Georgia", default: "serif" }) as string,
+  /** Regular serif — body in detail views */
+  serifRegular:  Platform.select({ ios: "Georgia", default: "serif" }) as string,
+} as const;
 
 // ─── Colours ─────────────────────────────────────────────────────────────────
 
@@ -199,5 +222,11 @@ export const common = {
     headerStyle: { backgroundColor: colors.surface },
     headerTintColor: colors.textBright,
     headerShadowVisible: false,
+    headerTitleStyle: {
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600" as const,
+      fontSize: 18,
+      color: colors.textBright,
+    },
   },
 } as const;

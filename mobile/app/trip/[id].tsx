@@ -7,7 +7,7 @@ import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View }
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
-import { colors, text, spacing, radius, common } from "../../src/theme";
+import { colors, fonts, text, spacing, radius, common } from "../../src/theme";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ function nights(trip: Trip): number {
 }
 
 function entryEmoji(e: Entry): string {
-  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚂" : "🚗";
+  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚆" : "🚗";
   if (e.kind === "stay") return "🏨";
   if (e.kind === "film") return "🎬";
   if (e.kind === "episode") return "📺";
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
   dateRange: { ...text.sm, color: colors.textTertiary, fontFamily: "monospace" },
   purposeIcon: { fontSize: 18 },
-  tripTitle: { fontSize: 22, fontWeight: "700", color: colors.textPrimary, marginBottom: spacing.sm },
+  tripTitle: { fontSize: 22, fontFamily: fonts.serifBold, fontWeight: "700", color: colors.textPrimary, marginBottom: spacing.sm },
   tripMeta: { flexDirection: "row", gap: spacing.sm2, marginBottom: 4 },
   tripMetaText: { ...text.smMd, color: colors.textSecondary },
   tripMetaDot: { ...text.smMd, color: colors.textMuted },
@@ -303,7 +303,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     gap: spacing.md,
     borderWidth: 1,
-    borderColor: "#1e3a5f",
+    borderColor: colors.border,
   },
 
   entryEmoji: { fontSize: 18 },

@@ -29,7 +29,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useJournal, removeMany, type CommitProgress } from "@chronicle/journal/db";
 import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
 import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatus } from "@chronicle/journal/types";
-import { colors, text, spacing, radius, common } from "../src/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, fonts, text, spacing, radius, common } from "../src/theme";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ const STATUS_LABEL: Record<StageStatus, string> = {
 };
 
 function entryEmoji(e: StagedRecord["entry"]): string {
-  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚂" : "🚗";
+  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚆" : "🚗";
   if (e.kind === "stay") return "🏨";
   if (e.kind === "film") return "🎬";
   if (e.kind === "episode") return "📺";
@@ -82,8 +83,8 @@ function RecordRow({
         value={record.selected}
         onValueChange={onToggle}
         disabled={!selectable}
-        trackColor={{ true: "#6366f1", false: "#334155" }}
-        thumbColor={record.selected ? "#e0e7ff" : "#94a3b8"}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={record.selected ? colors.accentSubtle : colors.textMuted}
         style={styles.recordSwitch}
       />
       <Text style={styles.recordEmoji}>{entryEmoji(record.entry)}</Text>
@@ -277,6 +278,7 @@ export default function ImportScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ uri?: string }>();
   const journal = useJournal();
+  const { top } = useSafeAreaInsets();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -341,7 +343,7 @@ export default function ImportScreen() {
     Alert.alert(
       "Import complete",
       `${count} ${count === 1 ? "entry" : "entries"} added to your journal.`,
-      [{ text: "OK", onPress: () => router.back() }]
+      [{ text: "OK", onPress: () => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)") }]
     );
   };
 
@@ -361,8 +363,22 @@ export default function ImportScreen() {
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen options={{ title: "Import", ...common.header }} />
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
+    >
+      {/* Modal chrome — drag handle + title */}
+      <View style={styles.dragHandle} />
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Import</Text>
+        <Pressable
+          onPress={() => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")}
+          hitSlop={8}
+          style={styles.closeBtn}
+        >
+          <Ionicons name="close" size={18} color={colors.textSecondary} />
+        </Pressable>
+      </View>
 
       {/* Pick file button */}
       <Pressable
@@ -426,6 +442,38 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { flexGrow: 1, padding: spacing.base, paddingBottom: spacing["2xl"] },
 
+  // Modal chrome
+  dragHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xl,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textBright,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    backgroundColor: colors.surface,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
   pickBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -456,7 +504,13 @@ const styles = StyleSheet.create({
 
   empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacing["2xl"] },
   emptyIcon: { fontSize: 40, marginBottom: spacing.md },
-  emptyTitle: { fontSize: 17, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm2 },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: spacing.sm2,
+  },
   emptyHint: { ...text.smMd, color: colors.textTertiary, textAlign: "center" },
 
   // Batch review
