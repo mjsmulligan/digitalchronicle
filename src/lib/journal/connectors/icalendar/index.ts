@@ -234,13 +234,11 @@ function parseIcs(text: string): ParseResult {
       ? `${dtstart.dateStr}T${dtstart.timeStr}`
       : dtstart.dateStr;
 
-    // Prefer the explicit TZID from DTSTART; fall back to city-based lookup.
+    // Prefer the explicit TZID from DTSTART (including "UTC" for Z-suffixed
+    // timestamps); only fall back to city-based lookup for floating times.
     const { venue, city } = parseLocation(location);
     const tzId = dtstart.tz;
-    const tz =
-      tzId && tzId !== "UTC"
-        ? tzId
-        : timezoneFor(city || "") || undefined;
+    const tz = tzId ?? (timezoneFor(city || "") || undefined);
 
     const category = inferCategory(summary, categories);
 
