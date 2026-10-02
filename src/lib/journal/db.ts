@@ -67,7 +67,7 @@ class IDBAdapter implements StorageAdapter {
   }
 
   async clearAll(): Promise<void> {
-    await this.replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [] });
+    await this.replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [] });
   }
 }
 

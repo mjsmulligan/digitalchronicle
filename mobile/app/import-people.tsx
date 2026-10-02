@@ -8,7 +8,6 @@
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -17,6 +16,7 @@ import {
   View,
   ScrollView,
 } from "react-native";
+import { useDialog, Dialog } from "../src/components/Dialog";
 import { Stack, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,7 +24,8 @@ import { useJournal, putMany } from "@chronicle/journal/db";
 import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { uid } from "@chronicle/journal/types";
 import type { Person } from "@chronicle/journal/types";
-import { colors, text, spacing, radius } from "../src/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, fonts, text, spacing, radius } from "../src/theme";
 
 // ── types ──────────────────────────────────────────────────────────────────────
 
@@ -85,8 +86,8 @@ function ContactRow({
         value={contact.selected}
         onValueChange={onToggle}
         disabled={!isNew}
-        trackColor={{ true: "#6366f1", false: "#334155" }}
-        thumbColor={contact.selected ? "#e0e7ff" : "#94a3b8"}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={contact.selected ? colors.accentSubtle : colors.textMuted}
         style={styles.contactSwitch}
       />
       <View style={styles.contactBody}>
@@ -109,9 +110,11 @@ function ContactRow({
 export default function ImportPeopleScreen() {
   const router = useRouter();
   const journal = useJournal();
+  const { top } = useSafeAreaInsets();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const dialog = useDialog();
   const [contacts, setContacts] = useState<ReviewContact[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
 
@@ -176,27 +179,35 @@ export default function ImportPeopleScreen() {
         createdAt: now,
       }));
       await putMany("people", people);
-      Alert.alert(
+      dialog.alert(
         "Import complete",
         `${people.length} ${people.length === 1 ? "person" : "people"} added.`,
-        [{ text: "OK", onPress: () => router.back() }]
+        () => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")
       );
     } catch (err) {
-      Alert.alert("Commit failed", String(err));
+      dialog.alert("Commit failed", String(err));
       setPhase("review");
     }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: "Import People",
-          headerStyle: { backgroundColor: "#1e293b" },
-          headerTintColor: "#f8fafc",
-          headerShadowVisible: false,
-        }}
-      />
+    <>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
+    >
+      {/* Modal chrome */}
+      <View style={styles.dragHandle} />
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Import People</Text>
+        <Pressable
+          onPress={() => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")}
+          hitSlop={8}
+          style={styles.closeBtn}
+        >
+          <Ionicons name="close" size={18} color={colors.textSecondary} />
+        </Pressable>
+      </View>
 
       {/* File picker */}
       <Pressable
@@ -204,7 +215,7 @@ export default function ImportPeopleScreen() {
         onPress={pickFile}
         disabled={phase === "parsing"}
       >
-        <Ionicons name="person-add-outline" size={22} color="#818cf8" />
+        <Ionicons name="person-add-outline" size={22} color={colors.accentSoft} />
         <Text style={styles.pickBtnText}>Choose a contacts file</Text>
       </Pressable>
       <Text style={styles.hint}>Supports .vcf (vCard) and .csv (Google Contacts export)</Text>
@@ -212,7 +223,7 @@ export default function ImportPeopleScreen() {
       {/* Parsing */}
       {phase === "parsing" && (
         <View style={styles.parsing}>
-          <ActivityIndicator color="#6366f1" />
+          <ActivityIndicator color={colors.accent} />
           <Text style={styles.parsingText}>Parsing contacts…</Text>
         </View>
       )}
@@ -273,7 +284,7 @@ export default function ImportPeopleScreen() {
           <View style={styles.commitBar}>
             {phase === "committing" ? (
               <View style={styles.committing}>
-                <ActivityIndicator size="small" color="#6366f1" />
+                <ActivityIndicator size="small" color={colors.accent} />
                 <Text style={styles.committingText}>Saving…</Text>
               </View>
             ) : (
@@ -291,6 +302,8 @@ export default function ImportPeopleScreen() {
         </View>
       )}
     </ScrollView>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 
@@ -299,6 +312,37 @@ export default function ImportPeopleScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
+
+  dragHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xl,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textBright,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    backgroundColor: colors.surface,
+    borderRadius: 9999,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
 
   pickBtn: {
     flexDirection: "row",

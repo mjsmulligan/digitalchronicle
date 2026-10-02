@@ -14,7 +14,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -23,13 +22,15 @@ import {
   View,
   ScrollView,
 } from "react-native";
+import { useDialog, Dialog } from "../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useJournal, removeMany, type CommitProgress } from "@chronicle/journal/db";
 import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
 import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatus } from "@chronicle/journal/types";
-import { colors, text, spacing, radius } from "../src/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, fonts, text, spacing, radius, common } from "../src/theme";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ const STATUS_LABEL: Record<StageStatus, string> = {
 };
 
 function entryEmoji(e: StagedRecord["entry"]): string {
-  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚂" : "🚗";
+  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚆" : "🚗";
   if (e.kind === "stay") return "🏨";
   if (e.kind === "film") return "🎬";
   if (e.kind === "episode") return "📺";
@@ -82,8 +83,8 @@ function RecordRow({
         value={record.selected}
         onValueChange={onToggle}
         disabled={!selectable}
-        trackColor={{ true: "#6366f1", false: "#334155" }}
-        thumbColor={record.selected ? "#e0e7ff" : "#94a3b8"}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={record.selected ? colors.accentSubtle : colors.textMuted}
         style={styles.recordSwitch}
       />
       <Text style={styles.recordEmoji}>{entryEmoji(record.entry)}</Text>
@@ -114,11 +115,13 @@ function BatchReview({
   commitProgress,
   onCommit,
   onDiscard,
+  onError,
 }: {
   batch: StagingBatch;
   commitProgress: CommitProgress | null;
   onCommit: (count: number) => void;
   onDiscard: () => void;
+  onError: (title: string, message: string) => void;
 }) {
   const [b, setB] = useState(batch);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
@@ -163,7 +166,7 @@ function BatchReview({
       const result = await commitBatch(b);
       onCommit(result.count);
     } catch (err) {
-      Alert.alert("Commit failed", String(err));
+      onError("Commit failed", String(err));
     }
   };
 
@@ -172,7 +175,7 @@ function BatchReview({
     return (
       <View style={styles.commitProgressCard}>
         <View style={styles.commitProgressTop}>
-          <ActivityIndicator size="small" color="#6366f1" />
+          <ActivityIndicator size="small" color={colors.accent} />
           <View style={styles.commitProgressText}>
             <Text style={styles.batchFilename} numberOfLines={1}>{b.filename}</Text>
             <Text style={styles.commitProgressCount}>
@@ -200,7 +203,7 @@ function BatchReview({
           </Text>
         </View>
         <Pressable onPress={onDiscard} style={styles.discardBtn}>
-          <Ionicons name="trash-outline" size={18} color="#ef4444" />
+          <Ionicons name="trash-outline" size={18} color={colors.error} />
         </Pressable>
       </View>
 
@@ -277,9 +280,11 @@ export default function ImportScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ uri?: string }>();
   const journal = useJournal();
+  const { top } = useSafeAreaInsets();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const dialog = useDialog();
   const [freshBatch, setFreshBatch] = useState<StagingBatch | null>(null);
 
   // Handle incoming URI from share intent / ACTION_VIEW
@@ -338,10 +343,10 @@ export default function ImportScreen() {
   const handleCommit = (count: number) => {
     setFreshBatch(null);
     setPhase("idle");
-    Alert.alert(
+    dialog.alert(
       "Import complete",
       `${count} ${count === 1 ? "entry" : "entries"} added to your journal.`,
-      [{ text: "OK", onPress: () => router.back() }]
+      () => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")
     );
   };
 
@@ -361,15 +366,23 @@ export default function ImportScreen() {
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: "Import",
-          headerStyle: { backgroundColor: "#1e293b" },
-          headerTintColor: "#f8fafc",
-          headerShadowVisible: false,
-        }}
-      />
+    <>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
+    >
+      {/* Modal chrome — drag handle + title */}
+      <View style={styles.dragHandle} />
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Import</Text>
+        <Pressable
+          onPress={() => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")}
+          hitSlop={8}
+          style={styles.closeBtn}
+        >
+          <Ionicons name="close" size={18} color={colors.textSecondary} />
+        </Pressable>
+      </View>
 
       {/* Pick file button */}
       <Pressable
@@ -377,7 +390,7 @@ export default function ImportScreen() {
         onPress={pickFile}
         disabled={phase === "parsing"}
       >
-        <Ionicons name="cloud-upload-outline" size={22} color="#818cf8" />
+        <Ionicons name="cloud-upload-outline" size={22} color={colors.accentSoft} />
         <Text style={styles.pickBtnText}>Choose a file to import</Text>
       </Pressable>
 
@@ -389,7 +402,7 @@ export default function ImportScreen() {
       {/* Parsing indicator */}
       {phase === "parsing" && (
         <View style={styles.parsing}>
-          <ActivityIndicator color="#6366f1" />
+          <ActivityIndicator color={colors.accent} />
           <Text style={styles.parsingText}>Parsing file… this may take a moment for large imports</Text>
         </View>
       )}
@@ -409,6 +422,7 @@ export default function ImportScreen() {
           commitProgress={journal.commitProgress}
           onCommit={handleCommit}
           onDiscard={() => handleDiscard(batch.id)}
+          onError={dialog.alert}
         />
       ))}
 
@@ -424,6 +438,8 @@ export default function ImportScreen() {
         </View>
       )}
     </ScrollView>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 
@@ -431,7 +447,39 @@ export default function ImportScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
+  content: { flexGrow: 1, padding: spacing.base, paddingBottom: spacing["2xl"] },
+
+  // Modal chrome
+  dragHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xl,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textBright,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    backgroundColor: colors.surface,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
 
   pickBtn: {
     flexDirection: "row",
@@ -461,9 +509,15 @@ const styles = StyleSheet.create({
   },
   errorBoxText: { ...text.smMd, color: colors.errorLight },
 
-  empty: { alignItems: "center", paddingTop: spacing["2xl"] },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacing["2xl"] },
   emptyIcon: { fontSize: 40, marginBottom: spacing.md },
-  emptyTitle: { fontSize: 17, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm2 },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: spacing.sm2,
+  },
   emptyHint: { ...text.smMd, color: colors.textTertiary, textAlign: "center" },
 
   // Batch review

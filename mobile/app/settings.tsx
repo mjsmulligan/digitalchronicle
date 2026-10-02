@@ -3,15 +3,20 @@
  * Reachable via the gear icon in the Chronicle header.
  */
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Stack } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useDialog, Dialog } from "../src/components/Dialog";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { clearAll, useJournal } from "@chronicle/journal/db";
-import { colors, text, spacing, radius } from "../src/theme";
+import { colors, fonts, text, spacing, radius } from "../src/theme";
 
 export default function SettingsScreen() {
   const journal = useJournal();
+  const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const [clearing, setClearing] = useState(false);
+  const dialog = useDialog();
 
   const entryCount =
     journal.legs.length +
@@ -22,37 +27,38 @@ export default function SettingsScreen() {
     journal.books.length;
 
   const handleReset = () => {
-    Alert.alert(
+    dialog.confirm(
       "Reset database",
       `This will permanently delete all ${entryCount.toLocaleString()} entries and ${journal.staging.length} pending import${journal.staging.length === 1 ? "" : "s"}. This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reset",
-          style: "destructive",
-          onPress: async () => {
-            setClearing(true);
-            try {
-              await clearAll();
-            } finally {
-              setClearing(false);
-            }
-          },
-        },
-      ]
+      "Reset",
+      async () => {
+        setClearing(true);
+        try {
+          await clearAll();
+        } finally {
+          setClearing(false);
+        }
+      }
     );
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: "Settings",
-          headerStyle: { backgroundColor: "#1e293b" },
-          headerTintColor: "#f8fafc",
-          headerShadowVisible: false,
-        }}
-      />
+    <>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
+    >
+      <View style={styles.dragHandle} />
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Settings</Text>
+        <Pressable
+          onPress={() => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")}
+          hitSlop={8}
+          style={styles.closeBtn}
+        >
+          <Ionicons name="close" size={18} color={colors.textSecondary} />
+        </Pressable>
+      </View>
 
       <Text style={styles.sectionTitle}>Database</Text>
 
@@ -83,12 +89,45 @@ export default function SettingsScreen() {
         Wipes all entries and staged imports from local storage. Useful for testing a fresh import.
       </Text>
     </ScrollView>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, paddingBottom: spacing["2xl"] },
+  content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
+
+  dragHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xl,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textBright,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    backgroundColor: colors.surface,
+    borderRadius: 9999,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
 
   sectionTitle: { ...text.label, color: colors.textTertiary, marginBottom: 10 },
 

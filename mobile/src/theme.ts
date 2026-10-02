@@ -2,71 +2,95 @@
  * Chronicle design tokens — single source of truth for colour, typography,
  * spacing, and border-radius values used across all mobile screens.
  *
- * Palette is Tailwind Slate (backgrounds / text) + Indigo (accents).
+ * Palette: warm dark (coffee/leather backgrounds, parchment text, terracotta accent).
+ * Mirrors the character of the web version's warm parchment theme in dark mode.
  */
+import { Platform } from "react-native";
+
+// ─── Fonts ────────────────────────────────────────────────────────────────────
+//
+// Serif: Noto Serif (Android) / Georgia (iOS) — warm, book-ish, matches the
+// web version's editorial feel. These are system-resident fonts that need no
+// loading. To upgrade to Lora, install @expo-google-fonts/lora, load the
+// variants in _layout.tsx, then swap these strings:
+//   serifBold → "Lora_700Bold", serifSemiBold → "Lora_600SemiBold", etc.
+//
+// Sans: undefined here = system default (Roboto on Android, SF Pro on iOS).
+// To upgrade to Inter, swap undefined with the Inter_* variant strings.
+
+export const fonts = {
+  /** Bold serif — trip titles, screen hero text, empty-state headings */
+  serifBold:     Platform.select({ ios: "Georgia", default: "serif" }) as string,
+  /** Semi-bold serif — modal titles, card headings */
+  serifSemiBold: Platform.select({ ios: "Georgia", default: "serif" }) as string,
+  /** Medium serif — subtitles, longform pull-quotes */
+  serifMedium:   Platform.select({ ios: "Georgia", default: "serif" }) as string,
+  /** Regular serif — body in detail views */
+  serifRegular:  Platform.select({ ios: "Georgia", default: "serif" }) as string,
+} as const;
 
 // ─── Colours ─────────────────────────────────────────────────────────────────
 
 export const colors = {
   // ── Backgrounds ──────────────────────────────────────────────────────────
-  /** Page / screen background — slate-900 */
-  bg: "#0f172a",
-  /** Card, input, surface — slate-800 */
-  surface: "#1e293b",
-  /** Pressed list-row highlight — slightly lighter than surface */
-  surfacePressed: "#1a2535",
-  /** Deep indigo surface (active filters, person avatar self) — indigo-900 */
-  surfaceAccent: "#312e81",
-  /** Darkest indigo surface (badge bg) — indigo-950 */
-  surfaceAccentDeep: "#1e1b4b",
+  /** Page / screen background — dark warm brown */
+  bg: "#1E1610",
+  /** Card, input, surface — medium-dark warm brown */
+  surface: "#2A1E14",
+  /** Pressed list-row highlight */
+  surfacePressed: "#342618",
+  /** Active filter / avatar self — dark rust tint */
+  surfaceAccent: "#3E200E",
+  /** Badge bg — deep rust */
+  surfaceAccentDeep: "#2C1208",
 
   // ── Borders ───────────────────────────────────────────────────────────────
-  /** Standard card / input border — slate-700 */
-  border: "#334155",
-  /** Subtle hairline divider — slate-800 (same as surface) */
-  borderFaint: "#1e293b",
+  /** Standard card / input border — warm mid-brown */
+  border: "#4A3018",
+  /** Subtle hairline divider — same as surface */
+  borderFaint: "#2A1E14",
 
   // ── Text ─────────────────────────────────────────────────────────────────
-  /** Brightest headings — slate-50 */
-  textBright: "#f8fafc",
-  /** Primary body text — slate-100 */
-  textPrimary: "#f1f5f9",
-  /** Slightly dimmed — slate-200 (avatar initials, chip labels) */
-  textDim: "#e2e8f0",
-  /** Secondary labels — slate-400 */
-  textSecondary: "#94a3b8",
-  /** Tertiary — dates, hints, captions — slate-500 */
-  textTertiary: "#64748b",
-  /** Muted / placeholders — slate-600 */
-  textMuted: "#475569",
+  /** Brightest headings — warm cream */
+  textBright: "#F5EDE0",
+  /** Primary body text — parchment */
+  textPrimary: "#EDE0CC",
+  /** Slightly dimmed — warm tan (avatar initials, chip labels) */
+  textDim: "#D4C4A8",
+  /** Secondary labels — muted tan */
+  textSecondary: "#A08060",
+  /** Tertiary — dates, hints, captions */
+  textTertiary: "#7A6045",
+  /** Muted / placeholders */
+  textMuted: "#5E4830",
 
-  // ── Accent — Indigo ───────────────────────────────────────────────────────
-  /** Primary accent border / icon — indigo-500 */
-  accent: "#6366f1",
-  /** Bold accent — primary buttons — indigo-600 */
-  accentBold: "#4f46e5",
-  /** Soft accent — tab active, secondary icon — indigo-400 */
-  accentSoft: "#818cf8",
-  /** Lightest indigo text (on dark indigo surface) — indigo-100 */
-  accentSubtle: "#e0e7ff",
-  /** Indigo badge text — indigo-300 */
-  accentBadge: "#a5b4fc",
+  // ── Accent — Deep Rust / Russet (matches web button colour) ──────────────
+  /** Primary accent border / icon */
+  accent: "#9A3E26",
+  /** Bold accent — primary buttons */
+  accentBold: "#7E3020",
+  /** Soft accent — tab active, secondary icon */
+  accentSoft: "#C05A38",
+  /** Pale rust text (on dark rust surface) */
+  accentSubtle: "#F0CCBA",
+  /** Badge text — light rust */
+  accentBadge: "#E0A888",
 
   // ── Semantic ──────────────────────────────────────────────────────────────
-  /** Star / rating — amber-500 */
-  star: "#f59e0b",
-  /** Success — green-500 */
-  success: "#22c55e",
-  /** Info / pending — blue-500 */
-  info: "#3b82f6",
-  /** Error text — red-500 */
-  error: "#ef4444",
-  /** Error light text — red-300 */
-  errorLight: "#fca5a5",
-  /** Danger background — red-950 */
-  errorBg: "#450a0a",
-  /** Delete button background — red-900 */
-  deleteBg: "#7f1d1d",
+  /** Star / rating — warm amber */
+  star: "#D97706",
+  /** Success — muted warm green */
+  success: "#4E9A5A",
+  /** Info / pending — warm blue */
+  info: "#4878B0",
+  /** Error text — warm red */
+  error: "#C0321E",
+  /** Error light text */
+  errorLight: "#E89878",
+  /** Danger background */
+  errorBg: "#280A06",
+  /** Delete button background */
+  deleteBg: "#3C0E08",
 
   // ── Utility ───────────────────────────────────────────────────────────────
   white: "#ffffff",
@@ -198,5 +222,11 @@ export const common = {
     headerStyle: { backgroundColor: colors.surface },
     headerTintColor: colors.textBright,
     headerShadowVisible: false,
+    headerTitleStyle: {
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600" as const,
+      fontSize: 18,
+      color: colors.textBright,
+    },
   },
 } as const;
