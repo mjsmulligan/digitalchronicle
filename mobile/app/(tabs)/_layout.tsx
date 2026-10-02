@@ -1,15 +1,7 @@
 import { Tabs, Link } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
-
-const THEME = {
-  bg: "#0f172a",
-  card: "#1e293b",
-  border: "#334155",
-  active: "#818cf8",   // indigo-400
-  inactive: "#475569", // slate-600
-  text: "#f8fafc",
-};
+import { colors } from "../../src/theme";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -22,7 +14,7 @@ function tabIcon(
     <Ionicons
       name={focused ? activeIcon : inactiveIcon}
       size={24}
-      color={focused ? THEME.active : THEME.inactive}
+      color={focused ? colors.accentSoft : colors.textMuted}
     />
   );
 }
@@ -31,16 +23,16 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: THEME.card },
-        headerTintColor: THEME.text,
+        headerStyle: { backgroundColor: colors.surface },
+        headerTintColor: colors.textBright,
         headerShadowVisible: false,
         tabBarStyle: {
-          backgroundColor: THEME.card,
-          borderTopColor: THEME.border,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
         },
-        tabBarActiveTintColor: THEME.active,
-        tabBarInactiveTintColor: THEME.inactive,
+        tabBarActiveTintColor: colors.accentSoft,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
     >
@@ -54,12 +46,12 @@ export default function TabLayout() {
             <View style={{ flexDirection: "row", gap: 4, marginRight: 8 }}>
               <Link href="/import" asChild>
                 <Pressable style={{ padding: 8 }}>
-                  <Ionicons name="cloud-upload-outline" size={22} color={THEME.active} />
+                  <Ionicons name="cloud-upload-outline" size={22} color={colors.accentSoft} />
                 </Pressable>
               </Link>
               <Link href="/settings" asChild>
                 <Pressable style={{ padding: 8 }}>
-                  <Ionicons name="settings-outline" size={22} color={THEME.inactive} />
+                  <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
                 </Pressable>
               </Link>
             </View>
@@ -75,7 +67,7 @@ export default function TabLayout() {
           headerRight: () => (
             <Link href="/trip/new" asChild>
               <Pressable style={{ padding: 8, marginRight: 8 }}>
-                <Ionicons name="add" size={26} color={THEME.active} />
+                <Ionicons name="add" size={26} color={colors.accentSoft} />
               </Pressable>
             </Link>
           ),
@@ -105,7 +97,7 @@ export default function TabLayout() {
           headerRight: () => (
             <Link href="/import-people" asChild>
               <Pressable style={{ padding: 8, marginRight: 8 }}>
-                <Ionicons name="person-add-outline" size={22} color={THEME.active} />
+                <Ionicons name="person-add-outline" size={22} color={colors.accentSoft} />
               </Pressable>
             </Link>
           ),

@@ -24,6 +24,7 @@ import { useJournal, putMany } from "@chronicle/journal/db";
 import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { uid } from "@chronicle/journal/types";
 import type { Person } from "@chronicle/journal/types";
+import { colors, text, spacing, radius } from "../src/theme";
 
 // ── types ──────────────────────────────────────────────────────────────────────
 
@@ -296,86 +297,86 @@ export default function ImportPeopleScreen() {
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
-  content: { padding: 16, paddingBottom: 40 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
 
   pickBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    backgroundColor: "#1e293b",
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: "#6366f1",
+    borderColor: colors.accent,
     borderStyle: "dashed",
     paddingVertical: 20,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   pickBtnDisabled: { opacity: 0.5 },
-  pickBtnText: { color: "#818cf8", fontSize: 16, fontWeight: "600" },
-  hint: { color: "#475569", fontSize: 12, textAlign: "center", marginBottom: 24 },
+  pickBtnText: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
+  hint: { ...text.sm, color: colors.textMuted, textAlign: "center", marginBottom: spacing.xl },
 
-  parsing: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
-  parsingText: { color: "#94a3b8", fontSize: 14 },
+  parsing: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.base },
+  parsingText: { ...text.md, color: colors.textSecondary },
 
-  errorBox: { backgroundColor: "#450a0a", borderRadius: 8, padding: 12, marginBottom: 16 },
-  errorBoxText: { color: "#fca5a5", fontSize: 13 },
+  errorBox: { backgroundColor: colors.errorBg, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.base },
+  errorBoxText: { ...text.smMd, color: colors.errorLight },
 
   reviewCard: {
-    backgroundColor: "#1e293b",
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
     overflow: "hidden",
   },
   reviewHeader: {
-    padding: 14,
+    padding: spacing.md2,
     borderBottomWidth: 1,
-    borderBottomColor: "#334155",
+    borderBottomColor: colors.border,
   },
-  reviewTitle: { color: "#94a3b8", fontSize: 13 },
+  reviewTitle: { ...text.smMd, color: colors.textSecondary },
 
-  errorsBox: { backgroundColor: "#450a0a", padding: 10 },
-  errorText: { color: "#fca5a5", fontSize: 12, marginBottom: 2 },
+  errorsBox: { backgroundColor: colors.errorBg, padding: 10 },
+  errorText: { ...text.sm, color: colors.errorLight, marginBottom: 2 },
 
   quickActions: {
     flexDirection: "row",
-    gap: 16,
+    gap: spacing.base,
     padding: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: spacing.md2,
     borderBottomWidth: 1,
-    borderBottomColor: "#334155",
+    borderBottomColor: colors.border,
   },
-  quickActionText: { color: "#6366f1", fontSize: 12, fontWeight: "600" },
+  quickActionText: { ...text.sm, color: colors.accent, fontWeight: "600" },
 
   contactRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: spacing.md2,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#334155",
+    borderBottomColor: colors.border,
     gap: 10,
   },
   contactRowDim: { opacity: 0.45 },
   contactSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
   contactBody: { flex: 1 },
-  contactName: { color: "#f1f5f9", fontSize: 14, fontWeight: "500" },
-  contactAliases: { color: "#64748b", fontSize: 12, marginTop: 2 },
+  contactName: { ...text.md, color: colors.textPrimary, fontWeight: "500" },
+  contactAliases: { ...text.sm, color: colors.textTertiary, marginTop: 2 },
   contactStatus: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-  statusNew: { color: "#22c55e" },
-  statusDupe: { color: "#475569" },
+  statusNew: { color: colors.success },
+  statusDupe: { color: colors.textMuted },
 
-  commitBar: { padding: 14 },
+  commitBar: { padding: spacing.md2 },
   commitBtn: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 10,
+    backgroundColor: colors.accentBold,
+    borderRadius: radius.lg,
     paddingVertical: 14,
     alignItems: "center",
   },
   commitBtnDisabled: { opacity: 0.4 },
-  commitBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  commitBtnText: { ...text.base, color: colors.white, fontWeight: "700" },
   committing: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 14 },
-  committingText: { color: "#94a3b8", fontSize: 14 },
+  committingText: { ...text.md, color: colors.textSecondary },
 });

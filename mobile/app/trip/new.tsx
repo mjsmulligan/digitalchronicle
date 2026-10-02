@@ -14,6 +14,7 @@ import {
 import { Stack, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
 import { uid, type Purpose } from "@chronicle/journal/types";
+import { colors, text, spacing, radius } from "../../src/theme";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -182,55 +183,55 @@ export default function NewTripScreen() {
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
-  content: { padding: 20, paddingBottom: 48, gap: 6 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.lg, paddingBottom: spacing["3xl"], gap: 6 },
 
-  label: { color: "#94a3b8", fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6, marginTop: 16 },
-  optional: { color: "#475569", fontWeight: "400", textTransform: "none", letterSpacing: 0 },
+  label: { ...text.label, color: colors.textSecondary, marginBottom: 6, marginTop: spacing.base },
+  optional: { fontWeight: "400", textTransform: "none", letterSpacing: 0, color: colors.textMuted },
 
   input: {
-    backgroundColor: "#1e293b",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderColor: "#334155",
-    color: "#f1f5f9",
-    fontSize: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    borderColor: colors.border,
+    color: colors.textPrimary,
+    ...text.lg,
+    paddingHorizontal: spacing.md2,
+    paddingVertical: spacing.md,
   },
-  inputMultiline: { minHeight: 100, paddingTop: 12 },
+  inputMultiline: { minHeight: 100, paddingTop: spacing.md },
 
-  dateRow: { flexDirection: "row", gap: 12 },
+  dateRow: { flexDirection: "row", gap: spacing.md },
   dateField: { flex: 1 },
-  validationError: { color: "#ef4444", fontSize: 12, marginTop: 4 },
+  validationError: { ...text.sm, color: colors.error, marginTop: 4 },
 
-  purposeRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  purposeRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   purposeChip: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#1e293b",
+    gap: spacing.sm2,
+    paddingHorizontal: spacing.md2,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
   },
-  purposeChipActive: { backgroundColor: "#312e81", borderColor: "#6366f1" },
+  purposeChipActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
   purposeEmoji: { fontSize: 14 },
-  purposeLabel: { color: "#94a3b8", fontSize: 13, fontWeight: "600" },
-  purposeLabelActive: { color: "#e0e7ff" },
+  purposeLabel: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
+  purposeLabelActive: { color: colors.accentSubtle },
 
-  saveBtn: { color: "#818cf8", fontSize: 16, fontWeight: "600" },
+  saveBtn: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
   saveBtnDisabled: { opacity: 0.4 },
 
   saveButton: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 12,
+    backgroundColor: colors.accentBold,
+    borderRadius: radius.xl,
     paddingVertical: 15,
     alignItems: "center",
-    marginTop: 24,
+    marginTop: spacing.xl,
   },
   saveButtonDisabled: { opacity: 0.4 },
-  saveButtonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  saveButtonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
 });

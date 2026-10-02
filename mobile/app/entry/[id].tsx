@@ -7,6 +7,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book } from "@chronicle/journal/types";
+import { colors, text, spacing, radius, common } from "../../src/theme";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -201,14 +202,7 @@ export default function EntryDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: "",
-          headerStyle: { backgroundColor: "#1e293b" },
-          headerTintColor: "#f8fafc",
-          headerShadowVisible: false,
-        }}
-      />
+      <Stack.Screen options={{ title: "", ...common.header }} />
 
       <View style={styles.card}>
         {entry.kind === "leg"     && <LegDetail e={entry as Leg} />}
@@ -246,45 +240,45 @@ export default function EntryDetailScreen() {
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
-  content: { padding: 16, paddingBottom: 48, gap: 12 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.base, paddingBottom: spacing["3xl"], gap: spacing.md },
 
   card: {
-    backgroundColor: "#1e293b",
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius["2xl"],
     borderWidth: 1,
-    borderColor: "#334155",
-    padding: 20,
+    borderColor: colors.border,
+    padding: spacing.lg,
     gap: 4,
   },
-  title: { color: "#f1f5f9", fontSize: 20, fontWeight: "700", marginBottom: 2 },
-  subtitle: { color: "#94a3b8", fontSize: 14, marginBottom: 4 },
-  rating: { color: "#f59e0b", fontSize: 16, marginBottom: 4 },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: "#334155", marginVertical: 12 },
-  field: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 5, gap: 16 },
-  fieldLabel: { color: "#64748b", fontSize: 13, fontWeight: "600", minWidth: 80 },
-  fieldValue: { color: "#e2e8f0", fontSize: 14, flex: 1, textAlign: "right" },
+  title: { fontSize: 20, fontWeight: "700", color: colors.textPrimary, marginBottom: 2 },
+  subtitle: { ...text.md, color: colors.textSecondary, marginBottom: 4 },
+  rating: { ...text.lg, color: colors.star, marginBottom: 4 },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.md },
+  field: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 5, gap: spacing.base },
+  fieldLabel: { ...text.smMd, color: colors.textTertiary, fontWeight: "600", minWidth: 80 },
+  fieldValue: { ...text.md, color: colors.textDim, flex: 1, textAlign: "right" },
 
   reflectionCard: {
-    backgroundColor: "#1e293b",
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius["2xl"],
     borderWidth: 1,
-    borderColor: "#334155",
-    padding: 20,
-    gap: 8,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
-  reflectionLabel: { color: "#64748b", fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
-  reflectionText: { color: "#e2e8f0", fontSize: 15, lineHeight: 22 },
+  reflectionLabel: { ...text.label, color: colors.textTertiary },
+  reflectionText: { ...text.base, color: colors.textDim },
 
   metaCard: {
-    backgroundColor: "#1e293b",
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius["2xl"],
     borderWidth: 1,
-    borderColor: "#334155",
-    paddingHorizontal: 20,
-    paddingVertical: 8,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
   },
 
-  notFound: { flex: 1, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center" },
-  notFoundText: { color: "#64748b", fontSize: 16 },
+  notFound: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
+  notFoundText: { ...text.lg, color: colors.textTertiary },
 });

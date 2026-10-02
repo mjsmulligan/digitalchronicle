@@ -7,6 +7,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Trip } from "@chronicle/journal/types";
+import { colors, text, spacing, radius } from "../../src/theme";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -103,14 +104,14 @@ export default function TripsScreen() {
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: "#0f172a" },
-  listContent: { padding: 16 },
+  list: { flex: 1, backgroundColor: colors.bg },
+  listContent: { padding: spacing.base },
   card: {
-    backgroundColor: "#1e293b",
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: spacing.base,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
   },
   cardPressed: { opacity: 0.7 },
   cardHeader: {
@@ -119,21 +120,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 4,
   },
-  dateRange: { color: "#64748b", fontSize: 12, fontFamily: "monospace" },
+  dateRange: { ...text.sm, color: colors.textTertiary, fontFamily: "monospace" },
   purposeIcon: { fontSize: 16 },
-  tripTitle: { color: "#f1f5f9", fontSize: 20, fontWeight: "600", marginBottom: 8 },
-  meta: { flexDirection: "row", gap: 6 },
-  metaText: { color: "#94a3b8", fontSize: 13 },
-  metaDot: { color: "#475569", fontSize: 13 },
-  separator: { height: 12 },
+  tripTitle: { fontSize: 20, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm },
+  meta: { flexDirection: "row", gap: spacing.sm2 },
+  metaText: { ...text.smMd, color: colors.textSecondary },
+  metaDot: { ...text.smMd, color: colors.textMuted },
+  separator: { height: spacing.md },
   empty: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: colors.bg,
     alignItems: "center",
     justifyContent: "center",
-    padding: 32,
+    padding: spacing["2xl"],
   },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyTitle: { color: "#f1f5f9", fontSize: 18, fontWeight: "600", marginBottom: 8 },
-  emptyHint: { color: "#64748b", fontSize: 14, textAlign: "center", lineHeight: 20 },
+  emptyIcon: { fontSize: 48, marginBottom: spacing.base },
+  emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm },
+  emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
 });
