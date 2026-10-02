@@ -221,13 +221,26 @@ function BatchReview({
         </View>
       )}
 
-      {/* Quick actions */}
+      {/* Quick actions + commit — pinned above the record list so the
+          primary action is always reachable without scrolling */}
       <View style={styles.quickActions}>
         <Pressable onPress={selectImportable}>
           <Text style={styles.quickActionText}>Select importable ({importable})</Text>
         </Pressable>
         <Pressable onPress={deselectAll}>
           <Text style={styles.quickActionText}>Deselect all</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.commitBar}>
+        <Pressable
+          style={[styles.commitBtn, !selected && styles.commitBtnDisabled]}
+          disabled={!selected}
+          onPress={handleCommit}
+        >
+          <Text style={styles.commitBtnText}>
+            Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
+          </Text>
         </Pressable>
       </View>
 
@@ -257,19 +270,6 @@ function BatchReview({
           ) : null
         }
       />
-
-      {/* Commit button */}
-      <View style={styles.commitBar}>
-        <Pressable
-          style={[styles.commitBtn, !selected && styles.commitBtnDisabled]}
-          disabled={!selected}
-          onPress={handleCommit}
-        >
-          <Text style={styles.commitBtnText}>
-            Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
-          </Text>
-        </Pressable>
-      </View>
     </View>
   );
 }
