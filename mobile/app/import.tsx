@@ -29,7 +29,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useJournal, removeMany, type CommitProgress } from "@chronicle/journal/db";
 import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
 import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatus } from "@chronicle/journal/types";
-import { colors, text, spacing, radius } from "../src/theme";
+import { colors, text, spacing, radius, common } from "../src/theme";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -172,7 +172,7 @@ function BatchReview({
     return (
       <View style={styles.commitProgressCard}>
         <View style={styles.commitProgressTop}>
-          <ActivityIndicator size="small" color="#6366f1" />
+          <ActivityIndicator size="small" color={colors.accent} />
           <View style={styles.commitProgressText}>
             <Text style={styles.batchFilename} numberOfLines={1}>{b.filename}</Text>
             <Text style={styles.commitProgressCount}>
@@ -200,7 +200,7 @@ function BatchReview({
           </Text>
         </View>
         <Pressable onPress={onDiscard} style={styles.discardBtn}>
-          <Ionicons name="trash-outline" size={18} color="#ef4444" />
+          <Ionicons name="trash-outline" size={18} color={colors.error} />
         </Pressable>
       </View>
 
@@ -362,14 +362,7 @@ export default function ImportScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: "Import",
-          headerStyle: { backgroundColor: "#1e293b" },
-          headerTintColor: "#f8fafc",
-          headerShadowVisible: false,
-        }}
-      />
+      <Stack.Screen options={{ title: "Import", ...common.header }} />
 
       {/* Pick file button */}
       <Pressable
@@ -377,7 +370,7 @@ export default function ImportScreen() {
         onPress={pickFile}
         disabled={phase === "parsing"}
       >
-        <Ionicons name="cloud-upload-outline" size={22} color="#818cf8" />
+        <Ionicons name="cloud-upload-outline" size={22} color={colors.accentSoft} />
         <Text style={styles.pickBtnText}>Choose a file to import</Text>
       </Pressable>
 
@@ -389,7 +382,7 @@ export default function ImportScreen() {
       {/* Parsing indicator */}
       {phase === "parsing" && (
         <View style={styles.parsing}>
-          <ActivityIndicator color="#6366f1" />
+          <ActivityIndicator color={colors.accent} />
           <Text style={styles.parsingText}>Parsing file… this may take a moment for large imports</Text>
         </View>
       )}
@@ -431,7 +424,7 @@ export default function ImportScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
+  content: { flexGrow: 1, padding: spacing.base, paddingBottom: spacing["2xl"] },
 
   pickBtn: {
     flexDirection: "row",
@@ -461,7 +454,7 @@ const styles = StyleSheet.create({
   },
   errorBoxText: { ...text.smMd, color: colors.errorLight },
 
-  empty: { alignItems: "center", paddingTop: spacing["2xl"] },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacing["2xl"] },
   emptyIcon: { fontSize: 40, marginBottom: spacing.md },
   emptyTitle: { fontSize: 17, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm2 },
   emptyHint: { ...text.smMd, color: colors.textTertiary, textAlign: "center" },

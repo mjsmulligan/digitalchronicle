@@ -204,7 +204,7 @@ export default function ImportPeopleScreen() {
         onPress={pickFile}
         disabled={phase === "parsing"}
       >
-        <Ionicons name="person-add-outline" size={22} color="#818cf8" />
+        <Ionicons name="person-add-outline" size={22} color={colors.accentSoft} />
         <Text style={styles.pickBtnText}>Choose a contacts file</Text>
       </Pressable>
       <Text style={styles.hint}>Supports .vcf (vCard) and .csv (Google Contacts export)</Text>
@@ -212,7 +212,7 @@ export default function ImportPeopleScreen() {
       {/* Parsing */}
       {phase === "parsing" && (
         <View style={styles.parsing}>
-          <ActivityIndicator color="#6366f1" />
+          <ActivityIndicator color={colors.accent} />
           <Text style={styles.parsingText}>Parsing contacts…</Text>
         </View>
       )}
@@ -273,7 +273,7 @@ export default function ImportPeopleScreen() {
           <View style={styles.commitBar}>
             {phase === "committing" ? (
               <View style={styles.committing}>
-                <ActivityIndicator size="small" color="#6366f1" />
+                <ActivityIndicator size="small" color={colors.accent} />
                 <Text style={styles.committingText}>Saving…</Text>
               </View>
             ) : (

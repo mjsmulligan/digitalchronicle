@@ -20,6 +20,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
 import { SQLiteAdapter } from "../src/lib/storage/SQLiteAdapter";
 import { setAdapter, initJournal, useJournal } from "@chronicle/journal/db";
+import { colors } from "../src/theme";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -74,7 +75,7 @@ export default function RootLayout() {
   if (!journal.ready) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <ActivityIndicator size="large" color={colors.accent} />
         <StatusBar style="light" />
       </View>
     );
@@ -91,7 +92,7 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   loading: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: colors.bg,
     alignItems: "center",
     justifyContent: "center",
   },

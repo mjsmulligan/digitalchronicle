@@ -77,7 +77,7 @@ function SuggestionItem({
         disabled={adding}
       >
         {adding
-          ? <ActivityIndicator size="small" color="#6366f1" />
+          ? <ActivityIndicator size="small" color={colors.accent} />
           : <Text style={styles.addBtnText}>+ Add</Text>
         }
       </Pressable>
@@ -187,7 +187,7 @@ export default function TripDetailScreen() {
                 disabled={addingAll}
               >
                 {addingAll
-                  ? <ActivityIndicator size="small" color="#fff" />
+                  ? <ActivityIndicator size="small" color={colors.white} />
                   : <Text style={styles.addAllText}>Add all</Text>
                 }
               </Pressable>
