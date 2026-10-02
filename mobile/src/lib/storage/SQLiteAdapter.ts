@@ -58,12 +58,18 @@ export class SQLiteAdapter implements StorageAdapter {
 
   async putMany<T extends Row>(store: StoreName, items: T[]): Promise<void> {
     if (!items.length) return;
+    // Use a prepared statement so SQL is parsed once rather than once per row —
+    // significant speedup for large batches (e.g. 4000 Netflix entries).
     await this.db.withTransactionAsync(async () => {
-      for (const item of items) {
-        await this.db.runAsync(
-          `INSERT OR REPLACE INTO "${store}" (id, data) VALUES (?, ?)`,
-          [item.id, JSON.stringify(item)]
-        );
+      const stmt = await this.db.prepareAsync(
+        `INSERT OR REPLACE INTO "${store}" (id, data) VALUES (?, ?)`
+      );
+      try {
+        for (const item of items) {
+          await stmt.executeAsync([item.id, JSON.stringify(item)]);
+        }
+      } finally {
+        await stmt.finalizeAsync();
       }
     });
   }

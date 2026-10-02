@@ -11,6 +11,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import { view, type Entry, type Film, type Episode, type Book, type JEvent } from "@chronicle/journal/types";
 
@@ -78,13 +79,17 @@ function FilterPill({
 
 function CultureRow({ entry }: { entry: CultureEntry }) {
   const v = view(entry);
+  const router = useRouter();
   const stars =
     v.rating !== undefined
       ? "★".repeat(Math.round(v.rating / 2)) +
         "☆".repeat(5 - Math.round(v.rating / 2))
       : null;
   return (
-    <View style={styles.row}>
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      onPress={() => router.push(`/entry/${entry.id}`)}
+    >
       <Text style={styles.rowEmoji}>{cultureEmoji(entry)}</Text>
       <View style={styles.rowBody}>
         <Text style={styles.rowTitle} numberOfLines={2}>
@@ -95,7 +100,8 @@ function CultureRow({ entry }: { entry: CultureEntry }) {
           {stars && <Text style={styles.rowStars}>{stars}</Text>}
         </View>
       </View>
-    </View>
+      <Text style={styles.rowChevron}>›</Text>
+    </Pressable>
   );
 }
 
@@ -192,12 +198,14 @@ const styles = StyleSheet.create({
     borderBottomColor: "#1e293b",
     gap: 12,
   },
+  rowPressed: { backgroundColor: "#1a2535" },
   rowEmoji: { fontSize: 20, lineHeight: 26 },
   rowBody: { flex: 1 },
   rowTitle: { color: "#f1f5f9", fontSize: 15, fontWeight: "500", marginBottom: 4 },
   rowMeta: { flexDirection: "row", gap: 8, alignItems: "center" },
   rowDate: { color: "#64748b", fontSize: 12 },
   rowStars: { color: "#f59e0b", fontSize: 12 },
+  rowChevron: { color: "#334155", fontSize: 20, lineHeight: 26 },
   empty: {
     flex: 1,
     alignItems: "center",

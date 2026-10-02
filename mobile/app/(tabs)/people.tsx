@@ -3,7 +3,8 @@
  * Shows the journal owner (isSelf) first with a crown badge.
  */
 import { useMemo } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Person } from "@chronicle/journal/types";
 
@@ -28,9 +29,13 @@ function PersonRow({
     .join("")
     .slice(0, 2)
     .toUpperCase();
+  const router = useRouter();
 
   return (
-    <View style={styles.row}>
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      onPress={() => router.push(`/person/${person.id}`)}
+    >
       <View style={[styles.avatar, person.isSelf && styles.avatarSelf]}>
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
@@ -50,7 +55,8 @@ function PersonRow({
           {entryCount} {entryCount === 1 ? "entry" : "entries"}
         </Text>
       )}
-    </View>
+      <Text style={styles.chevron}>›</Text>
+    </Pressable>
   );
 }
 
@@ -76,8 +82,7 @@ export default function PeopleScreen() {
         <Text style={styles.emptyIcon}>👤</Text>
         <Text style={styles.emptyTitle}>No people yet</Text>
         <Text style={styles.emptyHint}>
-          Set up your profile and import contacts on the web to start linking
-          entries to people.
+          Tap the import icon above to add people from a .vcf or contacts CSV file.
         </Text>
       </View>
     );
@@ -134,7 +139,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   aliases: { color: "#64748b", fontSize: 12, marginTop: 2 },
+  rowPressed: { backgroundColor: "#1a2535" },
   count: { color: "#64748b", fontSize: 12 },
+  chevron: { color: "#334155", fontSize: 20, lineHeight: 44 },
   empty: {
     flex: 1,
     backgroundColor: "#0f172a",
