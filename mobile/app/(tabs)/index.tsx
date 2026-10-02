@@ -13,6 +13,7 @@ import {
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry } from "@chronicle/journal/types";
+import { colors, text, spacing } from "../../src/theme";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -113,43 +114,37 @@ export default function ChronicleScreen() {
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: "#0f172a" },
+  list: { flex: 1, backgroundColor: colors.bg },
   sectionHeader: {
-    backgroundColor: "#0f172a",
-    paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 4,
+    backgroundColor: colors.bg,
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xs,
   },
-  sectionTitle: {
-    color: "#64748b",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
+  sectionTitle: { ...text.label, color: colors.textTertiary },
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.base,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#1e293b",
-    gap: 12,
+    borderBottomColor: colors.borderFaint,
+    gap: spacing.md,
   },
-  rowPressed: { backgroundColor: "#1e293b" },
+  rowPressed: { backgroundColor: colors.surface },
   rowEmoji: { fontSize: 18, lineHeight: 24 },
   rowBody: { flex: 1 },
-  rowTitle: { color: "#f1f5f9", fontSize: 15, fontWeight: "500" },
-  rowMeta: { color: "#f59e0b", fontSize: 12, marginTop: 2 },
-  rowChevron: { color: "#334155", fontSize: 20, lineHeight: 24 },
+  rowTitle: { ...text.base, color: colors.textPrimary, fontWeight: "500" },
+  rowMeta: { ...text.sm, color: colors.star, marginTop: 2 },
+  rowChevron: { fontSize: 20, lineHeight: 24, color: colors.border },
   empty: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: colors.bg,
     alignItems: "center",
     justifyContent: "center",
-    padding: 32,
+    padding: spacing["2xl"],
   },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyTitle: { color: "#f1f5f9", fontSize: 18, fontWeight: "600", marginBottom: 8 },
-  emptyHint: { color: "#64748b", fontSize: 14, textAlign: "center", lineHeight: 20 },
+  emptyIcon: { fontSize: 48, marginBottom: spacing.base },
+  emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm },
+  emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
 });

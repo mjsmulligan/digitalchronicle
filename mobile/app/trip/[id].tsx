@@ -7,6 +7,7 @@ import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View }
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
+import { colors, text, spacing, radius, common } from "../../src/theme";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -203,14 +204,7 @@ export default function TripDetailScreen() {
       }}
       ListHeaderComponent={
         <>
-          <Stack.Screen
-            options={{
-              title: "",
-              headerStyle: { backgroundColor: "#1e293b" },
-              headerTintColor: "#f8fafc",
-              headerShadowVisible: false,
-            }}
-          />
+          <Stack.Screen options={{ title: "", ...common.header }} />
           {/* Trip header card */}
           <View style={styles.headerCard}>
             <View style={styles.headerTop}>
@@ -247,99 +241,92 @@ export default function TripDetailScreen() {
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: "#0f172a" },
-  content: { padding: 16, paddingBottom: 48 },
+  list: { flex: 1, backgroundColor: colors.bg },
+  content: { padding: spacing.base, paddingBottom: spacing["3xl"] },
 
   headerCard: {
-    backgroundColor: "#1e293b",
-    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius["2xl"],
     borderWidth: 1,
-    borderColor: "#334155",
-    padding: 20,
-    marginBottom: 20,
+    borderColor: colors.border,
+    padding: spacing.lg,
+    marginBottom: spacing.lg,
   },
   headerTop: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  dateRange: { color: "#64748b", fontSize: 12, fontFamily: "monospace" },
+  dateRange: { ...text.sm, color: colors.textTertiary, fontFamily: "monospace" },
   purposeIcon: { fontSize: 18 },
-  tripTitle: { color: "#f1f5f9", fontSize: 22, fontWeight: "700", marginBottom: 8 },
-  tripMeta: { flexDirection: "row", gap: 6, marginBottom: 4 },
-  tripMetaText: { color: "#94a3b8", fontSize: 13 },
-  tripMetaDot: { color: "#475569", fontSize: 13 },
-  tripNotes: { color: "#94a3b8", fontSize: 14, marginTop: 10, lineHeight: 20 },
+  tripTitle: { fontSize: 22, fontWeight: "700", color: colors.textPrimary, marginBottom: spacing.sm },
+  tripMeta: { flexDirection: "row", gap: spacing.sm2, marginBottom: 4 },
+  tripMetaText: { ...text.smMd, color: colors.textSecondary },
+  tripMetaDot: { ...text.smMd, color: colors.textMuted },
+  tripNotes: { ...text.md, color: colors.textSecondary, marginTop: 10 },
 
-  sectionLabel: {
-    color: "#64748b",
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
+  sectionLabel: { ...text.label, color: colors.textTertiary, marginBottom: spacing.sm },
 
   suggestionsHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
   },
   addAllBtn: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    backgroundColor: colors.accentBold,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md2,
+    paddingVertical: spacing.sm2,
     minWidth: 72,
     alignItems: "center",
   },
   addAllBtnDisabled: { opacity: 0.5 },
-  addAllText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  addAllText: { color: colors.white, fontSize: 12, fontWeight: "700" },
 
   entryRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1e293b",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 8,
-    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md2,
+    marginBottom: spacing.sm,
+    gap: spacing.md,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
   },
   entryRowPressed: { opacity: 0.7 },
 
   suggestionRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1e293b",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 8,
-    gap: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.md2,
+    marginBottom: spacing.sm,
+    gap: spacing.md,
     borderWidth: 1,
-    borderColor: "#1e3a5f",  // slightly blue tint to distinguish from linked
+    borderColor: "#1e3a5f",
   },
 
   entryEmoji: { fontSize: 18 },
   entryBody: { flex: 1 },
-  entryTitle: { color: "#f1f5f9", fontSize: 14, fontWeight: "500", marginBottom: 2 },
-  entryDate: { color: "#64748b", fontSize: 12 },
-  chevron: { color: "#334155", fontSize: 20 },
+  entryTitle: { ...text.md, color: colors.textPrimary, fontWeight: "500", marginBottom: 2 },
+  entryDate: { ...text.sm, color: colors.textTertiary },
+  chevron: { fontSize: 20, color: colors.border },
 
   addBtn: {
     borderWidth: 1,
-    borderColor: "#6366f1",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderColor: colors.accent,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm2,
     minWidth: 64,
     alignItems: "center",
   },
   addBtnDisabled: { opacity: 0.5 },
-  addBtnText: { color: "#818cf8", fontSize: 12, fontWeight: "700" },
+  addBtnText: { color: colors.accentSoft, fontSize: 12, fontWeight: "700" },
 
-  empty: { paddingTop: 24, alignItems: "center" },
-  emptyText: { color: "#475569", fontSize: 14 },
+  empty: { paddingTop: spacing.xl, alignItems: "center" },
+  emptyText: { ...text.md, color: colors.textMuted },
 
-  notFound: { flex: 1, backgroundColor: "#0f172a", alignItems: "center", justifyContent: "center" },
-  notFoundText: { color: "#64748b", fontSize: 16 },
+  notFound: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
+  notFoundText: { ...text.lg, color: colors.textTertiary },
 });

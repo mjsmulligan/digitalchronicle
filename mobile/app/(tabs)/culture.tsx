@@ -14,6 +14,7 @@ import {
 import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import { view, type Entry, type Film, type Episode, type Book, type JEvent } from "@chronicle/journal/types";
+import { colors, text, spacing, radius } from "../../src/theme";
 
 // ── types & helpers ───────────────────────────────────────────────────────────
 
@@ -174,45 +175,45 @@ export default function CultureScreen() {
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
-  pills: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: "#1e293b" },
-  pillsContent: { padding: 12, gap: 8, flexDirection: "row" },
+  container: { flex: 1, backgroundColor: colors.bg },
+  pills: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.borderFaint },
+  pillsContent: { padding: spacing.md, gap: spacing.sm, flexDirection: "row" },
   pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: "#1e293b",
+    paddingHorizontal: spacing.md2,
+    paddingVertical: spacing.sm2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
   },
-  pillActive: { backgroundColor: "#312e81", borderColor: "#6366f1" },
-  pillText: { color: "#94a3b8", fontSize: 13, fontWeight: "600" },
-  pillTextActive: { color: "#e0e7ff" },
-  listContent: { paddingVertical: 8 },
+  pillActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
+  pillText: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
+  pillTextActive: { color: colors.accentSubtle },
+  listContent: { paddingVertical: spacing.sm },
   row: {
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#1e293b",
-    gap: 12,
+    borderBottomColor: colors.borderFaint,
+    gap: spacing.md,
   },
-  rowPressed: { backgroundColor: "#1a2535" },
+  rowPressed: { backgroundColor: colors.surfacePressed },
   rowEmoji: { fontSize: 20, lineHeight: 26 },
   rowBody: { flex: 1 },
-  rowTitle: { color: "#f1f5f9", fontSize: 15, fontWeight: "500", marginBottom: 4 },
-  rowMeta: { flexDirection: "row", gap: 8, alignItems: "center" },
-  rowDate: { color: "#64748b", fontSize: 12 },
-  rowStars: { color: "#f59e0b", fontSize: 12 },
-  rowChevron: { color: "#334155", fontSize: 20, lineHeight: 26 },
+  rowTitle: { ...text.base, color: colors.textPrimary, fontWeight: "500", marginBottom: 4 },
+  rowMeta: { flexDirection: "row", gap: spacing.sm, alignItems: "center" },
+  rowDate: { ...text.sm, color: colors.textTertiary },
+  rowStars: { ...text.sm, color: colors.star },
+  rowChevron: { fontSize: 20, lineHeight: 26, color: colors.border },
   empty: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: 32,
+    padding: spacing["2xl"],
   },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyTitle: { color: "#f1f5f9", fontSize: 18, fontWeight: "600", marginBottom: 8 },
-  emptyHint: { color: "#64748b", fontSize: 14, textAlign: "center", lineHeight: 20 },
+  emptyIcon: { fontSize: 48, marginBottom: spacing.base },
+  emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm },
+  emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
 });
