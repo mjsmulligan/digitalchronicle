@@ -3,7 +3,8 @@
  * Suggestions section shows unassigned entries that fall within the trip's date range.
  */
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
@@ -94,6 +95,7 @@ export default function TripDetailScreen() {
 
   const [addingAll, setAddingAll] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
+  const dialog = useDialog();
 
   const trip = useMemo<Trip | undefined>(
     () => journal.trips.find((t) => t.id === id),
@@ -131,7 +133,7 @@ export default function TripDetailScreen() {
     try {
       await putMany(storeFor(entry), [{ ...entry, tripId: trip.id }]);
     } catch (err) {
-      Alert.alert("Failed to add entry", String(err));
+      dialog.alert("Failed to add entry", String(err));
     } finally {
       setAddingId(null);
     }
@@ -145,7 +147,7 @@ export default function TripDetailScreen() {
         await putMany(storeFor(e), [{ ...e, tripId: trip.id }]);
       }
     } catch (err) {
-      Alert.alert("Failed to add entries", String(err));
+      dialog.alert("Failed to add entries", String(err));
     } finally {
       setAddingAll(false);
     }
@@ -164,6 +166,7 @@ export default function TripDetailScreen() {
   ];
 
   return (
+    <>
     <FlatList
       style={styles.list}
       contentContainerStyle={styles.content}
@@ -235,6 +238,8 @@ export default function TripDetailScreen() {
         ) : null
       }
     />
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 

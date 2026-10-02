@@ -14,7 +14,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -23,6 +22,7 @@ import {
   View,
   ScrollView,
 } from "react-native";
+import { useDialog, Dialog } from "../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
@@ -115,11 +115,13 @@ function BatchReview({
   commitProgress,
   onCommit,
   onDiscard,
+  onError,
 }: {
   batch: StagingBatch;
   commitProgress: CommitProgress | null;
   onCommit: (count: number) => void;
   onDiscard: () => void;
+  onError: (title: string, message: string) => void;
 }) {
   const [b, setB] = useState(batch);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
@@ -164,7 +166,7 @@ function BatchReview({
       const result = await commitBatch(b);
       onCommit(result.count);
     } catch (err) {
-      Alert.alert("Commit failed", String(err));
+      onError("Commit failed", String(err));
     }
   };
 
@@ -282,6 +284,7 @@ export default function ImportScreen() {
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const dialog = useDialog();
   const [freshBatch, setFreshBatch] = useState<StagingBatch | null>(null);
 
   // Handle incoming URI from share intent / ACTION_VIEW
@@ -340,10 +343,10 @@ export default function ImportScreen() {
   const handleCommit = (count: number) => {
     setFreshBatch(null);
     setPhase("idle");
-    Alert.alert(
+    dialog.alert(
       "Import complete",
       `${count} ${count === 1 ? "entry" : "entries"} added to your journal.`,
-      [{ text: "OK", onPress: () => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)") }]
+      () => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")
     );
   };
 
@@ -363,6 +366,7 @@ export default function ImportScreen() {
   ];
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
@@ -418,6 +422,7 @@ export default function ImportScreen() {
           commitProgress={journal.commitProgress}
           onCommit={handleCommit}
           onDiscard={() => handleDiscard(batch.id)}
+          onError={dialog.alert}
         />
       ))}
 
@@ -433,6 +438,8 @@ export default function ImportScreen() {
         </View>
       )}
     </ScrollView>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 

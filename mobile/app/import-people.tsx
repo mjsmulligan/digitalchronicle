@@ -8,7 +8,6 @@
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -17,6 +16,7 @@ import {
   View,
   ScrollView,
 } from "react-native";
+import { useDialog, Dialog } from "../src/components/Dialog";
 import { Stack, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
@@ -114,6 +114,7 @@ export default function ImportPeopleScreen() {
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const dialog = useDialog();
   const [contacts, setContacts] = useState<ReviewContact[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
 
@@ -178,18 +179,19 @@ export default function ImportPeopleScreen() {
         createdAt: now,
       }));
       await putMany("people", people);
-      Alert.alert(
+      dialog.alert(
         "Import complete",
         `${people.length} ${people.length === 1 ? "person" : "people"} added.`,
-        [{ text: "OK", onPress: () => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)") }]
+        () => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")
       );
     } catch (err) {
-      Alert.alert("Commit failed", String(err));
+      dialog.alert("Commit failed", String(err));
       setPhase("review");
     }
   };
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
@@ -300,6 +302,8 @@ export default function ImportPeopleScreen() {
         </View>
       )}
     </ScrollView>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 

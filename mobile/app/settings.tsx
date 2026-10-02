@@ -3,7 +3,8 @@
  * Reachable via the gear icon in the Chronicle header.
  */
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -15,6 +16,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
   const [clearing, setClearing] = useState(false);
+  const dialog = useDialog();
 
   const entryCount =
     journal.legs.length +
@@ -25,28 +27,23 @@ export default function SettingsScreen() {
     journal.books.length;
 
   const handleReset = () => {
-    Alert.alert(
+    dialog.confirm(
       "Reset database",
       `This will permanently delete all ${entryCount.toLocaleString()} entries and ${journal.staging.length} pending import${journal.staging.length === 1 ? "" : "s"}. This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Reset",
-          style: "destructive",
-          onPress: async () => {
-            setClearing(true);
-            try {
-              await clearAll();
-            } finally {
-              setClearing(false);
-            }
-          },
-        },
-      ]
+      "Reset",
+      async () => {
+        setClearing(true);
+        try {
+          await clearAll();
+        } finally {
+          setClearing(false);
+        }
+      }
     );
   };
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
@@ -92,6 +89,8 @@ export default function SettingsScreen() {
         Wipes all entries and staged imports from local storage. Useful for testing a fresh import.
       </Text>
     </ScrollView>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 
