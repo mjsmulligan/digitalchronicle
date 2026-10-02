@@ -88,6 +88,8 @@ export function normKey(s: string) {
  */
 export function locate(code: string): PlaceInfo | undefined {
   const key = normKey(code);
+  const curated = PLACES[key];
+  if (curated) return curated;
   const station = stations?.[key];
   if (!station) return undefined;
   const [name, lat, lon, timezone] = station;
