@@ -4,7 +4,7 @@
 import STATIONS_JSON from "./stations.generated.json";
 
 type StationTuple = [string, number, number, string]; // [name, lat, lon, timezone]
-const STATIONS = STATIONS_JSON as Record<string, StationTuple>;
+const STATIONS = STATIONS_JSON as unknown as Record<string, StationTuple>;
 
 /** No-op on this side — data is already loaded statically.  Kept for API compat. */
 export function loadStations(): Promise<void> {
