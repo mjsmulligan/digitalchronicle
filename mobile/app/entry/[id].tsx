@@ -198,12 +198,12 @@ export default function EntryDetailScreen() {
       padding: spacing.lg,
       gap: 4,
     },
-    title: { fontSize: 20, fontWeight: "700", color: colors.textPrimary, marginBottom: 2 },
+    title: { ...text.pageTitle, fontFamily: fonts.serifBold, fontWeight: "700", color: colors.textPrimary, marginBottom: 2 },
     subtitle: { ...text.md, color: colors.textSecondary, marginBottom: 4 },
     rating: { ...text.lg, color: colors.star, marginBottom: 4 },
     divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.md },
     field: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 5, gap: spacing.base },
-    fieldLabel: { ...text.smMd, color: colors.textTertiary, fontWeight: "600", minWidth: 80 },
+    fieldLabel: { ...text.smMd, fontFamily: fonts.mono, color: colors.textTertiary, fontWeight: "600", minWidth: 80 },
     fieldValue: { ...text.md, color: colors.textDim, flex: 1, textAlign: "right" },
 
     reflectionCard: {
@@ -214,8 +214,8 @@ export default function EntryDetailScreen() {
       padding: spacing.lg,
       gap: spacing.sm,
     },
-    reflectionLabel: { ...text.label, color: colors.textTertiary },
-    reflectionText: { ...text.base, color: colors.textDim },
+    reflectionLabel: { ...text.label, fontFamily: fonts.mono, color: colors.textTertiary },
+    reflectionText: { ...text.base, fontFamily: fonts.serifRegular, color: colors.textDim },
 
     metaCard: {
       backgroundColor: colors.surface,

@@ -73,16 +73,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     dateNum: {
       fontFamily: fonts.serifBold,
       fontWeight: "700",
-      fontSize: 34,
-      lineHeight: 38,
+      ...textScale.dayNum,
       color: colors.textBright,
     },
     dateSub: {
+      fontFamily: fonts.mono,
       fontSize: 10,
       fontWeight: "700",
-      letterSpacing: 0.6,
+      letterSpacing: 0.8,
       color: colors.textTertiary,
       lineHeight: 15,
+      textTransform: "uppercase" as const,
     },
 
     // Vertical rule
@@ -117,8 +118,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       flex: 1,
       fontFamily: fonts.serifBold,
       fontWeight: "700",
-      fontSize: 17,
-      lineHeight: 23,
+      ...textScale.feedTitle,
       color: colors.textPrimary,
     },
     purposeIcon: { fontSize: 18, lineHeight: 24 },
