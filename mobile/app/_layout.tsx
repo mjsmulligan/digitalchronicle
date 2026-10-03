@@ -53,7 +53,7 @@ function looksLikeImportUri(url: string): boolean {
 const MODAL_SCREENS = new Set(["import", "import-people", "settings"]);
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Lora_400Regular,
     Lora_500Medium,
     Lora_600SemiBold,
@@ -89,10 +89,10 @@ export default function RootLayout() {
     })();
   }, []);
 
-  // Hide splash once journal data is loaded AND fonts are ready
+  // Hide splash once journal data is loaded AND fonts are ready (or failed)
   useEffect(() => {
-    if (journal.ready && fontsLoaded) SplashScreen.hideAsync();
-  }, [journal.ready, fontsLoaded]);
+    if (journal.ready && (fontsLoaded || fontError)) SplashScreen.hideAsync();
+  }, [journal.ready, fontsLoaded, fontError]);
 
   // Guard: if expo-router restores a stale navigation state that lands
   // directly on a modal screen (common during hot-reload in development),
@@ -118,7 +118,7 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
-  if (!journal.ready || !fontsLoaded) {
+  if (!journal.ready || (!fontsLoaded && !fontError)) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={colors.accent} />
