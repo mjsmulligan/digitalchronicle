@@ -58,18 +58,24 @@ export interface ThemeColors {
 
 /**
  * Font family name tokens. Each value is a string that can be passed directly
- * to fontFamily in a StyleSheet. WP1.3 will load Fraunces, IBM Plex Sans and
- * JetBrains Mono and populate sans/mono; for now they are optional.
+ * to fontFamily in a StyleSheet.
+ *
+ * Leather uses Lora (serif only; sans/mono fall back to system defaults).
+ * Paper uses Fraunces (serif), IBM Plex Sans (sans) and JetBrains Mono (mono).
  */
 export interface ThemeFonts {
   serifBold: string;
   serifSemiBold: string;
   serifMedium: string;
   serifRegular: string;
-  /** Base sans-serif family; undefined means system default (Roboto/SF Pro). */
+  /** Regular-weight sans-serif; undefined falls back to system default. */
   sans?: string;
-  /** Base monospace family; undefined means system default. */
+  /** Medium-weight sans-serif; undefined falls back to sans. */
+  sansMedium?: string;
+  /** Regular-weight monospace; undefined falls back to system default. */
   mono?: string;
+  /** Medium-weight monospace; undefined falls back to mono. */
+  monoMedium?: string;
 }
 
 export interface ThemeDefinition {
@@ -124,7 +130,6 @@ const leather: ThemeDefinition = {
 };
 
 // ─── Paper theme (spec 4.2 -- default once WP1.5 activates it) ───────────────
-// Fonts are placeholders until WP1.3 bundles Fraunces + IBM Plex Sans + JetBrains Mono.
 
 const paper: ThemeDefinition = {
   id: "paper",
@@ -158,12 +163,15 @@ const paper: ThemeDefinition = {
     deleteBg:          "#FFF0ED",
     white:             "#ffffff",
   },
-  // Placeholder: WP1.3 replaces these with Fraunces weights.
   fonts: {
-    serifBold:     "Lora_700Bold",
-    serifSemiBold: "Lora_600SemiBold",
-    serifMedium:   "Lora_500Medium",
-    serifRegular:  "Lora_400Regular",
+    serifBold:     "Fraunces_600SemiBold",
+    serifSemiBold: "Fraunces_600SemiBold",
+    serifMedium:   "Fraunces_500Medium",
+    serifRegular:  "Fraunces_400Regular",
+    sans:          "IBMPlexSans_400Regular",
+    sansMedium:    "IBMPlexSans_500Medium",
+    mono:          "JetBrainsMono_400Regular",
+    monoMedium:    "JetBrainsMono_500Medium",
   },
 };
 
