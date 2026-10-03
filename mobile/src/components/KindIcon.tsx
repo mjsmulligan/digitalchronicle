@@ -18,7 +18,7 @@ function resolveIcon(kind: string, subkind?: string): { name: IoniconName; label
       return                         { name: "car",             label: "Drive" };
     case "stay":    return { name: "bed",            label: "Stay" };
     case "film":    return { name: "film",           label: "Film" };
-    case "episode": return { name: "tv",             label: "Episode" };
+    case "episode": return { name: "tv-outline",      label: "Episode" };
     case "book":    return { name: "book",           label: "Book" };
     case "event":
       if (subkind === "concert")     return { name: "musical-notes", label: "Concert" };
