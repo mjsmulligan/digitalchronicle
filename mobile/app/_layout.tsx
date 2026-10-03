@@ -27,6 +27,7 @@ import {
 } from "@expo-google-fonts/lora";
 import { SQLiteAdapter } from "../src/lib/storage/SQLiteAdapter";
 import { setAdapter, initJournal, useJournal } from "@chronicle/journal/db";
+import { ThemeProvider } from "../src/components/ThemeProvider";
 import { colors } from "../src/theme";
 
 SplashScreen.preventAutoHideAsync();
@@ -128,7 +129,7 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <ThemeProvider>
       <Stack screenOptions={{ headerShown: false }}>
         {/* Import screens slide up as modal sheets */}
         <Stack.Screen
@@ -154,7 +155,7 @@ export default function RootLayout() {
         />
       </Stack>
       <StatusBar style="light" />
-    </>
+    </ThemeProvider>
   );
 }
 
