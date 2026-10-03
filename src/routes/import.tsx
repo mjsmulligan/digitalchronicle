@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SourceIcon } from "@/components/journal/SourceIcon";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Upload, AlertTriangle, Scissors, Merge, Trash2 } from "lucide-react";
@@ -46,7 +47,7 @@ function BatchReview({ batch }: { batch: StagingBatch }) {
       <header className="flex flex-wrap items-center gap-3 border-b border-border p-4">
         <div className="flex-1">
           <h2 className="text-xl">{b.filename}</h2>
-          <p className="font-mono text-xs text-muted-foreground">{sourceLabel(b.source)} · {b.records.length} parsed · {b.errors.length} errors · {selected} selected</p>
+          <p className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground"><SourceIcon source={b.source} className="h-3 w-3" />{sourceLabel(b.source)} · {b.records.length} parsed · {b.errors.length} errors · {selected} selected</p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => removeMany("staging", [b.id])}><Trash2 className="h-4 w-4" /> Discard</Button>
         <Button size="sm" disabled={!selected} onClick={async () => {

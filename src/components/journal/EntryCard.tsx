@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { SourceIcon } from "@/components/journal/SourceIcon";
 import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2, X, Plus, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -347,7 +348,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             />
           )}
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] text-muted-foreground/50">{sourceLabel(entry.source)} · t{entry.tier}</span>
+            <span className="inline-flex items-center gap-1 font-mono text-[10px] text-muted-foreground/50"><SourceIcon source={entry.source} />{sourceLabel(entry.source)} · t{entry.tier}</span>
             <div className="flex items-center gap-2">
               {confirmDelete ? (
                 <div className="flex flex-wrap items-center gap-2">
