@@ -91,7 +91,14 @@ function episodeDedupeKey(
   return `episode|${norm(showTitle)}|${norm(season)}|${norm(episodeTitle)}|${watchedDate}`;
 }
 
-function parseNetflix(text: string): ParseResult {
+/** Yield to the JS event loop so the UI can breathe between chunks. */
+function yieldToUI(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+const PARSE_CHUNK = 200;
+
+async function parseNetflix(text: string): Promise<ParseResult> {
   const out: ParseResult = { entries: [], errors: [] };
   const rows = csvRows(text);
 
@@ -108,19 +115,24 @@ function parseNetflix(text: string): ParseResult {
     }
   }
 
-  rows.forEach(({ row: r, sourceRow }) => {
+  for (let i = 0; i < rows.length; i++) {
+    // Yield every PARSE_CHUNK rows so the spinner can render and the thread
+    // doesn't lock up on large files (e.g. 4000-row Netflix history).
+    if (i > 0 && i % PARSE_CHUNK === 0) await yieldToUI();
+
+    const { row: r, sourceRow } = rows[i];
     const rawTitle = (r["Title"] as string | undefined)?.trim() ?? "";
     const rawDate = (r["Date"] as string | undefined)?.trim() ?? "";
 
     if (!rawTitle || !rawDate) {
       out.errors.push(`Row ${sourceRow}: missing Title or Date — skipped`);
-      return;
+      continue;
     }
 
     const watchedDate = parseNetflixDate(rawDate);
     if (!watchedDate) {
       out.errors.push(`Row ${sourceRow}: unrecognised date "${rawDate}" — skipped`);
-      return;
+      continue;
     }
 
     // Override 2-part titles where the prefix is a known show (seen 2+ times)
@@ -171,7 +183,7 @@ function parseNetflix(text: string): ParseResult {
       };
       out.entries.push({ entry: ep, warnings: [], sourceRow });
     }
-  });
+  }
 
   return out;
 }
@@ -190,6 +202,6 @@ export const connector: Connector = {
     return 0;
   },
   parse({ text }) {
-    return parseNetflix(text);
+    return parseNetflix(text); // async — returns Promise<ParseResult>
   },
 };

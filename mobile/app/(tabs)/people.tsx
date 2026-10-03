@@ -3,9 +3,11 @@
  * Shows the journal owner (isSelf) first with a crown badge.
  */
 import { useMemo } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Person } from "@chronicle/journal/types";
+import { colors, text, spacing, radius } from "../../src/theme";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,9 +30,13 @@ function PersonRow({
     .join("")
     .slice(0, 2)
     .toUpperCase();
+  const router = useRouter();
 
   return (
-    <View style={styles.row}>
+    <Pressable
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      onPress={() => router.push(`/person/${person.id}`)}
+    >
       <View style={[styles.avatar, person.isSelf && styles.avatarSelf]}>
         <Text style={styles.avatarText}>{initials}</Text>
       </View>
@@ -50,7 +56,8 @@ function PersonRow({
           {entryCount} {entryCount === 1 ? "entry" : "entries"}
         </Text>
       )}
-    </View>
+      <Text style={styles.chevron}>›</Text>
+    </Pressable>
   );
 }
 
@@ -76,8 +83,7 @@ export default function PeopleScreen() {
         <Text style={styles.emptyIcon}>👤</Text>
         <Text style={styles.emptyTitle}>No people yet</Text>
         <Text style={styles.emptyHint}>
-          Set up your profile and import contacts on the web to start linking
-          entries to people.
+          Tap the import icon above to add people from a .vcf or contacts CSV file.
         </Text>
       </View>
     );
@@ -98,51 +104,53 @@ export default function PeopleScreen() {
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: "#0f172a" },
+  list: { flex: 1, backgroundColor: colors.bg },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#1e293b",
-    gap: 12,
+    borderBottomColor: colors.borderFaint,
+    gap: spacing.md,
   },
   avatar: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: "#334155",
+    borderRadius: radius.full,
+    backgroundColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarSelf: { backgroundColor: "#312e81" },
-  avatarText: { color: "#e2e8f0", fontSize: 14, fontWeight: "700" },
+  avatarSelf: { backgroundColor: colors.surfaceAccent },
+  avatarText: { color: colors.textDim, fontSize: 14, fontWeight: "700" },
   rowBody: { flex: 1 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  name: { color: "#f1f5f9", fontSize: 15, fontWeight: "500" },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  name: { ...text.base, color: colors.textPrimary, fontWeight: "500" },
   selfBadge: {
-    color: "#a5b4fc",
+    color: colors.accentBadge,
     fontSize: 10,
     fontWeight: "700",
-    backgroundColor: "#1e1b4b",
-    paddingHorizontal: 6,
+    backgroundColor: colors.surfaceAccentDeep,
+    paddingHorizontal: spacing.sm2,
     paddingVertical: 2,
-    borderRadius: 4,
+    borderRadius: radius.sm,
     overflow: "hidden",
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
-  aliases: { color: "#64748b", fontSize: 12, marginTop: 2 },
-  count: { color: "#64748b", fontSize: 12 },
+  aliases: { ...text.sm, color: colors.textTertiary, marginTop: 2 },
+  rowPressed: { backgroundColor: colors.surfacePressed },
+  count: { ...text.sm, color: colors.textTertiary },
+  chevron: { fontSize: 20, lineHeight: 44, color: colors.border },
   empty: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    backgroundColor: colors.bg,
     alignItems: "center",
     justifyContent: "center",
-    padding: 32,
+    padding: spacing["2xl"],
   },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyTitle: { color: "#f1f5f9", fontSize: 18, fontWeight: "600", marginBottom: 8 },
-  emptyHint: { color: "#64748b", fontSize: 14, textAlign: "center", lineHeight: 20 },
+  emptyIcon: { fontSize: 48, marginBottom: spacing.base },
+  emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm },
+  emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
 });

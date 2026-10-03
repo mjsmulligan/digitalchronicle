@@ -14,7 +14,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -23,12 +22,15 @@ import {
   View,
   ScrollView,
 } from "react-native";
+import { useDialog, Dialog } from "../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { useJournal, removeMany } from "@chronicle/journal/db";
+import { useJournal, removeMany, type CommitProgress } from "@chronicle/journal/db";
 import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
 import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatus } from "@chronicle/journal/types";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { colors, fonts, text, spacing, radius, common } from "../src/theme";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,7 +53,7 @@ const STATUS_LABEL: Record<StageStatus, string> = {
 };
 
 function entryEmoji(e: StagedRecord["entry"]): string {
-  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚂" : "🚗";
+  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚆" : "🚗";
   if (e.kind === "stay") return "🏨";
   if (e.kind === "film") return "🎬";
   if (e.kind === "episode") return "📺";
@@ -81,8 +83,8 @@ function RecordRow({
         value={record.selected}
         onValueChange={onToggle}
         disabled={!selectable}
-        trackColor={{ true: "#6366f1", false: "#334155" }}
-        thumbColor={record.selected ? "#e0e7ff" : "#94a3b8"}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={record.selected ? colors.accentSubtle : colors.textMuted}
         style={styles.recordSwitch}
       />
       <Text style={styles.recordEmoji}>{entryEmoji(record.entry)}</Text>
@@ -105,20 +107,34 @@ function RecordRow({
   );
 }
 
+// How many rows to render initially; user can expand to see all.
+const INITIAL_VISIBLE = 100;
+
 function BatchReview({
   batch,
+  commitProgress,
   onCommit,
   onDiscard,
+  onError,
 }: {
   batch: StagingBatch;
+  commitProgress: CommitProgress | null;
   onCommit: (count: number) => void;
   onDiscard: () => void;
+  onError: (title: string, message: string) => void;
 }) {
   const [b, setB] = useState(batch);
-  const [committing, setCommitting] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+
+  const committing = commitProgress?.batchId === batch.id;
+  const progressPct = committing && commitProgress!.total > 0
+    ? commitProgress!.done / commitProgress!.total
+    : 0;
 
   const selected = b.records.filter((r) => r.selected).length;
   const importable = b.records.filter((r) => isSelectable(r.status)).length;
+  const visibleRecords = b.records.slice(0, visibleCount);
+  const hiddenCount = b.records.length - visibleCount;
 
   const update = useCallback(
     (next: StagingBatch) => {
@@ -146,15 +162,33 @@ function BatchReview({
     update({ ...b, records: b.records.map((r) => ({ ...r, selected: false })) });
 
   const handleCommit = async () => {
-    setCommitting(true);
     try {
       const result = await commitBatch(b);
       onCommit(result.count);
     } catch (err) {
-      Alert.alert("Commit failed", String(err));
-      setCommitting(false);
+      onError("Commit failed", String(err));
     }
   };
+
+  // While committing, collapse the full card to a slim progress indicator
+  if (committing) {
+    return (
+      <View style={styles.commitProgressCard}>
+        <View style={styles.commitProgressTop}>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <View style={styles.commitProgressText}>
+            <Text style={styles.batchFilename} numberOfLines={1}>{b.filename}</Text>
+            <Text style={styles.commitProgressCount}>
+              Saving {commitProgress!.done} of {commitProgress!.total} entries…
+            </Text>
+          </View>
+        </View>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${Math.round(progressPct * 100)}%` }]} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.batchContainer}>
@@ -169,7 +203,7 @@ function BatchReview({
           </Text>
         </View>
         <Pressable onPress={onDiscard} style={styles.discardBtn}>
-          <Ionicons name="trash-outline" size={18} color="#ef4444" />
+          <Ionicons name="trash-outline" size={18} color={colors.error} />
         </Pressable>
       </View>
 
@@ -187,7 +221,8 @@ function BatchReview({
         </View>
       )}
 
-      {/* Quick actions */}
+      {/* Quick actions + commit — pinned above the record list so the
+          primary action is always reachable without scrolling */}
       <View style={styles.quickActions}>
         <Pressable onPress={selectImportable}>
           <Text style={styles.quickActionText}>Select importable ({importable})</Text>
@@ -197,9 +232,22 @@ function BatchReview({
         </Pressable>
       </View>
 
-      {/* Record list */}
+      <View style={styles.commitBar}>
+        <Pressable
+          style={[styles.commitBtn, !selected && styles.commitBtnDisabled]}
+          disabled={!selected}
+          onPress={handleCommit}
+        >
+          <Text style={styles.commitBtnText}>
+            Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Record list — capped at INITIAL_VISIBLE to avoid rendering thousands
+          of rows at once (FlatList can't virtualise when scrollEnabled=false). */}
       <FlatList
-        data={b.records}
+        data={visibleRecords}
         keyExtractor={(r) => r.entry.id}
         renderItem={({ item, index }) => (
           <RecordRow
@@ -209,24 +257,19 @@ function BatchReview({
         )}
         style={styles.recordList}
         scrollEnabled={false}
+        ListFooterComponent={
+          hiddenCount > 0 ? (
+            <Pressable
+              style={styles.loadMoreBtn}
+              onPress={() => setVisibleCount((n) => n + INITIAL_VISIBLE)}
+            >
+              <Text style={styles.loadMoreText}>
+                Show next {Math.min(INITIAL_VISIBLE, hiddenCount)} of {hiddenCount} remaining
+              </Text>
+            </Pressable>
+          ) : null
+        }
       />
-
-      {/* Commit button */}
-      <View style={styles.commitBar}>
-        <Pressable
-          style={[styles.commitBtn, (!selected || committing) && styles.commitBtnDisabled]}
-          disabled={!selected || committing}
-          onPress={handleCommit}
-        >
-          {committing ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={styles.commitBtnText}>
-              Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
-            </Text>
-          )}
-        </Pressable>
-      </View>
     </View>
   );
 }
@@ -237,9 +280,11 @@ export default function ImportScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ uri?: string }>();
   const journal = useJournal();
+  const { top } = useSafeAreaInsets();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const dialog = useDialog();
   const [freshBatch, setFreshBatch] = useState<StagingBatch | null>(null);
 
   // Handle incoming URI from share intent / ACTION_VIEW
@@ -252,12 +297,19 @@ export default function ImportScreen() {
   const processUri = async (uri: string, filename: string) => {
     setPhase("parsing");
     setError(null);
+    // Yield to the JS event loop so the "parsing…" spinner renders before
+    // the heavy stageFile work begins. Without this, React batches the state
+    // update and the UI stays frozen on "idle" until everything finishes.
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
     try {
       // fetch() handles file:// and content:// URIs in React Native,
       // including Expo Go's sandboxed DocumentPicker paths.
       const response = await fetch(uri);
       if (!response.ok) throw new Error(`Could not read file (HTTP ${response.status})`);
       const text = await response.text();
+      // Yield again after the file read so the thread isn't starved before
+      // the connector parse + dedup pass (can be several seconds for large files).
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
       const batch = await stageFile(filename, text);
       setFreshBatch(batch);
       setPhase("review");
@@ -291,10 +343,10 @@ export default function ImportScreen() {
   const handleCommit = (count: number) => {
     setFreshBatch(null);
     setPhase("idle");
-    Alert.alert(
+    dialog.alert(
       "Import complete",
       `${count} ${count === 1 ? "entry" : "entries"} added to your journal.`,
-      [{ text: "OK", onPress: () => router.back() }]
+      () => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")
     );
   };
 
@@ -314,15 +366,23 @@ export default function ImportScreen() {
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: "Import",
-          headerStyle: { backgroundColor: "#1e293b" },
-          headerTintColor: "#f8fafc",
-          headerShadowVisible: false,
-        }}
-      />
+    <>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
+    >
+      {/* Modal chrome — drag handle + title */}
+      <View style={styles.dragHandle} />
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Import</Text>
+        <Pressable
+          onPress={() => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")}
+          hitSlop={8}
+          style={styles.closeBtn}
+        >
+          <Ionicons name="close" size={18} color={colors.textSecondary} />
+        </Pressable>
+      </View>
 
       {/* Pick file button */}
       <Pressable
@@ -330,7 +390,7 @@ export default function ImportScreen() {
         onPress={pickFile}
         disabled={phase === "parsing"}
       >
-        <Ionicons name="cloud-upload-outline" size={22} color="#818cf8" />
+        <Ionicons name="cloud-upload-outline" size={22} color={colors.accentSoft} />
         <Text style={styles.pickBtnText}>Choose a file to import</Text>
       </Pressable>
 
@@ -342,8 +402,8 @@ export default function ImportScreen() {
       {/* Parsing indicator */}
       {phase === "parsing" && (
         <View style={styles.parsing}>
-          <ActivityIndicator color="#6366f1" />
-          <Text style={styles.parsingText}>Parsing file…</Text>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.parsingText}>Parsing file… this may take a moment for large imports</Text>
         </View>
       )}
 
@@ -359,8 +419,10 @@ export default function ImportScreen() {
         <BatchReview
           key={batch.id}
           batch={batch}
+          commitProgress={journal.commitProgress}
           onCommit={handleCommit}
           onDiscard={() => handleDiscard(batch.id)}
+          onError={dialog.alert}
         />
       ))}
 
@@ -376,114 +438,189 @@ export default function ImportScreen() {
         </View>
       )}
     </ScrollView>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 
 // ── styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
-  content: { padding: 16, paddingBottom: 40 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: { flexGrow: 1, padding: spacing.base, paddingBottom: spacing["2xl"] },
+
+  // Modal chrome
+  dragHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: spacing.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: spacing.xl,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textBright,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    backgroundColor: colors.surface,
+    borderRadius: radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
 
   pickBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    backgroundColor: "#1e293b",
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: "#6366f1",
+    borderColor: colors.accent,
     borderStyle: "dashed",
     paddingVertical: 20,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   pickBtnDisabled: { opacity: 0.5 },
-  pickBtnText: { color: "#818cf8", fontSize: 16, fontWeight: "600" },
-  hint: { color: "#475569", fontSize: 12, textAlign: "center", marginBottom: 24, lineHeight: 18 },
+  pickBtnText: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
+  hint: { ...text.sm, color: colors.textMuted, textAlign: "center", marginBottom: spacing.xl },
 
-  parsing: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
-  parsingText: { color: "#94a3b8", fontSize: 14 },
+  parsing: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.base },
+  parsingText: { ...text.md, color: colors.textSecondary },
 
   errorBox: {
-    backgroundColor: "#450a0a",
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
+    backgroundColor: colors.errorBg,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.base,
   },
-  errorBoxText: { color: "#fca5a5", fontSize: 13 },
+  errorBoxText: { ...text.smMd, color: colors.errorLight },
 
-  empty: { alignItems: "center", paddingTop: 40 },
-  emptyIcon: { fontSize: 40, marginBottom: 12 },
-  emptyTitle: { color: "#f1f5f9", fontSize: 17, fontWeight: "600", marginBottom: 6 },
-  emptyHint: { color: "#64748b", fontSize: 13, textAlign: "center", lineHeight: 19 },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacing["2xl"] },
+  emptyIcon: { fontSize: 40, marginBottom: spacing.md },
+  emptyTitle: {
+    fontSize: 20,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: spacing.sm2,
+  },
+  emptyHint: { ...text.smMd, color: colors.textTertiary, textAlign: "center" },
 
   // Batch review
   batchContainer: {
-    backgroundColor: "#1e293b",
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
     borderWidth: 1,
-    borderColor: "#334155",
-    marginBottom: 20,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
     overflow: "hidden",
   },
   batchHeader: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
+    padding: spacing.md2,
     borderBottomWidth: 1,
-    borderBottomColor: "#334155",
-    gap: 12,
+    borderBottomColor: colors.border,
+    gap: spacing.md,
   },
   batchHeaderText: { flex: 1 },
-  batchFilename: { color: "#f1f5f9", fontSize: 15, fontWeight: "600", marginBottom: 2 },
-  batchMeta: { color: "#64748b", fontSize: 12 },
+  batchFilename: { ...text.base, color: colors.textPrimary, fontWeight: "600", marginBottom: 2 },
+  batchMeta: { ...text.sm, color: colors.textTertiary },
   discardBtn: { padding: 4 },
 
   errorsBox: {
-    backgroundColor: "#450a0a",
+    backgroundColor: colors.errorBg,
     padding: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "#334155",
+    borderBottomColor: colors.border,
   },
-  errorText: { color: "#fca5a5", fontSize: 12, marginBottom: 2 },
+  errorText: { ...text.sm, color: colors.errorLight, marginBottom: 2 },
 
   quickActions: {
     flexDirection: "row",
-    gap: 16,
+    gap: spacing.base,
     padding: 10,
-    paddingHorizontal: 14,
+    paddingHorizontal: spacing.md2,
     borderBottomWidth: 1,
-    borderBottomColor: "#1e293b",
+    borderBottomColor: colors.borderFaint,
   },
-  quickActionText: { color: "#6366f1", fontSize: 12, fontWeight: "600" },
+  quickActionText: { ...text.sm, color: colors.accent, fontWeight: "600" },
 
   recordList: {},
+  loadMoreBtn: {
+    padding: spacing.md2,
+    alignItems: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  loadMoreText: { ...text.smMd, color: colors.accent, fontWeight: "600" },
   recordRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: spacing.md2,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#334155",
+    borderBottomColor: colors.border,
     gap: 10,
   },
   recordRowDim: { opacity: 0.45 },
   recordSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
   recordEmoji: { fontSize: 16, width: 22, textAlign: "center" },
   recordBody: { flex: 1 },
-  recordTitle: { color: "#f1f5f9", fontSize: 14, fontWeight: "500", marginBottom: 2 },
-  recordMeta: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  recordTitle: { ...text.md, color: colors.textPrimary, fontWeight: "500", marginBottom: 2 },
+  recordMeta: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   recordStatus: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-  recordWarning: { color: "#f59e0b", fontSize: 11, flex: 1 },
+  recordWarning: { fontSize: 11, color: colors.star, flex: 1 },
 
-  commitBar: { padding: 14, paddingTop: 12 },
+  commitBar: { padding: spacing.md2, paddingTop: spacing.md },
   commitBtn: {
-    backgroundColor: "#4f46e5",
-    borderRadius: 10,
+    backgroundColor: colors.accentBold,
+    borderRadius: radius.lg,
     paddingVertical: 14,
     alignItems: "center",
   },
   commitBtnDisabled: { opacity: 0.4 },
-  commitBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  commitBtnText: { ...text.base, color: colors.white, fontWeight: "700" },
+
+  commitProgressCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md2,
+    marginBottom: spacing.lg,
+    gap: 10,
+  },
+  commitProgressTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  commitProgressText: { flex: 1 },
+  commitProgressCount: { ...text.sm, color: colors.textTertiary, marginTop: 2 },
+  progressTrack: {
+    height: 4,
+    backgroundColor: colors.border,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: colors.accent,
+    borderRadius: 2,
+  },
 });

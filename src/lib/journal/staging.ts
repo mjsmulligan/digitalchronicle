@@ -1,4 +1,4 @@
-import { allEntries, getState, putMany, removeMany, storeFor } from "./db";
+import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor } from "./db";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations } from "./geo";
 import {
@@ -50,11 +50,20 @@ export async function stageFile(filename: string, text: string, forced?: string)
   }
   const existing = new Map(allEntries(getState()).map((e) => [e.dedupeKey, e]));
   const seen = new Set<string>();
-  const records: StagedRecord[] = res.entries.map(({ entry, warnings, sourceRow }) => {
+
+  // Chunk the classify loop so the UI thread isn't starved on large imports
+  // (e.g. 4000-row Netflix history). Yield every 200 entries.
+  const CLASSIFY_CHUNK = 200;
+  const records: StagedRecord[] = [];
+  for (let i = 0; i < res.entries.length; i++) {
+    if (i > 0 && i % CLASSIFY_CHUNK === 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    const { entry, warnings, sourceRow } = res.entries[i];
     entry.sourceRef = `${filename}#row${sourceRow}`;
     const c = classify(entry, existing, seen);
-    return { entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" };
-  });
+    records.push({ entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" });
+  }
   const batch: StagingBatch = { id: uid(), source, filename, createdAt: new Date().toISOString(), records, errors: res.errors };
   await putMany("staging", [batch]);
   return batch;
@@ -63,6 +72,8 @@ export async function stageFile(filename: string, text: string, forced?: string)
 export async function saveBatch(b: StagingBatch) {
   await putMany("staging", [b]);
 }
+
+const COMMIT_CHUNK = 100;
 
 export async function commitBatch(b: StagingBatch) {
   const s = getState();
@@ -81,12 +92,35 @@ export async function commitBatch(b: StagingBatch) {
     writes[storeFor(e)].push(e);
     count++;
   }
-  await putMany("legs", writes.legs);
-  await putMany("stays", writes.stays);
-  await putMany("events", writes.events);
-  await putMany("films", writes.films);
-  await putMany("episodes", writes.episodes);
-  await putMany("books", writes.books);
+
+  // Flatten all entries to write so we can report progress across store types.
+  const allWrites: { store: keyof typeof writes; entry: Entry }[] = [];
+  for (const store of ["legs", "stays", "events", "films", "episodes", "books"] as const) {
+    for (const entry of writes[store]) allWrites.push({ store, entry });
+  }
+
+  const total = allWrites.length;
+  setCommitProgress({ batchId: b.id, done: 0, total });
+
+  // Write in chunks, yielding between each so the UI can update the progress bar.
+  for (let i = 0; i < allWrites.length; i += COMMIT_CHUNK) {
+    const chunk = allWrites.slice(i, i + COMMIT_CHUNK);
+
+    // Group this chunk by store for a single putMany call per store.
+    const chunkByStore: Record<string, Entry[]> = {};
+    for (const { store, entry } of chunk) {
+      (chunkByStore[store] ??= []).push(entry);
+    }
+    for (const [store, entries] of Object.entries(chunkByStore)) {
+      await putMany(store as "legs" | "stays" | "events" | "films" | "episodes" | "books", entries);
+    }
+
+    setCommitProgress({ batchId: b.id, done: Math.min(i + COMMIT_CHUNK, total), total });
+    // Yield so React can re-render the progress bar before the next chunk.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+
   await removeMany("staging", [b.id]);
+  setCommitProgress(null);
   return { count };
 }

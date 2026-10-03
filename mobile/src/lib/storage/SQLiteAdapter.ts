@@ -58,32 +58,40 @@ export class SQLiteAdapter implements StorageAdapter {
 
   async putMany<T extends Row>(store: StoreName, items: T[]): Promise<void> {
     if (!items.length) return;
-    await this.db.withTransactionAsync(async () => {
-      for (const item of items) {
-        await this.db.runAsync(
-          `INSERT OR REPLACE INTO "${store}" (id, data) VALUES (?, ?)`,
-          [item.id, JSON.stringify(item)]
-        );
+    // withExclusiveTransactionAsync serialises writes and passes a txn object,
+    // preventing "NativeDatabase is null" races under concurrent async re-renders.
+    // Use a prepared statement so SQL is parsed once rather than once per row —
+    // significant speedup for large batches (e.g. 4000 Netflix entries).
+    await this.db.withExclusiveTransactionAsync(async (txn) => {
+      const stmt = await txn.prepareAsync(
+        `INSERT OR REPLACE INTO "${store}" (id, data) VALUES (?, ?)`
+      );
+      try {
+        for (const item of items) {
+          await stmt.executeAsync([item.id, JSON.stringify(item)]);
+        }
+      } finally {
+        await stmt.finalizeAsync();
       }
     });
   }
 
   async removeMany(store: StoreName, ids: string[]): Promise<void> {
     if (!ids.length) return;
-    await this.db.withTransactionAsync(async () => {
+    await this.db.withExclusiveTransactionAsync(async (txn) => {
       for (const id of ids) {
-        await this.db.runAsync(`DELETE FROM "${store}" WHERE id = ?`, [id]);
+        await txn.runAsync(`DELETE FROM "${store}" WHERE id = ?`, [id]);
       }
     });
   }
 
   async replaceAll(data: JournalData): Promise<void> {
-    await this.db.withTransactionAsync(async () => {
+    await this.db.withExclusiveTransactionAsync(async (txn) => {
       for (const store of STORES) {
-        await this.db.runAsync(`DELETE FROM "${store}"`);
+        await txn.runAsync(`DELETE FROM "${store}"`);
         const items = (data[store] ?? []) as Row[];
         for (const item of items) {
-          await this.db.runAsync(
+          await txn.runAsync(
             `INSERT INTO "${store}" (id, data) VALUES (?, ?)`,
             [item.id, JSON.stringify(item)]
           );
@@ -105,6 +113,7 @@ export class SQLiteAdapter implements StorageAdapter {
       notes: [],
       staging: [],
       people: [],
+      places: [],
     });
   }
 }

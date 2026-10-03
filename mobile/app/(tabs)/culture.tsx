@@ -1,6 +1,6 @@
 /**
- * Culture tab — films, TV episodes, books, and concerts sorted newest-first.
- * Filter pills mirror the web culture view.
+ * Culture tab — films, TV episodes, books, and concerts in the two-column
+ * journal layout, grouped by day. Filter pills at the top narrow by kind.
  */
 import { useMemo, useState } from "react";
 import {
@@ -11,8 +11,10 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import { view, type Entry, type Film, type Episode, type Book, type JEvent } from "@chronicle/journal/types";
+import { colors, fonts, text, spacing, radius } from "../../src/theme";
 
 // ── types & helpers ───────────────────────────────────────────────────────────
 
@@ -45,13 +47,34 @@ function cultureEmoji(e: CultureEntry): string {
   return "🎵";
 }
 
+const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN",
+                      "JUL","AUG","SEP","OCT","NOV","DEC"];
+const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+
+function parseDay(iso: string) {
+  const d = new Date(iso + "T12:00:00");
+  return {
+    num:   d.getDate().toString(),
+    day:   DAYS_SHORT[d.getDay()],
+    month: MONTHS_SHORT[d.getMonth()],
+    year:  d.getFullYear().toString(),
+  };
+}
+
 const FILTERS: { id: Filter; label: string }[] = [
-  { id: "all", label: "All" },
-  { id: "film", label: "Films" },
+  { id: "all",     label: "All" },
+  { id: "film",    label: "Films" },
   { id: "episode", label: "TV" },
-  { id: "book", label: "Books" },
+  { id: "book",    label: "Books" },
   { id: "concert", label: "Concerts" },
 ];
+
+// ── data ─────────────────────────────────────────────────────────────────────
+
+interface DayGroup {
+  iso: string;
+  items: CultureEntry[];
+}
 
 // ── components ────────────────────────────────────────────────────────────────
 
@@ -76,24 +99,49 @@ function FilterPill({
   );
 }
 
-function CultureRow({ entry }: { entry: CultureEntry }) {
+function EntryCard({ entry }: { entry: CultureEntry }) {
+  const router = useRouter();
   const v = view(entry);
   const stars =
-    v.rating !== undefined
-      ? "★".repeat(Math.round(v.rating / 2)) +
-        "☆".repeat(5 - Math.round(v.rating / 2))
-      : null;
+    v.rating !== undefined ? "★".repeat(Math.round(v.rating / 2)) : undefined;
+
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowEmoji}>{cultureEmoji(entry)}</Text>
-      <View style={styles.rowBody}>
-        <Text style={styles.rowTitle} numberOfLines={2}>
+    <Pressable
+      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+      onPress={() => router.push(`/entry/${entry.id}`)}
+    >
+      <Text style={styles.cardIcon}>{cultureEmoji(entry)}</Text>
+      <View style={styles.cardBody}>
+        <Text style={styles.cardTitle} numberOfLines={2}>
           {cultureTitle(entry)}
         </Text>
-        <View style={styles.rowMeta}>
-          <Text style={styles.rowDate}>{v.start.slice(0, 10)}</Text>
-          {stars && <Text style={styles.rowStars}>{stars}</Text>}
-        </View>
+        {stars && <Text style={styles.cardStars}>{stars}</Text>}
+      </View>
+    </Pressable>
+  );
+}
+
+function DayGroupRow({ group }: { group: DayGroup }) {
+  const { num, day, month, year } = parseDay(group.iso);
+
+  return (
+    <View style={styles.dayGroup}>
+      {/* Left: date column */}
+      <View style={styles.dateCol}>
+        <Text style={styles.dateNum}>{num}</Text>
+        <Text style={styles.dateSub}>{day}</Text>
+        <Text style={styles.dateSub}>{month}</Text>
+        <Text style={styles.dateSub}>{year}</Text>
+      </View>
+
+      {/* Centre: vertical rule */}
+      <View style={styles.dateRule} />
+
+      {/* Right: entry cards */}
+      <View style={styles.entriesCol}>
+        {group.items.map((entry) => (
+          <EntryCard key={entry.id} entry={entry} />
+        ))}
       </View>
     </View>
   );
@@ -105,14 +153,12 @@ export default function CultureScreen() {
   const journal = useJournal();
   const [filter, setFilter] = useState<Filter>("all");
 
-  const entries = useMemo<CultureEntry[]>(() => {
-    const all = [
+  const groups = useMemo<DayGroup[]>(() => {
+    const all: CultureEntry[] = [
       ...journal.films,
       ...journal.episodes,
       ...journal.books,
-      ...journal.events.filter(
-        (e) => (e as JEvent).category === "concert"
-      ),
+      ...journal.events.filter((e) => (e as JEvent).category === "concert"),
     ].filter(isCulture);
 
     const filtered =
@@ -122,7 +168,15 @@ export default function CultureScreen() {
         ? all.filter((e) => e.kind === "event")
         : all.filter((e) => e.kind === filter);
 
-    return filtered.sort((a, b) => b.start.localeCompare(a.start));
+    const sorted = filtered.sort((a, b) => b.start.localeCompare(a.start));
+
+    const byDay = new Map<string, CultureEntry[]>();
+    for (const e of sorted) {
+      const day = e.start.slice(0, 10);
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day)!.push(e);
+    }
+    return [...byDay.entries()].map(([iso, items]) => ({ iso, items }));
   }, [journal, filter]);
 
   return (
@@ -144,8 +198,7 @@ export default function CultureScreen() {
         ))}
       </ScrollView>
 
-      {/* Results */}
-      {!entries.length ? (
+      {!groups.length ? (
         <View style={styles.empty}>
           <Text style={styles.emptyIcon}>🎬</Text>
           <Text style={styles.emptyTitle}>Nothing here yet</Text>
@@ -155,9 +208,11 @@ export default function CultureScreen() {
         </View>
       ) : (
         <FlatList
-          data={entries}
-          keyExtractor={(e) => e.id}
-          renderItem={({ item }) => <CultureRow entry={item} />}
+          style={styles.list}
+          data={groups}
+          keyExtractor={(g) => g.iso}
+          renderItem={({ item }) => <DayGroupRow group={item} />}
+          ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
           contentContainerStyle={styles.listContent}
         />
       )}
@@ -167,44 +222,117 @@ export default function CultureScreen() {
 
 // ── styles ────────────────────────────────────────────────────────────────────
 
+const DATE_COL_W = 52;
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0f172a" },
-  pills: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: "#1e293b" },
-  pillsContent: { padding: 12, gap: 8, flexDirection: "row" },
+  container: { flex: 1, backgroundColor: colors.bg },
+  list: { flex: 1 },
+  listContent: { paddingBottom: spacing["3xl"] },
+
+  // Filter pills
+  pills: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.borderFaint },
+  pillsContent: { padding: spacing.md, gap: spacing.sm, flexDirection: "row" },
   pill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: "#1e293b",
+    paddingHorizontal: spacing.md2,
+    paddingVertical: spacing.sm2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: "#334155",
+    borderColor: colors.border,
   },
-  pillActive: { backgroundColor: "#312e81", borderColor: "#6366f1" },
-  pillText: { color: "#94a3b8", fontSize: 13, fontWeight: "600" },
-  pillTextActive: { color: "#e0e7ff" },
-  listContent: { paddingVertical: 8 },
-  row: {
+  pillActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
+  pillText: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
+  pillTextActive: { color: colors.accentSubtle },
+
+  // Day group row
+  dayGroup: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.sm,
+  },
+
+  // Date column
+  dateCol: {
+    width: DATE_COL_W,
+    alignItems: "center",
+    paddingTop: 2,
+    flexShrink: 0,
+  },
+  dateNum: {
+    fontFamily: fonts.serifBold,
+    fontWeight: "700",
+    fontSize: 34,
+    lineHeight: 38,
+    color: colors.textBright,
+  },
+  dateSub: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    color: colors.textTertiary,
+    lineHeight: 15,
+  },
+
+  // Vertical rule
+  dateRule: {
+    width: 1,
+    alignSelf: "stretch",
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md,
+    marginTop: 4,
+  },
+
+  // Entries column
+  entriesCol: {
+    flex: 1,
+    gap: spacing.sm,
+  },
+
+  // Entry card
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md2,
+    paddingVertical: spacing.md,
     flexDirection: "row",
     alignItems: "flex-start",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#1e293b",
-    gap: 12,
+    gap: spacing.sm,
   },
-  rowEmoji: { fontSize: 20, lineHeight: 26 },
-  rowBody: { flex: 1 },
-  rowTitle: { color: "#f1f5f9", fontSize: 15, fontWeight: "500", marginBottom: 4 },
-  rowMeta: { flexDirection: "row", gap: 8, alignItems: "center" },
-  rowDate: { color: "#64748b", fontSize: 12 },
-  rowStars: { color: "#f59e0b", fontSize: 12 },
+  cardPressed: { opacity: 0.65 },
+  cardIcon: { fontSize: 18, lineHeight: 24, marginTop: 1 },
+  cardBody: { flex: 1 },
+  cardTitle: {
+    ...text.base,
+    color: colors.textPrimary,
+    fontWeight: "500",
+    marginBottom: 3,
+  },
+  cardStars: { ...text.xs, color: colors.star, marginTop: 2 },
+
+  // Separator between days
+  daySeparator: {
+    height: 1,
+    backgroundColor: colors.borderFaint,
+    marginHorizontal: spacing.base,
+  },
+
+  // Empty state
   empty: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: 32,
+    padding: spacing["2xl"],
   },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyTitle: { color: "#f1f5f9", fontSize: 18, fontWeight: "600", marginBottom: 8 },
-  emptyHint: { color: "#64748b", fontSize: 14, textAlign: "center", lineHeight: 20 },
+  emptyIcon: { fontSize: 48, marginBottom: spacing.base },
+  emptyTitle: {
+    fontSize: 18,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
+  emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
 });
