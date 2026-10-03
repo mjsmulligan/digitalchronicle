@@ -1,29 +1,30 @@
 import { Tabs, Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
-import { colors, fonts, common } from "../../src/theme";
+import { useTheme } from "../../src/components/ThemeProvider";
 import { FloatingNavBar } from "../../src/components/FloatingNavBar";
 import { useEffect, useState } from "react";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
-function tabIcon(
-  focused: boolean,
-  activeIcon: IoniconName,
-  inactiveIcon: IoniconName
-) {
-  return (
-    <Ionicons
-      name={focused ? activeIcon : inactiveIcon}
-      size={24}
-      color={focused ? colors.accentSoft : colors.textMuted}
-    />
-  );
-}
-
 export default function TabLayout() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("index");
+  const { colors, fonts } = useTheme();
+
+  function tabIcon(
+    focused: boolean,
+    activeIcon: IoniconName,
+    inactiveIcon: IoniconName,
+  ) {
+    return (
+      <Ionicons
+        name={focused ? activeIcon : inactiveIcon}
+        size={24}
+        color={focused ? colors.accentSoft : colors.textMuted}
+      />
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>

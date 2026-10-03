@@ -167,6 +167,53 @@ const paper: ThemeDefinition = {
   },
 };
 
+// ─── Invariant tokens (same across all themes for now) ───────────────────────
+// These live here so screens only import from ThemeProvider and have no reason
+// to reach into the deleted compat layer (src/theme.ts).
+
+export const text = {
+  xs:    { fontSize: 11, lineHeight: 16 } as const,
+  sm:    { fontSize: 12, lineHeight: 18 } as const,
+  smMd:  { fontSize: 13, lineHeight: 18 } as const,
+  md:    { fontSize: 14, lineHeight: 20 } as const,
+  base:  { fontSize: 15, lineHeight: 22 } as const,
+  lg:    { fontSize: 16, lineHeight: 24 } as const,
+  xl:    { fontSize: 18, lineHeight: 26 } as const,
+  "2xl": { fontSize: 20, lineHeight: 28 } as const,
+  "3xl": { fontSize: 22, lineHeight: 30 } as const,
+  "4xl": { fontSize: 28, lineHeight: 36 } as const,
+  hero:  { fontSize: 48, lineHeight: 56 } as const,
+  label: {
+    fontSize: 11,
+    fontWeight: "700" as const,
+    letterSpacing: 0.8,
+    textTransform: "uppercase" as const,
+  },
+} as const;
+
+export const spacing = {
+  xs:    4,
+  sm2:   6,
+  sm:    8,
+  md:    12,
+  md2:   14,
+  base:  16,
+  lg:    20,
+  xl:    24,
+  "2xl": 32,
+  "3xl": 48,
+} as const;
+
+export const radius = {
+  sm:    6,
+  md:    8,
+  lg:    10,
+  xl:    12,
+  "2xl": 16,
+  pill:  20,
+  full:  9999,
+} as const;
+
 // ─── Registry ─────────────────────────────────────────────────────────────────
 
 export const THEMES: Record<string, ThemeDefinition> = {
@@ -255,21 +302,91 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   );
 }
 
+// ─── Common composed styles (computed from live theme tokens) ─────────────────
+
+/**
+ * Builds reusable composed style objects from the active theme's color/font
+ * tokens. Returned via useTheme() as `common` so screens can spread them
+ * exactly as they did with the old compat-layer `common` export.
+ *
+ * Example:
+ *   const { colors, common } = useTheme();
+ *   <Stack.Screen options={{ title: "Detail", ...common.header }} />
+ */
+function makeCommon(colors: ThemeColors, fonts: ThemeFonts) {
+  return {
+    screen: {
+      flex: 1 as const,
+      backgroundColor: colors.bg,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.base,
+    },
+    sectionLabel: {
+      ...text.label,
+      color: colors.textTertiary,
+      marginBottom: spacing.sm,
+    },
+    empty: {
+      flex: 1 as const,
+      backgroundColor: colors.bg,
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+      padding: spacing["2xl"],
+    },
+    btnPrimary: {
+      backgroundColor: colors.accentBold,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md2,
+      paddingVertical: spacing.sm,
+      alignItems: "center" as const,
+    },
+    header: {
+      headerShown: true as const,
+      headerStyle: { backgroundColor: colors.surface },
+      headerTintColor: colors.textBright,
+      headerShadowVisible: false,
+      headerTitleStyle: {
+        fontFamily: fonts.serifSemiBold,
+        fontWeight: "600" as const,
+        fontSize: 18,
+        color: colors.textBright,
+      },
+    },
+  };
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export interface UseThemeResult extends ThemeDefinition {
+  text: typeof text;
+  spacing: typeof spacing;
+  radius: typeof radius;
+  common: ReturnType<typeof makeCommon>;
   setThemeId: (id: string) => void;
 }
 
 /**
- * Returns the active theme's tokens plus setThemeId.
+ * Returns the active theme's tokens plus invariant scales and composed styles.
  * Must be called inside a ThemeProvider.
  *
  * Example:
- *   const { colors, fonts } = useTheme();
- *   <Text style={{ color: colors.textPrimary, fontFamily: fonts.serifBold }} />
+ *   const { colors, fonts, text, spacing, radius, common } = useTheme();
+ *   <Text style={{ color: colors.textPrimary, ...text.base }} />
+ *   <Stack.Screen options={{ title: "", ...common.header }} />
  */
 export function useTheme(): UseThemeResult {
   const { theme, setThemeId } = useContext(ThemeContext);
-  return { ...theme, setThemeId };
+  return {
+    ...theme,
+    text,
+    spacing,
+    radius,
+    common: makeCommon(theme.colors, theme.fonts),
+    setThemeId,
+  };
 }

@@ -14,7 +14,7 @@ import {
 import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import { view, type Entry, type Film, type Episode, type Book, type JEvent } from "@chronicle/journal/types";
-import { colors, fonts, text, spacing, radius } from "../../src/theme";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 
 // ── types & helpers ───────────────────────────────────────────────────────────
 
@@ -76,16 +76,139 @@ interface DayGroup {
   items: CultureEntry[];
 }
 
+// ── styles factory ────────────────────────────────────────────────────────────
+
+const DATE_COL_W = 52;
+
+function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    list: { flex: 1 },
+    listContent: { paddingBottom: spacingScale["3xl"] },
+
+    // Filter pills
+    pills: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.borderFaint },
+    pillsContent: { padding: spacingScale.md, gap: spacingScale.sm, flexDirection: "row" },
+    pill: {
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.sm2,
+      borderRadius: radiusScale.pill,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    pillActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
+    pillText: { ...textScale.smMd, color: colors.textSecondary, fontWeight: "600" },
+    pillTextActive: { color: colors.accentSubtle },
+
+    // Day group row
+    dayGroup: {
+      flexDirection: "row",
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.xl,
+      paddingBottom: spacingScale.sm,
+    },
+
+    // Date column
+    dateCol: {
+      width: DATE_COL_W,
+      alignItems: "center",
+      paddingTop: 2,
+      flexShrink: 0,
+    },
+    dateNum: {
+      fontFamily: fonts.serifBold,
+      fontWeight: "700",
+      fontSize: 34,
+      lineHeight: 38,
+      color: colors.textBright,
+    },
+    dateSub: {
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 0.6,
+      color: colors.textTertiary,
+      lineHeight: 15,
+    },
+
+    // Vertical rule
+    dateRule: {
+      width: 1,
+      alignSelf: "stretch",
+      backgroundColor: colors.border,
+      marginHorizontal: spacingScale.md,
+      marginTop: 4,
+    },
+
+    // Entries column
+    entriesCol: {
+      flex: 1,
+      gap: spacingScale.sm,
+    },
+
+    // Entry card
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.md,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacingScale.sm,
+    },
+    cardPressed: { opacity: 0.65 },
+    cardIcon: { fontSize: 18, lineHeight: 24, marginTop: 1 },
+    cardBody: { flex: 1 },
+    cardTitle: {
+      ...textScale.base,
+      color: colors.textPrimary,
+      fontWeight: "500",
+      marginBottom: 3,
+    },
+    cardStars: { ...textScale.xs, color: colors.star, marginTop: 2 },
+
+    // Separator between days
+    daySeparator: {
+      height: 1,
+      backgroundColor: colors.borderFaint,
+      marginHorizontal: spacingScale.base,
+    },
+
+    // Empty state
+    empty: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacingScale["2xl"],
+    },
+    emptyIcon: { fontSize: 48, marginBottom: spacingScale.base },
+    emptyTitle: {
+      fontSize: 18,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      color: colors.textPrimary,
+      marginBottom: spacingScale.sm,
+    },
+    emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+  });
+}
+
+type Styles = ReturnType<typeof createStyles>;
+
 // ── components ────────────────────────────────────────────────────────────────
 
 function FilterPill({
   label,
   active,
   onPress,
+  styles,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
+  styles: Styles;
 }) {
   return (
     <Pressable
@@ -99,7 +222,7 @@ function FilterPill({
   );
 }
 
-function EntryCard({ entry }: { entry: CultureEntry }) {
+function EntryCard({ entry, styles }: { entry: CultureEntry; styles: Styles }) {
   const router = useRouter();
   const v = view(entry);
   const stars =
@@ -121,7 +244,7 @@ function EntryCard({ entry }: { entry: CultureEntry }) {
   );
 }
 
-function DayGroupRow({ group }: { group: DayGroup }) {
+function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
   const { num, day, month, year } = parseDay(group.iso);
 
   return (
@@ -140,7 +263,7 @@ function DayGroupRow({ group }: { group: DayGroup }) {
       {/* Right: entry cards */}
       <View style={styles.entriesCol}>
         {group.items.map((entry) => (
-          <EntryCard key={entry.id} entry={entry} />
+          <EntryCard key={entry.id} entry={entry} styles={styles} />
         ))}
       </View>
     </View>
@@ -152,6 +275,8 @@ function DayGroupRow({ group }: { group: DayGroup }) {
 export default function CultureScreen() {
   const journal = useJournal();
   const [filter, setFilter] = useState<Filter>("all");
+  const { colors, fonts } = useTheme();
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   const groups = useMemo<DayGroup[]>(() => {
     const all: CultureEntry[] = [
@@ -194,6 +319,7 @@ export default function CultureScreen() {
             label={f.label}
             active={filter === f.id}
             onPress={() => setFilter(f.id)}
+            styles={styles}
           />
         ))}
       </ScrollView>
@@ -211,7 +337,7 @@ export default function CultureScreen() {
           style={styles.list}
           data={groups}
           keyExtractor={(g) => g.iso}
-          renderItem={({ item }) => <DayGroupRow group={item} />}
+          renderItem={({ item }) => <DayGroupRow group={item} styles={styles} />}
           ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
           contentContainerStyle={styles.listContent}
         />
@@ -219,120 +345,3 @@ export default function CultureScreen() {
     </View>
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  list: { flex: 1 },
-  listContent: { paddingBottom: spacing["3xl"] },
-
-  // Filter pills
-  pills: { flexGrow: 0, borderBottomWidth: 1, borderBottomColor: colors.borderFaint },
-  pillsContent: { padding: spacing.md, gap: spacing.sm, flexDirection: "row" },
-  pill: {
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.sm2,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  pillActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
-  pillText: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
-  pillTextActive: { color: colors.accentSubtle },
-
-  // Day group row
-  dayGroup: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.base,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.sm,
-  },
-
-  // Date column
-  dateCol: {
-    width: DATE_COL_W,
-    alignItems: "center",
-    paddingTop: 2,
-    flexShrink: 0,
-  },
-  dateNum: {
-    fontFamily: fonts.serifBold,
-    fontWeight: "700",
-    fontSize: 34,
-    lineHeight: 38,
-    color: colors.textBright,
-  },
-  dateSub: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    color: colors.textTertiary,
-    lineHeight: 15,
-  },
-
-  // Vertical rule
-  dateRule: {
-    width: 1,
-    alignSelf: "stretch",
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-    marginTop: 4,
-  },
-
-  // Entries column
-  entriesCol: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-
-  // Entry card
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.md,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-  },
-  cardPressed: { opacity: 0.65 },
-  cardIcon: { fontSize: 18, lineHeight: 24, marginTop: 1 },
-  cardBody: { flex: 1 },
-  cardTitle: {
-    ...text.base,
-    color: colors.textPrimary,
-    fontWeight: "500",
-    marginBottom: 3,
-  },
-  cardStars: { ...text.xs, color: colors.star, marginTop: 2 },
-
-  // Separator between days
-  daySeparator: {
-    height: 1,
-    backgroundColor: colors.borderFaint,
-    marginHorizontal: spacing.base,
-  },
-
-  // Empty state
-  empty: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing["2xl"],
-  },
-  emptyIcon: { fontSize: 48, marginBottom: spacing.base },
-  emptyTitle: {
-    fontSize: 18,
-    fontFamily: fonts.serifSemiBold,
-    fontWeight: "600",
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
-});

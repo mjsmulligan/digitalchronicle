@@ -5,7 +5,7 @@
  * Uses parseContacts() from contacts.ts (shared with web). No staging batch
  * system — people are committed directly to the people store.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -25,7 +25,7 @@ import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { uid } from "@chronicle/journal/types";
 import type { Person } from "@chronicle/journal/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fonts, text, spacing, radius } from "../src/theme";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../src/components/ThemeProvider";
 
 // ── types ──────────────────────────────────────────────────────────────────────
 
@@ -70,14 +70,146 @@ function buildReviewContacts(
   });
 }
 
+// ── styles factory ────────────────────────────────────────────────────────────
+
+function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    content: { padding: spacingScale.base, paddingBottom: spacingScale["2xl"] },
+
+    dragHandle: {
+      width: 36,
+      height: 4,
+      backgroundColor: colors.border,
+      borderRadius: 2,
+      alignSelf: "center",
+      marginBottom: spacingScale.lg,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: spacingScale.xl,
+    },
+    modalTitle: {
+      fontSize: 22,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      color: colors.textBright,
+    },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      backgroundColor: colors.surface,
+      borderRadius: 9999,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+
+    pickBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.xl,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      borderStyle: "dashed",
+      paddingVertical: 20,
+      marginBottom: spacingScale.sm,
+    },
+    pickBtnDisabled: { opacity: 0.5 },
+    pickBtnText: { ...textScale.lg, color: colors.accentSoft, fontWeight: "600" },
+    hint: { ...textScale.sm, color: colors.textMuted, textAlign: "center", marginBottom: spacingScale.xl },
+
+    parsing: { flexDirection: "row", alignItems: "center", gap: spacingScale.md, padding: spacingScale.base },
+    parsingText: { ...textScale.md, color: colors.textSecondary },
+
+    errorBox: { backgroundColor: colors.errorBg, borderRadius: radiusScale.md, padding: spacingScale.md, marginBottom: spacingScale.base },
+    errorBoxText: { ...textScale.smMd, color: colors.errorLight },
+
+    reviewCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+    },
+    reviewHeader: {
+      padding: spacingScale.md2,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    reviewTitle: { ...textScale.smMd, color: colors.textSecondary },
+
+    errorsBox: { backgroundColor: colors.errorBg, padding: 10 },
+    errorText: { ...textScale.sm, color: colors.errorLight, marginBottom: 2 },
+
+    quickActions: {
+      flexDirection: "row",
+      gap: spacingScale.base,
+      padding: 10,
+      paddingHorizontal: spacingScale.md2,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    quickActionText: { ...textScale.sm, color: colors.accent, fontWeight: "600" },
+
+    contactRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      gap: 10,
+    },
+    contactRowDim: { opacity: 0.45 },
+    contactSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
+    contactBody: { flex: 1 },
+    contactName: { ...textScale.md, color: colors.textPrimary, fontWeight: "500" },
+    contactAliases: { ...textScale.sm, color: colors.textTertiary, marginTop: 2 },
+    contactStatus: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+    statusNew: { color: colors.success },
+    statusDupe: { color: colors.textMuted },
+
+    commitBar: { padding: spacingScale.md2 },
+    commitBtn: {
+      backgroundColor: colors.accentBold,
+      borderRadius: radiusScale.lg,
+      paddingVertical: 14,
+      alignItems: "center",
+    },
+    commitBtnDisabled: { opacity: 0.4 },
+    commitBtnText: { ...textScale.base, color: colors.white, fontWeight: "700" },
+    committing: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 14 },
+    committingText: { ...textScale.md, color: colors.textSecondary },
+  });
+}
+
+type Styles = ReturnType<typeof createStyles>;
+
 // ── sub-components ────────────────────────────────────────────────────────────
 
 function ContactRow({
   contact,
   onToggle,
+  styles,
+  accentColor,
+  borderColor,
+  textMutedColor,
+  accentSubtleColor,
 }: {
   contact: ReviewContact;
   onToggle: (selected: boolean) => void;
+  styles: Styles;
+  accentColor: string;
+  borderColor: string;
+  textMutedColor: string;
+  accentSubtleColor: string;
 }) {
   const isNew = contact.status === "new";
   return (
@@ -86,8 +218,8 @@ function ContactRow({
         value={contact.selected}
         onValueChange={onToggle}
         disabled={!isNew}
-        trackColor={{ true: colors.accent, false: colors.border }}
-        thumbColor={contact.selected ? colors.accentSubtle : colors.textMuted}
+        trackColor={{ true: accentColor, false: borderColor }}
+        thumbColor={contact.selected ? accentSubtleColor : textMutedColor}
         style={styles.contactSwitch}
       />
       <View style={styles.contactBody}>
@@ -111,6 +243,8 @@ export default function ImportPeopleScreen() {
   const router = useRouter();
   const journal = useJournal();
   const { top } = useSafeAreaInsets();
+  const { colors, fonts, spacing } = useTheme();
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +409,11 @@ export default function ImportPeopleScreen() {
               <ContactRow
                 contact={item}
                 onToggle={(v) => toggleContact(index, v)}
+                styles={styles}
+                accentColor={colors.accent}
+                borderColor={colors.border}
+                textMutedColor={colors.textMuted}
+                accentSubtleColor={colors.accentSubtle}
               />
             )}
             scrollEnabled={false}
@@ -306,121 +445,3 @@ export default function ImportPeopleScreen() {
     </>
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
-
-  dragHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: spacing.lg,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.xl,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontFamily: fonts.serifSemiBold,
-    fontWeight: "600",
-    color: colors.textBright,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    backgroundColor: colors.surface,
-    borderRadius: 9999,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-
-  pickBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderStyle: "dashed",
-    paddingVertical: 20,
-    marginBottom: spacing.sm,
-  },
-  pickBtnDisabled: { opacity: 0.5 },
-  pickBtnText: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
-  hint: { ...text.sm, color: colors.textMuted, textAlign: "center", marginBottom: spacing.xl },
-
-  parsing: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.base },
-  parsingText: { ...text.md, color: colors.textSecondary },
-
-  errorBox: { backgroundColor: colors.errorBg, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.base },
-  errorBoxText: { ...text.smMd, color: colors.errorLight },
-
-  reviewCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: "hidden",
-  },
-  reviewHeader: {
-    padding: spacing.md2,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  reviewTitle: { ...text.smMd, color: colors.textSecondary },
-
-  errorsBox: { backgroundColor: colors.errorBg, padding: 10 },
-  errorText: { ...text.sm, color: colors.errorLight, marginBottom: 2 },
-
-  quickActions: {
-    flexDirection: "row",
-    gap: spacing.base,
-    padding: 10,
-    paddingHorizontal: spacing.md2,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  quickActionText: { ...text.sm, color: colors.accent, fontWeight: "600" },
-
-  contactRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.md2,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    gap: 10,
-  },
-  contactRowDim: { opacity: 0.45 },
-  contactSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
-  contactBody: { flex: 1 },
-  contactName: { ...text.md, color: colors.textPrimary, fontWeight: "500" },
-  contactAliases: { ...text.sm, color: colors.textTertiary, marginTop: 2 },
-  contactStatus: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-  statusNew: { color: colors.success },
-  statusDupe: { color: colors.textMuted },
-
-  commitBar: { padding: spacing.md2 },
-  commitBtn: {
-    backgroundColor: colors.accentBold,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  commitBtnDisabled: { opacity: 0.4 },
-  commitBtnText: { ...text.base, color: colors.white, fontWeight: "700" },
-  committing: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 14 },
-  committingText: { ...text.md, color: colors.textSecondary },
-});

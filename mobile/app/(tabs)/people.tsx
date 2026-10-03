@@ -7,7 +7,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Person } from "@chronicle/journal/types";
-import { colors, text, spacing, radius } from "../../src/theme";
+import { useTheme, type ThemeColors, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -15,14 +15,74 @@ function entryCountFor(personId: string, entries: ReturnType<typeof allEntries>)
   return entries.filter((e) => e.participants?.includes(personId)).length;
 }
 
+// ── styles factory ────────────────────────────────────────────────────────────
+
+function createStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    list: { flex: 1, backgroundColor: colors.bg },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacingScale.base,
+      paddingVertical: spacingScale.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.borderFaint,
+      gap: spacingScale.md,
+    },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: radiusScale.full,
+      backgroundColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarSelf: { backgroundColor: colors.surfaceAccent },
+    avatarText: { color: colors.textDim, fontSize: 14, fontWeight: "700" },
+    rowBody: { flex: 1 },
+    nameRow: { flexDirection: "row", alignItems: "center", gap: spacingScale.sm },
+    name: { ...textScale.base, color: colors.textPrimary, fontWeight: "500" },
+    selfBadge: {
+      color: colors.accentBadge,
+      fontSize: 10,
+      fontWeight: "700",
+      backgroundColor: colors.surfaceAccentDeep,
+      paddingHorizontal: spacingScale.sm2,
+      paddingVertical: 2,
+      borderRadius: radiusScale.sm,
+      overflow: "hidden",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    aliases: { ...textScale.sm, color: colors.textTertiary, marginTop: 2 },
+    rowPressed: { backgroundColor: colors.surfacePressed },
+    count: { ...textScale.sm, color: colors.textTertiary },
+    chevron: { fontSize: 20, lineHeight: 44, color: colors.border },
+    empty: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacingScale["2xl"],
+    },
+    emptyIcon: { fontSize: 48, marginBottom: spacingScale.base },
+    emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacingScale.sm },
+    emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+  });
+}
+
+type Styles = ReturnType<typeof createStyles>;
+
 // ── components ────────────────────────────────────────────────────────────────
 
 function PersonRow({
   person,
   entryCount,
+  styles,
 }: {
   person: Person;
   entryCount: number;
+  styles: Styles;
 }) {
   const initials = person.name
     .split(" ")
@@ -56,7 +116,7 @@ function PersonRow({
           {entryCount} {entryCount === 1 ? "entry" : "entries"}
         </Text>
       )}
-      <Text style={styles.chevron}>›</Text>
+      <Text style={styles.chevron}>{"›"}</Text>
     </Pressable>
   );
 }
@@ -65,6 +125,8 @@ function PersonRow({
 
 export default function PeopleScreen() {
   const journal = useJournal();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const sorted = useMemo(() => {
     const entries = allEntries(journal);
@@ -95,62 +157,8 @@ export default function PeopleScreen() {
       data={sorted}
       keyExtractor={({ person }) => person.id}
       renderItem={({ item: { person, entryCount } }) => (
-        <PersonRow person={person} entryCount={entryCount} />
+        <PersonRow person={person} entryCount={entryCount} styles={styles} />
       )}
     />
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: colors.bg },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderFaint,
-    gap: spacing.md,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
-    backgroundColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarSelf: { backgroundColor: colors.surfaceAccent },
-  avatarText: { color: colors.textDim, fontSize: 14, fontWeight: "700" },
-  rowBody: { flex: 1 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  name: { ...text.base, color: colors.textPrimary, fontWeight: "500" },
-  selfBadge: {
-    color: colors.accentBadge,
-    fontSize: 10,
-    fontWeight: "700",
-    backgroundColor: colors.surfaceAccentDeep,
-    paddingHorizontal: spacing.sm2,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  aliases: { ...text.sm, color: colors.textTertiary, marginTop: 2 },
-  rowPressed: { backgroundColor: colors.surfacePressed },
-  count: { ...text.sm, color: colors.textTertiary },
-  chevron: { fontSize: 20, lineHeight: 44, color: colors.border },
-  empty: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing["2xl"],
-  },
-  emptyIcon: { fontSize: 48, marginBottom: spacing.base },
-  emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm },
-  emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
-});

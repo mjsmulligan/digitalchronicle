@@ -11,7 +11,7 @@
  * are used unchanged — they already handle connector auto-detection, dedup,
  * tier precedence, and geo station loading.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -30,7 +30,7 @@ import { useJournal, removeMany, type CommitProgress } from "@chronicle/journal/
 import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
 import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatus } from "@chronicle/journal/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fonts, text, spacing, radius, common } from "../src/theme";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../src/components/ThemeProvider";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -66,14 +66,210 @@ function isSelectable(status: StageStatus): boolean {
   return status === "new" || status === "supersedes";
 }
 
+// ── styles factory ────────────────────────────────────────────────────────────
+
+function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    content: { flexGrow: 1, padding: spacingScale.base, paddingBottom: spacingScale["2xl"] },
+
+    // Modal chrome
+    dragHandle: {
+      width: 36,
+      height: 4,
+      backgroundColor: colors.border,
+      borderRadius: 2,
+      alignSelf: "center",
+      marginBottom: spacingScale.lg,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: spacingScale.xl,
+    },
+    modalTitle: {
+      fontSize: 22,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      color: colors.textBright,
+    },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.full,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+
+    pickBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.xl,
+      borderWidth: 1,
+      borderColor: colors.accent,
+      borderStyle: "dashed",
+      paddingVertical: 20,
+      marginBottom: spacingScale.sm,
+    },
+    pickBtnDisabled: { opacity: 0.5 },
+    pickBtnText: { ...textScale.lg, color: colors.accentSoft, fontWeight: "600" },
+    hint: { ...textScale.sm, color: colors.textMuted, textAlign: "center", marginBottom: spacingScale.xl },
+
+    parsing: { flexDirection: "row", alignItems: "center", gap: spacingScale.md, padding: spacingScale.base },
+    parsingText: { ...textScale.md, color: colors.textSecondary },
+
+    errorBox: {
+      backgroundColor: colors.errorBg,
+      borderRadius: radiusScale.md,
+      padding: spacingScale.md,
+      marginBottom: spacingScale.base,
+    },
+    errorBoxText: { ...textScale.smMd, color: colors.errorLight },
+
+    empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacingScale["2xl"] },
+    emptyIcon: { fontSize: 40, marginBottom: spacingScale.md },
+    emptyTitle: {
+      fontSize: 20,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      color: colors.textPrimary,
+      marginBottom: spacingScale.sm2,
+    },
+    emptyHint: { ...textScale.smMd, color: colors.textTertiary, textAlign: "center" },
+
+    // Batch review
+    batchContainer: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: spacingScale.lg,
+      overflow: "hidden",
+    },
+    batchHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: spacingScale.md2,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      gap: spacingScale.md,
+    },
+    batchHeaderText: { flex: 1 },
+    batchFilename: { ...textScale.base, color: colors.textPrimary, fontWeight: "600", marginBottom: 2 },
+    batchMeta: { ...textScale.sm, color: colors.textTertiary },
+    discardBtn: { padding: 4 },
+
+    errorsBox: {
+      backgroundColor: colors.errorBg,
+      padding: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    errorText: { ...textScale.sm, color: colors.errorLight, marginBottom: 2 },
+
+    quickActions: {
+      flexDirection: "row",
+      gap: spacingScale.base,
+      padding: 10,
+      paddingHorizontal: spacingScale.md2,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.borderFaint,
+    },
+    quickActionText: { ...textScale.sm, color: colors.accent, fontWeight: "600" },
+
+    recordList: {},
+    loadMoreBtn: {
+      padding: spacingScale.md2,
+      alignItems: "center",
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    loadMoreText: { ...textScale.smMd, color: colors.accent, fontWeight: "600" },
+    recordRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+      gap: 10,
+    },
+    recordRowDim: { opacity: 0.45 },
+    recordSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
+    recordEmoji: { fontSize: 16, width: 22, textAlign: "center" },
+    recordBody: { flex: 1 },
+    recordTitle: { ...textScale.md, color: colors.textPrimary, fontWeight: "500", marginBottom: 2 },
+    recordMeta: { flexDirection: "row", gap: spacingScale.sm, flexWrap: "wrap" },
+    recordStatus: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+    recordWarning: { fontSize: 11, color: colors.star, flex: 1 },
+
+    commitBar: { padding: spacingScale.md2, paddingTop: spacingScale.md },
+    commitBtn: {
+      backgroundColor: colors.accentBold,
+      borderRadius: radiusScale.lg,
+      paddingVertical: 14,
+      alignItems: "center",
+    },
+    commitBtnDisabled: { opacity: 0.4 },
+    commitBtnText: { ...textScale.base, color: colors.white, fontWeight: "700" },
+
+    commitProgressCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacingScale.md2,
+      marginBottom: spacingScale.lg,
+      gap: 10,
+    },
+    commitProgressTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.md,
+    },
+    commitProgressText: { flex: 1 },
+    commitProgressCount: { ...textScale.sm, color: colors.textTertiary, marginTop: 2 },
+    progressTrack: {
+      height: 4,
+      backgroundColor: colors.border,
+      borderRadius: 2,
+      overflow: "hidden",
+    },
+    progressFill: {
+      height: "100%",
+      backgroundColor: colors.accent,
+      borderRadius: 2,
+    },
+  });
+}
+
+type Styles = ReturnType<typeof createStyles>;
+
 // ── sub-components ────────────────────────────────────────────────────────────
 
 function RecordRow({
   record,
   onToggle,
+  styles,
+  accentColor,
+  borderColor,
+  textMutedColor,
+  accentSubtleColor,
 }: {
   record: StagedRecord;
   onToggle: (selected: boolean) => void;
+  styles: Styles;
+  accentColor: string;
+  borderColor: string;
+  textMutedColor: string;
+  accentSubtleColor: string;
 }) {
   const v = view(record.entry);
   const selectable = isSelectable(record.status);
@@ -83,8 +279,8 @@ function RecordRow({
         value={record.selected}
         onValueChange={onToggle}
         disabled={!selectable}
-        trackColor={{ true: colors.accent, false: colors.border }}
-        thumbColor={record.selected ? colors.accentSubtle : colors.textMuted}
+        trackColor={{ true: accentColor, false: borderColor }}
+        thumbColor={record.selected ? accentSubtleColor : textMutedColor}
         style={styles.recordSwitch}
       />
       <Text style={styles.recordEmoji}>{entryEmoji(record.entry)}</Text>
@@ -98,7 +294,7 @@ function RecordRow({
           </Text>
           {record.warnings.length > 0 && (
             <Text style={styles.recordWarning} numberOfLines={1}>
-              ⚠ {record.warnings[0]}
+              {"⚠"} {record.warnings[0]}
             </Text>
           )}
         </View>
@@ -116,12 +312,16 @@ function BatchReview({
   onCommit,
   onDiscard,
   onError,
+  styles,
+  colors,
 }: {
   batch: StagingBatch;
   commitProgress: CommitProgress | null;
   onCommit: (count: number) => void;
   onDiscard: () => void;
   onError: (title: string, message: string) => void;
+  styles: Styles;
+  colors: ThemeColors;
 }) {
   const [b, setB] = useState(batch);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
@@ -253,6 +453,11 @@ function BatchReview({
           <RecordRow
             record={item}
             onToggle={(v) => toggleRecord(index, v)}
+            styles={styles}
+            accentColor={colors.accent}
+            borderColor={colors.border}
+            textMutedColor={colors.textMuted}
+            accentSubtleColor={colors.accentSubtle}
           />
         )}
         style={styles.recordList}
@@ -281,6 +486,8 @@ export default function ImportScreen() {
   const params = useLocalSearchParams<{ uri?: string }>();
   const journal = useJournal();
   const { top } = useSafeAreaInsets();
+  const { colors, fonts, spacing } = useTheme();
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -423,6 +630,8 @@ export default function ImportScreen() {
           onCommit={handleCommit}
           onDiscard={() => handleDiscard(batch.id)}
           onError={dialog.alert}
+          styles={styles}
+          colors={colors}
         />
       ))}
 
@@ -442,185 +651,3 @@ export default function ImportScreen() {
     </>
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  content: { flexGrow: 1, padding: spacing.base, paddingBottom: spacing["2xl"] },
-
-  // Modal chrome
-  dragHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: spacing.lg,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.xl,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontFamily: fonts.serifSemiBold,
-    fontWeight: "600",
-    color: colors.textBright,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    backgroundColor: colors.surface,
-    borderRadius: radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-
-  pickBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderStyle: "dashed",
-    paddingVertical: 20,
-    marginBottom: spacing.sm,
-  },
-  pickBtnDisabled: { opacity: 0.5 },
-  pickBtnText: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
-  hint: { ...text.sm, color: colors.textMuted, textAlign: "center", marginBottom: spacing.xl },
-
-  parsing: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.base },
-  parsingText: { ...text.md, color: colors.textSecondary },
-
-  errorBox: {
-    backgroundColor: colors.errorBg,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.base,
-  },
-  errorBoxText: { ...text.smMd, color: colors.errorLight },
-
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacing["2xl"] },
-  emptyIcon: { fontSize: 40, marginBottom: spacing.md },
-  emptyTitle: {
-    fontSize: 20,
-    fontFamily: fonts.serifSemiBold,
-    fontWeight: "600",
-    color: colors.textPrimary,
-    marginBottom: spacing.sm2,
-  },
-  emptyHint: { ...text.smMd, color: colors.textTertiary, textAlign: "center" },
-
-  // Batch review
-  batchContainer: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.lg,
-    overflow: "hidden",
-  },
-  batchHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.md2,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    gap: spacing.md,
-  },
-  batchHeaderText: { flex: 1 },
-  batchFilename: { ...text.base, color: colors.textPrimary, fontWeight: "600", marginBottom: 2 },
-  batchMeta: { ...text.sm, color: colors.textTertiary },
-  discardBtn: { padding: 4 },
-
-  errorsBox: {
-    backgroundColor: colors.errorBg,
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  errorText: { ...text.sm, color: colors.errorLight, marginBottom: 2 },
-
-  quickActions: {
-    flexDirection: "row",
-    gap: spacing.base,
-    padding: 10,
-    paddingHorizontal: spacing.md2,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderFaint,
-  },
-  quickActionText: { ...text.sm, color: colors.accent, fontWeight: "600" },
-
-  recordList: {},
-  loadMoreBtn: {
-    padding: spacing.md2,
-    alignItems: "center",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  loadMoreText: { ...text.smMd, color: colors.accent, fontWeight: "600" },
-  recordRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: spacing.md2,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-    gap: 10,
-  },
-  recordRowDim: { opacity: 0.45 },
-  recordSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
-  recordEmoji: { fontSize: 16, width: 22, textAlign: "center" },
-  recordBody: { flex: 1 },
-  recordTitle: { ...text.md, color: colors.textPrimary, fontWeight: "500", marginBottom: 2 },
-  recordMeta: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
-  recordStatus: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
-  recordWarning: { fontSize: 11, color: colors.star, flex: 1 },
-
-  commitBar: { padding: spacing.md2, paddingTop: spacing.md },
-  commitBtn: {
-    backgroundColor: colors.accentBold,
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  commitBtnDisabled: { opacity: 0.4 },
-  commitBtnText: { ...text.base, color: colors.white, fontWeight: "700" },
-
-  commitProgressCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md2,
-    marginBottom: spacing.lg,
-    gap: 10,
-  },
-  commitProgressTop: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-  },
-  commitProgressText: { flex: 1 },
-  commitProgressCount: { ...text.sm, color: colors.textTertiary, marginTop: 2 },
-  progressTrack: {
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: colors.accent,
-    borderRadius: 2,
-  },
-});

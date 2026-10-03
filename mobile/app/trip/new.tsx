@@ -1,7 +1,7 @@
 /**
  * New trip screen — create a trip with title, dates, purpose, and optional notes.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -14,7 +14,7 @@ import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
 import { uid, type Purpose } from "@chronicle/journal/types";
-import { colors, text, spacing, radius, common } from "../../src/theme";
+import { useTheme } from "../../src/components/ThemeProvider";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -39,6 +39,61 @@ function isValidDate(s: string): boolean {
 
 export default function NewTripScreen() {
   const router = useRouter();
+  const { colors, fonts, text, spacing, radius, common } = useTheme();
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    content: { padding: spacing.lg, paddingBottom: spacing["3xl"], gap: 6 },
+
+    label: { ...text.label, color: colors.textSecondary, marginBottom: 6, marginTop: spacing.base },
+    optional: { fontWeight: "400", textTransform: "none", letterSpacing: 0, color: colors.textMuted },
+
+    input: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      color: colors.textPrimary,
+      ...text.lg,
+      paddingHorizontal: spacing.md2,
+      paddingVertical: spacing.md,
+    },
+    inputMultiline: { minHeight: 100, paddingTop: spacing.md },
+
+    dateRow: { flexDirection: "row", gap: spacing.md },
+    dateField: { flex: 1 },
+    validationError: { ...text.sm, color: colors.error, marginTop: 4 },
+
+    purposeRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
+    purposeChip: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm2,
+      paddingHorizontal: spacing.md2,
+      paddingVertical: spacing.sm,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    purposeChipActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
+    purposeEmoji: { fontSize: 14 },
+    purposeLabel: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
+    purposeLabelActive: { color: colors.accentSubtle },
+
+    saveBtn: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
+    saveBtnDisabled: { opacity: 0.4 },
+
+    saveButton: {
+      backgroundColor: colors.accentBold,
+      borderRadius: radius.xl,
+      paddingVertical: 15,
+      alignItems: "center",
+      marginTop: spacing.xl,
+    },
+    saveButtonDisabled: { opacity: 0.4 },
+    saveButtonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
+  }), [colors, fonts]);
 
   const [title, setTitle]     = useState("");
   const [start, setStart]     = useState(today());
@@ -181,59 +236,3 @@ export default function NewTripScreen() {
     </>
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.lg, paddingBottom: spacing["3xl"], gap: 6 },
-
-  label: { ...text.label, color: colors.textSecondary, marginBottom: 6, marginTop: spacing.base },
-  optional: { fontWeight: "400", textTransform: "none", letterSpacing: 0, color: colors.textMuted },
-
-  input: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    color: colors.textPrimary,
-    ...text.lg,
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.md,
-  },
-  inputMultiline: { minHeight: 100, paddingTop: spacing.md },
-
-  dateRow: { flexDirection: "row", gap: spacing.md },
-  dateField: { flex: 1 },
-  validationError: { ...text.sm, color: colors.error, marginTop: 4 },
-
-  purposeRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
-  purposeChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm2,
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  purposeChipActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
-  purposeEmoji: { fontSize: 14 },
-  purposeLabel: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
-  purposeLabelActive: { color: colors.accentSubtle },
-
-  saveBtn: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
-  saveBtnDisabled: { opacity: 0.4 },
-
-  saveButton: {
-    backgroundColor: colors.accentBold,
-    borderRadius: radius.xl,
-    paddingVertical: 15,
-    alignItems: "center",
-    marginTop: spacing.xl,
-  },
-  saveButtonDisabled: { opacity: 0.4 },
-  saveButtonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
-});

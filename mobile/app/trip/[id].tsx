@@ -9,7 +9,7 @@ import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
-import { colors, fonts, text, spacing, radius, common } from "../../src/theme";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -69,10 +69,160 @@ interface DayGroup {
   items: Entry[];
 }
 
+// ── styles factory ────────────────────────────────────────────────────────────
+
+const DATE_COL_W = 52;
+
+function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
+  return StyleSheet.create({
+    list: { flex: 1, backgroundColor: colors.bg },
+    content: { paddingBottom: spacingScale["3xl"] },
+
+    // Trip header card
+    headerCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale["2xl"],
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacingScale.lg,
+      margin: spacingScale.base,
+      marginBottom: 0,
+    },
+    headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
+    tripDateRange: { ...textScale.sm, color: colors.textTertiary, fontFamily: "monospace", flex: 1 },
+    purposeIcon: { fontSize: 18, marginLeft: spacingScale.sm },
+    tripTitle: {
+      fontSize: 22,
+      fontFamily: fonts.serifBold,
+      fontWeight: "700",
+      color: colors.textPrimary,
+      marginBottom: spacingScale.sm,
+    },
+    tripMeta: { flexDirection: "row", gap: spacingScale.sm2 },
+    tripMetaText: { ...textScale.smMd, color: colors.textSecondary },
+    tripMetaDot:  { ...textScale.smMd, color: colors.textMuted },
+    tripNotes: { ...textScale.md, color: colors.textSecondary, marginTop: 10 },
+
+    // Two-column day group
+    dayGroup: {
+      flexDirection: "row",
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.xl,
+      paddingBottom: spacingScale.sm,
+    },
+
+    // Date column
+    dateCol: {
+      width: DATE_COL_W,
+      alignItems: "center",
+      paddingTop: 2,
+      flexShrink: 0,
+    },
+    dateNum: {
+      fontFamily: fonts.serifBold,
+      fontWeight: "700",
+      fontSize: 34,
+      lineHeight: 38,
+      color: colors.textBright,
+    },
+    dateNumDim: { color: colors.textTertiary },
+    dateSub: {
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 0.6,
+      color: colors.textTertiary,
+      lineHeight: 15,
+    },
+
+    // Vertical rule
+    dateRule: {
+      width: 1,
+      alignSelf: "stretch",
+      backgroundColor: colors.border,
+      marginHorizontal: spacingScale.md,
+      marginTop: 4,
+    },
+
+    // Cards column
+    cardsCol: { flex: 1, gap: spacingScale.sm },
+
+    // Entry card (linked)
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm,
+    },
+    cardPressed: { opacity: 0.65 },
+    // Suggestion card -- slightly dimmer border to visually separate the two sections
+    cardSuggestion: { borderColor: colors.borderFaint },
+
+    cardIcon:    { fontSize: 18 },
+    cardTitle:   { flex: 1, ...textScale.base, color: colors.textPrimary, fontWeight: "500" },
+    cardChevron: { fontSize: 20, color: colors.border },
+
+    addBtn: {
+      borderWidth: 1,
+      borderColor: colors.accent,
+      borderRadius: radiusScale.md,
+      paddingHorizontal: spacingScale.md,
+      paddingVertical: spacingScale.sm2,
+      minWidth: 60,
+      alignItems: "center",
+    },
+    addBtnDisabled: { opacity: 0.5 },
+    addBtnText: { color: colors.accentSoft, fontSize: 12, fontWeight: "700" },
+
+    // Separator between day groups
+    daySeparator: {
+      height: 1,
+      backgroundColor: colors.borderFaint,
+      marginHorizontal: spacingScale.base,
+    },
+
+    // Suggestions section header
+    suggestHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale["2xl"],
+      paddingBottom: spacingScale.sm,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      marginTop: spacingScale.lg,
+    },
+    suggestLabel: { ...textScale.label, color: colors.textTertiary },
+    addAllBtn: {
+      backgroundColor: colors.accentBold,
+      borderRadius: radiusScale.md,
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.sm2,
+      minWidth: 72,
+      alignItems: "center",
+    },
+    addAllBtnDisabled: { opacity: 0.5 },
+    addAllText: { color: colors.white, fontSize: 12, fontWeight: "700" },
+
+    empty: { paddingTop: spacingScale.xl, paddingHorizontal: spacingScale.base, alignItems: "center" },
+    emptyText: { ...textScale.md, color: colors.textMuted, textAlign: "center" },
+
+    notFound: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
+    notFoundText: { ...textScale.lg, color: colors.textTertiary },
+  });
+}
+
+type Styles = ReturnType<typeof createStyles>;
+
 // ── components ────────────────────────────────────────────────────────────────
 
 /** A single entry card inside a day group — taps to entry detail */
-function EntryCard({ entry }: { entry: Entry }) {
+function EntryCard({ entry, styles }: { entry: Entry; styles: Styles }) {
   const router = useRouter();
   const v = view(entry);
   return (
@@ -82,7 +232,7 @@ function EntryCard({ entry }: { entry: Entry }) {
     >
       <Text style={styles.cardIcon}>{entryEmoji(entry)}</Text>
       <Text style={styles.cardTitle} numberOfLines={2}>{entryTitle(v)}</Text>
-      <Text style={styles.cardChevron}>›</Text>
+      <Text style={styles.cardChevron}>{"›"}</Text>
     </Pressable>
   );
 }
@@ -92,10 +242,14 @@ function SuggestionCard({
   entry,
   onAdd,
   adding,
+  styles,
+  accentColor,
 }: {
   entry: Entry;
   onAdd: () => void;
   adding: boolean;
+  styles: Styles;
+  accentColor: string;
 }) {
   const v = view(entry);
   return (
@@ -108,7 +262,7 @@ function SuggestionCard({
         disabled={adding}
       >
         {adding
-          ? <ActivityIndicator size="small" color={colors.accent} />
+          ? <ActivityIndicator size="small" color={accentColor} />
           : <Text style={styles.addBtnText}>+ Add</Text>
         }
       </Pressable>
@@ -117,7 +271,7 @@ function SuggestionCard({
 }
 
 /** Two-column date row for linked entries */
-function EntryDayGroup({ group }: { group: DayGroup }) {
+function EntryDayGroup({ group, styles }: { group: DayGroup; styles: Styles }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
@@ -129,7 +283,7 @@ function EntryDayGroup({ group }: { group: DayGroup }) {
       </View>
       <View style={styles.dateRule} />
       <View style={styles.cardsCol}>
-        {group.items.map((e) => <EntryCard key={e.id} entry={e} />)}
+        {group.items.map((e) => <EntryCard key={e.id} entry={e} styles={styles} />)}
       </View>
     </View>
   );
@@ -140,10 +294,14 @@ function SuggestionDayGroup({
   group,
   addingId,
   onAdd,
+  styles,
+  accentColor,
 }: {
   group: DayGroup;
   addingId: string | null;
   onAdd: (entry: Entry) => void;
+  styles: Styles;
+  accentColor: string;
 }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
@@ -162,6 +320,8 @@ function SuggestionDayGroup({
             entry={e}
             onAdd={() => onAdd(e)}
             adding={addingId === e.id}
+            styles={styles}
+            accentColor={accentColor}
           />
         ))}
       </View>
@@ -175,6 +335,8 @@ export default function TripDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const journal = useJournal();
   const router  = useRouter();
+  const { colors, fonts, common } = useTheme();
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   const [addingAll, setAddingAll] = useState(false);
   const [addingId,  setAddingId]  = useState<string | null>(null);
@@ -264,7 +426,7 @@ export default function TripDetailScreen() {
       }
       renderItem={({ item }) => {
         if (item.kind === "entryDay") {
-          return <EntryDayGroup group={item.group} />;
+          return <EntryDayGroup group={item.group} styles={styles} />;
         }
         if (item.kind === "suggestHeader") {
           return (
@@ -290,6 +452,8 @@ export default function TripDetailScreen() {
             group={item.group}
             addingId={addingId}
             onAdd={addEntry}
+            styles={styles}
+            accentColor={colors.accent}
           />
         );
       }}
@@ -305,7 +469,7 @@ export default function TripDetailScreen() {
           <View style={styles.headerCard}>
             <View style={styles.headerTop}>
               <Text style={styles.tripDateRange}>
-                {fmt(trip.start)} → {fmt(trip.end)}
+                {fmt(trip.start)} {"→"} {fmt(trip.end)}
               </Text>
               {trip.purpose && (
                 <Text style={styles.purposeIcon}>
@@ -318,7 +482,7 @@ export default function TripDetailScreen() {
               <Text style={styles.tripMetaText}>
                 {n} {n === 1 ? "night" : "nights"}
               </Text>
-              <Text style={styles.tripMetaDot}>·</Text>
+              <Text style={styles.tripMetaDot}>{"·"}</Text>
               <Text style={styles.tripMetaText}>
                 {entries.length} {entries.length === 1 ? "entry" : "entries"}
               </Text>
@@ -344,149 +508,3 @@ export default function TripDetailScreen() {
     </>
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
-
-const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingBottom: spacing["3xl"] },
-
-  // Trip header card
-  headerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius["2xl"],
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    margin: spacing.base,
-    marginBottom: 0,
-  },
-  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
-  tripDateRange: { ...text.sm, color: colors.textTertiary, fontFamily: "monospace", flex: 1 },
-  purposeIcon: { fontSize: 18, marginLeft: spacing.sm },
-  tripTitle: {
-    fontSize: 22,
-    fontFamily: fonts.serifBold,
-    fontWeight: "700",
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  tripMeta: { flexDirection: "row", gap: spacing.sm2 },
-  tripMetaText: { ...text.smMd, color: colors.textSecondary },
-  tripMetaDot:  { ...text.smMd, color: colors.textMuted },
-  tripNotes: { ...text.md, color: colors.textSecondary, marginTop: 10 },
-
-  // Two-column day group
-  dayGroup: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.base,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.sm,
-  },
-
-  // Date column
-  dateCol: {
-    width: DATE_COL_W,
-    alignItems: "center",
-    paddingTop: 2,
-    flexShrink: 0,
-  },
-  dateNum: {
-    fontFamily: fonts.serifBold,
-    fontWeight: "700",
-    fontSize: 34,
-    lineHeight: 38,
-    color: colors.textBright,
-  },
-  dateNumDim: { color: colors.textTertiary },
-  dateSub: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    color: colors.textTertiary,
-    lineHeight: 15,
-  },
-
-  // Vertical rule
-  dateRule: {
-    width: 1,
-    alignSelf: "stretch",
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-    marginTop: 4,
-  },
-
-  // Cards column
-  cardsCol: { flex: 1, gap: spacing.sm },
-
-  // Entry card (linked)
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  cardPressed: { opacity: 0.65 },
-  // Suggestion card — slightly dimmer border to visually separate the two sections
-  cardSuggestion: { borderColor: colors.borderFaint },
-
-  cardIcon:    { fontSize: 18 },
-  cardTitle:   { flex: 1, ...text.base, color: colors.textPrimary, fontWeight: "500" },
-  cardChevron: { fontSize: 20, color: colors.border },
-
-  addBtn: {
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm2,
-    minWidth: 60,
-    alignItems: "center",
-  },
-  addBtnDisabled: { opacity: 0.5 },
-  addBtnText: { color: colors.accentSoft, fontSize: 12, fontWeight: "700" },
-
-  // Separator between day groups
-  daySeparator: {
-    height: 1,
-    backgroundColor: colors.borderFaint,
-    marginHorizontal: spacing.base,
-  },
-
-  // Suggestions section header
-  suggestHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.base,
-    paddingTop: spacing["2xl"],
-    paddingBottom: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    marginTop: spacing.lg,
-  },
-  suggestLabel: { ...text.label, color: colors.textTertiary },
-  addAllBtn: {
-    backgroundColor: colors.accentBold,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.sm2,
-    minWidth: 72,
-    alignItems: "center",
-  },
-  addAllBtnDisabled: { opacity: 0.5 },
-  addAllText: { color: colors.white, fontSize: 12, fontWeight: "700" },
-
-  empty: { paddingTop: spacing.xl, paddingHorizontal: spacing.base, alignItems: "center" },
-  emptyText: { ...text.md, color: colors.textMuted, textAlign: "center" },
-
-  notFound: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
-  notFoundText: { ...text.lg, color: colors.textTertiary },
-});
