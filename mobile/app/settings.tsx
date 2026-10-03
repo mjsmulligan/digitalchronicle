@@ -177,29 +177,16 @@ export default function SettingsScreen() {
     },
   }), [colors, fonts]);
 
-  // Static swatch data — these are the literal token values from ThemeProvider
-  const THEME_OPTS = [
-    {
-      id:     "paper",
-      label:  "Paper",
-      bg:     THEMES["paper"]!.colors.bg,
-      ink:    THEMES["paper"]!.colors.textPrimary,
-      accent: THEMES["paper"]!.colors.accent,
-    },
-    {
-      id:     "leather",
-      label:  "Leather",
-      bg:     THEMES["leather"]!.colors.bg,
-      ink:    THEMES["leather"]!.colors.textPrimary,
-      accent: THEMES["leather"]!.colors.accent,
-    },
-    {
-      id:     "system",
-      label:  "System",
-      bg:     null,
-      ink:    null,
-      accent: null,
-    },
+  // Static swatch data — row1 and row2 render as a 2×2 grid
+  const THEME_ROWS = [
+    [
+      { id: "paper",   label: "Paper",   bg: THEMES["paper"]!.colors.bg,   inkColor: THEMES["paper"]!.colors.textPrimary,   accent: THEMES["paper"]!.colors.accent },
+      { id: "ink",     label: "Ink",     bg: THEMES["ink"]!.colors.bg,     inkColor: THEMES["ink"]!.colors.textPrimary,     accent: THEMES["ink"]!.colors.accent },
+    ],
+    [
+      { id: "leather", label: "Leather", bg: THEMES["leather"]!.colors.bg, inkColor: THEMES["leather"]!.colors.textPrimary, accent: THEMES["leather"]!.colors.accent },
+      { id: "system",  label: "System",  bg: null,                          inkColor: null,                                  accent: null },
+    ],
   ] as const;
 
   const entryCount =
@@ -246,49 +233,53 @@ export default function SettingsScreen() {
 
       {/* ── Appearance ─────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Appearance</Text>
-      <View style={styles.themeRow}>
-        {THEME_OPTS.map((opt) => {
-          const active = themeId === opt.id;
-          return (
-            <Pressable
-              key={opt.id}
-              style={styles.themeOption}
-              onPress={() => setThemeId(opt.id)}
-              hitSlop={4}
-            >
-              <View style={[styles.themeOptionInner, active && styles.themeOptionActive]}>
-                {opt.id === "system" ? (
-                  // Split swatch: Paper bg left, Leather bg right
-                  <>
-                    <View style={[styles.swatchBgLeft,  { backgroundColor: THEMES["paper"]!.colors.bg }]} />
-                    <View style={[styles.swatchBgRight, { backgroundColor: THEMES["leather"]!.colors.bg }]} />
-                    <View style={[styles.swatchDiagonal, { position: "absolute", inset: 0 }]}>
-                      <View style={styles.swatchDots}>
-                        <View style={[styles.swatchDot, { backgroundColor: THEMES["paper"]!.colors.accent }]} />
-                        <View style={[styles.swatchDot, { backgroundColor: THEMES["leather"]!.colors.accent }]} />
+      <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
+        {THEME_ROWS.map((row, ri) => (
+          <View key={ri} style={styles.themeRow}>
+            {row.map((opt) => {
+              const active = themeId === opt.id;
+              return (
+                <Pressable
+                  key={opt.id}
+                  style={styles.themeOption}
+                  onPress={() => setThemeId(opt.id)}
+                  hitSlop={4}
+                >
+                  <View style={[styles.themeOptionInner, active && styles.themeOptionActive]}>
+                    {opt.id === "system" ? (
+                      // Split swatch: Paper (light) left, Ink (dark) right
+                      <>
+                        <View style={[styles.swatchBgLeft,  { backgroundColor: THEMES["paper"]!.colors.bg }]} />
+                        <View style={[styles.swatchBgRight, { backgroundColor: THEMES["ink"]!.colors.bg }]} />
+                        <View style={[styles.swatchDiagonal, { position: "absolute", inset: 0 }]}>
+                          <View style={styles.swatchDots}>
+                            <View style={[styles.swatchDot, { backgroundColor: THEMES["paper"]!.colors.accent }]} />
+                            <View style={[styles.swatchDot, { backgroundColor: THEMES["ink"]!.colors.accent }]} />
+                          </View>
+                        </View>
+                      </>
+                    ) : (
+                      <View style={[styles.swatchBg, { backgroundColor: opt.bg! }]}>
+                        <View style={styles.swatchDots}>
+                          <View style={[styles.swatchDot, { backgroundColor: opt.inkColor! }]} />
+                          <View style={[styles.swatchDot, { backgroundColor: opt.accent! }]} />
+                        </View>
                       </View>
-                    </View>
-                  </>
-                ) : (
-                  <View style={[styles.swatchBg, { backgroundColor: opt.bg! }]}>
-                    <View style={styles.swatchDots}>
-                      <View style={[styles.swatchDot, { backgroundColor: opt.ink! }]} />
-                      <View style={[styles.swatchDot, { backgroundColor: opt.accent! }]} />
-                    </View>
+                    )}
+                    {active && (
+                      <View style={styles.checkDot}>
+                        <Ionicons name="checkmark" size={11} color={colors.white} />
+                      </View>
+                    )}
                   </View>
-                )}
-                {active && (
-                  <View style={styles.checkDot}>
-                    <Ionicons name="checkmark" size={11} color={colors.white} />
-                  </View>
-                )}
-              </View>
-              <Text style={[styles.themeLabel, active && styles.themeLabelActive]}>
-                {opt.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+                  <Text style={[styles.themeLabel, active && styles.themeLabelActive]}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
       </View>
 
       {/* ── Database ────────────────────────────────────────────────────── */}
