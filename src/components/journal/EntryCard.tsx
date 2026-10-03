@@ -348,7 +348,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             />
           )}
           <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1 font-mono text-[10px] text-muted-foreground/50"><SourceIcon source={entry.source} />{sourceLabel(entry.source)} · t{entry.tier}</span>
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground"><SourceIcon source={entry.source} />{sourceLabel(entry.source)} · t{entry.tier}</span>
             <div className="flex items-center gap-2">
               {confirmDelete ? (
                 <div className="flex flex-wrap items-center gap-2">
