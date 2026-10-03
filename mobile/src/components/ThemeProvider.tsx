@@ -177,6 +177,53 @@ const paper: ThemeDefinition = {
   },
 };
 
+// ─── Ink theme (dark sibling of Paper — same fonts, warm dark palette) ────────
+
+const ink: ThemeDefinition = {
+  id: "ink",
+  name: "Ink",
+  mode: "dark",
+  colors: {
+    bg:                "#1C1309",
+    surface:           "#231A0D",
+    surfacePressed:    "#2A2010",
+    surfaceAccent:     "#2E2010",
+    surfaceAccentDeep: "#281C0D",
+    border:            "#3D2E1A",
+    borderFaint:       "#2C2114",
+    textBright:        "#FDF5E8",
+    textPrimary:       "#F0E4CA",
+    textDim:           "#C9B89A",
+    textSecondary:     "#9A8570",
+    textTertiary:      "#967E68",  // 4.78:1 on bg ✓
+    textMuted:         "#967E68",  // 4.78:1 on bg ✓
+    accent:            "#C86832",  // 4.78:1 on bg ✓
+    accentBold:        "#D97B3A",
+    accentSoft:        "#C86832",
+    accentSubtle:      "#B85C2A",
+    accentBadge:       "#C86832",
+    star:              "#F59E0B",
+    success:           "#5CB86C",
+    info:              "#38BDF8",
+    error:             "#EF4444",
+    errorLight:        "#FCA5A5",
+    errorBg:           "#3D1212",
+    deleteBg:          "#3A1510",
+    white:             "#ffffff",
+  },
+  fonts: {
+    // Same font stack as Paper (warm dark sibling)
+    serifBold:     "Fraunces_600SemiBold",
+    serifSemiBold: "Fraunces_600SemiBold",
+    serifMedium:   "Fraunces_500Medium",
+    serifRegular:  "Fraunces_400Regular",
+    sans:          "IBMPlexSans_400Regular",
+    sansMedium:    "IBMPlexSans_500Medium",
+    mono:          "JetBrainsMono_400Regular",
+    monoMedium:    "JetBrainsMono_500Medium",
+  },
+};
+
 // ─── Invariant tokens (same across all themes for now) ───────────────────────
 // These live here so screens only import from ThemeProvider and have no reason
 // to reach into the deleted compat layer (src/theme.ts).
@@ -233,6 +280,7 @@ export const radius = {
 export const THEMES: Record<string, ThemeDefinition> = {
   leather,
   paper,
+  ink,
 };
 
 const DEFAULT_THEME_ID = "paper";
@@ -299,10 +347,10 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
   const [themeId, setThemeIdState] = useState<string>(DEFAULT_THEME_ID);
 
   // Resolve raw selection → concrete ThemeDefinition.
-  // "system" maps to Paper in light mode and Leather in dark mode.
+  // "system" maps to Paper in light mode and Ink in dark mode.
   const theme = useMemo<ThemeDefinition>(() => {
     if (themeId === "system") {
-      return colorScheme === "dark" ? leather : paper;
+      return colorScheme === "dark" ? ink : paper;
     }
     return THEMES[themeId] ?? THEMES[DEFAULT_THEME_ID]!;
   }, [themeId, colorScheme]);
