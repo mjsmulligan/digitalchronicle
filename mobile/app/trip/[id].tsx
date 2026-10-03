@@ -3,7 +3,7 @@
  * two-column journal layout. Suggestions (unlinked entries in the date range)
  * appear below with per-card and bulk "+ Add" actions.
  */
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
@@ -11,6 +11,7 @@ import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
+import { EntryRow } from "../../src/components/EntryRow";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -141,26 +142,30 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       marginTop: 4,
     },
 
-    // Cards column
-    cardsCol: { flex: 1, gap: spacingScale.sm },
+    // Entries column (linked) — no gap; EntryRow provides its own paddingVertical
+    cardsCol: { flex: 1 },
 
-    // Entry card (linked)
+    // Hairline separator between EntryRow items
+    rowSeparator: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+    },
+
+    // Suggestion card — kept as a bordered card to distinguish from linked entries
     card: {
-      backgroundColor: colors.surface,
-      borderRadius: radiusScale.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
       paddingHorizontal: spacingScale.md2,
       paddingVertical: spacingScale.md,
       flexDirection: "row",
       alignItems: "center",
       gap: spacingScale.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radiusScale.lg,
+      backgroundColor: colors.surface,
     },
     cardPressed: { opacity: 0.65 },
-    // Suggestion card -- slightly dimmer border to visually separate the two sections
     cardSuggestion: { borderColor: colors.borderFaint },
-
-    cardTitle:   { flex: 1, ...textScale.feedTitle, fontFamily: fonts.serifMedium, color: colors.textPrimary, fontWeight: "500" },
+    cardTitle: { flex: 1, ...textScale.feedTitle, fontFamily: fonts.serifMedium, color: colors.textPrimary, fontWeight: "500" },
     cardChevron: { fontSize: 20, color: colors.border },
 
     addBtn: {
@@ -218,21 +223,6 @@ type Styles = ReturnType<typeof createStyles>;
 
 // ── components ────────────────────────────────────────────────────────────────
 
-/** A single entry card inside a day group — taps to entry detail */
-function EntryCard({ entry, styles, colors }: { entry: Entry; styles: Styles; colors: ThemeColors }) {
-  const router = useRouter();
-  const v = view(entry);
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => router.push(`/entry/${entry.id}`)}
-    >
-      <KindIcon kind={entry.kind} subkind={entrySubkind(entry)} size={18} color={colors.textSecondary} accessibilityLabel="" />
-      <Text style={styles.cardTitle} numberOfLines={2}>{entryTitle(v)}</Text>
-      <Text style={styles.cardChevron}>{"›"}</Text>
-    </Pressable>
-  );
-}
 
 /** A suggestion card — shows "+ Add" button instead of chevron */
 function SuggestionCard({
@@ -267,8 +257,8 @@ function SuggestionCard({
   );
 }
 
-/** Two-column date row for linked entries */
-function EntryDayGroup({ group, styles, colors }: { group: DayGroup; styles: Styles; colors: ThemeColors }) {
+/** Two-column date row for linked entries — uses shared EntryRow */
+function EntryDayGroup({ group, styles, colors, fonts, router }: { group: DayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter> }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
@@ -280,7 +270,17 @@ function EntryDayGroup({ group, styles, colors }: { group: DayGroup; styles: Sty
       </View>
       <View style={styles.dateRule} />
       <View style={styles.cardsCol}>
-        {group.items.map((e) => <EntryCard key={e.id} entry={e} styles={styles} colors={colors} />)}
+        {group.items.map((e, idx) => (
+          <React.Fragment key={e.id}>
+            {idx > 0 && <View style={styles.rowSeparator} />}
+            <EntryRow
+              entry={e}
+              colors={colors}
+              fonts={fonts}
+              onPress={() => router.push(`/entry/${e.id}`)}
+            />
+          </React.Fragment>
+        ))}
       </View>
     </View>
   );
@@ -423,7 +423,7 @@ export default function TripDetailScreen() {
       }
       renderItem={({ item }) => {
         if (item.kind === "entryDay") {
-          return <EntryDayGroup group={item.group} styles={styles} colors={colors} />;
+          return <EntryDayGroup group={item.group} styles={styles} colors={colors} fonts={fonts} router={router} />;
         }
         if (item.kind === "suggestHeader") {
           return (
