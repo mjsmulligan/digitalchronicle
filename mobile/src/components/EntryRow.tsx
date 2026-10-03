@@ -25,7 +25,7 @@ import {
 import { type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "./ThemeProvider";
 import { KindIcon, StarRating } from "./KindIcon";
 import { SourceMark } from "./SourceMark";
-import { sourceIconPath } from "@chronicle/journal/connectors/icons";
+import { sourceMark, operatorMarkId } from "@chronicle/journal/connectors/icons";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -147,8 +147,13 @@ export function EntryRow({ entry, colors, fonts, onPress }: EntryRowProps) {
   const subtitle = entryMeta(v);
   const label = entryLabel(v);
   const subkind = resolveSubkind(entry);
-  // Use SourceMark when the source has a registered icon path; KindIcon otherwise.
-  const hasBrandMark = !!sourceIconPath(entry.source);
+  // For legs, prefer an operator-specific mark (e.g. "DB", "FS") over the
+  // connector source mark (e.g. "viaduct"). Fall back to KindIcon if neither.
+  const markId =
+    entry.kind === "leg"
+      ? (operatorMarkId((entry as Leg).operator) ?? entry.source)
+      : entry.source;
+  const hasBrandMark = !!sourceMark(markId);
 
   return (
     <Pressable
@@ -160,7 +165,7 @@ export function EntryRow({ entry, colors, fonts, onPress }: EntryRowProps) {
       {/* Leading: brand mark, or KindIcon fallback */}
       <View style={styles.markWrap}>
         {hasBrandMark ? (
-          <SourceMark source={entry.source} size={20} accessibilityLabel="" />
+          <SourceMark source={markId} size={20} accessibilityLabel="" />
         ) : (
           <KindIcon
             kind={entry.kind}

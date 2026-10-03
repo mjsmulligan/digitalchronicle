@@ -1,22 +1,18 @@
 /**
- * SourceMark — a 20×20 rounded-square brand chip for a known source
- * (Netflix, Letterboxd, Goodreads), using the shared SVG path data from
- * src/lib/journal/connectors/icons.ts. Returns null for unknown sources.
+ * SourceMark — a 20×20 rounded-square brand chip for a known source or operator.
  *
- * Design mirrors web SourceIcon.tsx:
- *   container: 20×20, borderRadius 5, background = brand colour at 15 % opacity
- *   glyph: ~14×14 SVG, filled with the brand colour
+ * Two visual variants, driven by `SourceMarkDef.type`:
+ *   "path"  — SVG glyph in the brand hue on a 15 % tinted background.
+ *             Used for Netflix, Letterboxd, Goodreads, Viaduct.
+ *   "text"  — Short operator label (IATA code / initials) in the brand fg colour
+ *             on a solid brand background. Used for airlines and train operators.
  *
- * Colour note: SOURCE_COLORS are already muted for the Leather / dark palette.
- * On Paper (light) they read correctly too — verified against spec 4.6.
+ * Returns null for unrecognised sources so callers can fall back to KindIcon.
  */
 import React from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import Svg, { Path } from "react-native-svg";
-import {
-  sourceIconPath,
-  sourceColor,
-} from "@chronicle/journal/connectors/icons";
+import { sourceMark } from "@chronicle/journal/connectors/icons";
 
 export interface SourceMarkProps {
   source: string;
@@ -25,38 +21,71 @@ export interface SourceMarkProps {
   accessibilityLabel?: string;
 }
 
-/**
- * Renders a brand mark for a recognised source; returns null otherwise so
- * callers can fall back to a KindIcon chip.
- */
 export function SourceMark({ source, size = 20, accessibilityLabel }: SourceMarkProps) {
-  const d = sourceIconPath(source);
-  const color = sourceColor(source);
-  if (!d || !color) return null;
+  const mark = sourceMark(source);
+  if (!mark) return null;
 
-  // Icon occupies ~70 % of the container to match the web `h-3.5 w-3.5` on `h-[18px]`.
-  const iconSize = Math.round(size * 0.7);
+  const borderRadius = Math.round(size * 0.25);
 
-  // Append "26" (hex for ~15 % opacity) to the 6-digit brand hex.
-  const bgColor = `${color}26`;
+  if (mark.type === "path") {
+    // SVG glyph chip — same design as before
+    const iconSize = Math.round(size * 0.7);
+    const bgColor = `${mark.color}26`; // 15 % opacity
+
+    return (
+      <View
+        accessible
+        accessibilityRole="image"
+        accessibilityLabel={accessibilityLabel ?? source}
+        style={{
+          width: size,
+          height: size,
+          borderRadius,
+          backgroundColor: bgColor,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill={mark.color}>
+          <Path d={mark.d} />
+        </Svg>
+      </View>
+    );
+  }
+
+  // TextMark — solid-colour chip with operator label
+  const labelLen = mark.label.length;
+  const fontSize = labelLen <= 2
+    ? Math.round(size * 0.38)
+    : Math.round(size * 0.28);
 
   return (
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel={accessibilityLabel ?? source}
+      accessibilityLabel={accessibilityLabel ?? mark.label}
       style={{
         width: size,
         height: size,
-        borderRadius: 5,
-        backgroundColor: bgColor,
+        borderRadius,
+        backgroundColor: mark.bg,
         alignItems: "center",
         justifyContent: "center",
       }}
     >
-      <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill={color}>
-        <Path d={d} />
-      </Svg>
+      <Text
+        style={{
+          color: mark.fg,
+          fontSize,
+          fontWeight: "700",
+          letterSpacing: -0.2,
+          lineHeight: fontSize * 1.1,
+          includeFontPadding: false,
+        }}
+        numberOfLines={1}
+      >
+        {mark.label}
+      </Text>
     </View>
   );
 }

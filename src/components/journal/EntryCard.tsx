@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
-import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type EventCategory, type Person } from "@/lib/journal/types";
+import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
+import { operatorMarkId } from "@/lib/journal/connectors/icons";
 import { StarRating } from "@/components/journal/StarRating";
 import { cn } from "@/lib/utils";
 
@@ -348,7 +349,10 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             />
           )}
           <div className="flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground"><SourceIcon source={entry.source} />{sourceLabel(entry.source)} · t{entry.tier}</span>
+            <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+            <SourceIcon source={entry.kind === "leg" ? (operatorMarkId((entry as Leg).operator) ?? entry.source) : entry.source} />
+            {sourceLabel(entry.source)} · t{entry.tier}
+          </span>
             <div className="flex items-center gap-2">
               {confirmDelete ? (
                 <div className="flex flex-wrap items-center gap-2">
