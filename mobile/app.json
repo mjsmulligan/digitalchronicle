@@ -8,6 +8,8 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
       "backgroundColor": "#F9F3E6"
     },
     "ios": {
@@ -17,8 +19,10 @@
     "android": {
       "package": "com.chronicle.app",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F9F3E6"
       },
+      "predictiveBackGestureEnabled": true,
       "intentFilters": [
         {
           "action": "VIEW",
@@ -47,7 +51,8 @@
     "plugins": [
       "expo-router",
       "expo-sqlite",
-      "expo-document-picker"
+      "expo-document-picker",
+      "./plugins/withEdgeToEdge"
     ],
     "experiments": {
       "typedRoutes": true

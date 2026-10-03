@@ -18,14 +18,15 @@
  * - Optional trip label (mono, accentSoft) above the rows.
  * - EntryRow items separated by hairlines (spec: rows, not cards).
  * - "+ reflection for this day" prompt at the bottom; shows serif italic
- *   text when a reflection already exists.
+ *   text when a reflection already exists. Tapping enters inline edit mode.
  *
  * Accepts `colors` and `fonts` as props so it is safe inside FlatList
  * renderItem without calling useTheme() per row.
  */
-import React from "react";
-import { StyleSheet, Text, View, Pressable } from "react-native";
-import { type Entry, type Note } from "@chronicle/journal/types";
+import React, { useState } from "react";
+import { StyleSheet, Text, TextInput, View, Pressable } from "react-native";
+import { type Entry, type Note, uid } from "@chronicle/journal/types";
+import { putMany } from "@chronicle/journal/db";
 import { type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "./ThemeProvider";
 import { EntryRow } from "./EntryRow";
 
@@ -130,6 +131,47 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       borderLeftColor: colors.accentSoft,
       paddingLeft: spacingScale.md,
     },
+
+    // Inline reflection editor
+    reflectInput: {
+      ...textScale.base,
+      fontFamily: fonts.serifMedium,
+      fontStyle: "italic",
+      color: colors.textPrimary,
+      borderLeftWidth: 2,
+      borderLeftColor: colors.accent,
+      paddingLeft: spacingScale.md,
+      paddingTop: spacingScale.md,
+      paddingBottom: spacingScale.sm,
+      minHeight: 60,
+      textAlignVertical: "top" as const,
+    },
+    reflectActions: {
+      flexDirection: "row" as const,
+      gap: spacingScale.sm,
+      paddingBottom: spacingScale.sm,
+    },
+    reflectSave: {
+      paddingHorizontal: spacingScale.md,
+      paddingVertical: spacingScale.sm2,
+      backgroundColor: colors.accent,
+      borderRadius: 6,
+    },
+    reflectSaveText: {
+      ...textScale.sm,
+      fontFamily: fonts.sansMedium ?? fonts.sans,
+      fontWeight: "600",
+      color: colors.accentBadge,
+    },
+    reflectCancel: {
+      paddingHorizontal: spacingScale.md,
+      paddingVertical: spacingScale.sm2,
+    },
+    reflectCancelText: {
+      ...textScale.sm,
+      fontFamily: fonts.sans,
+      color: colors.textTertiary,
+    },
   });
 }
 
@@ -166,6 +208,38 @@ export function DayGroup({ group, colors, fonts, onEntryPress, onReflectionPress
   const { num, day, month, year } = parseDay(group.iso);
   const styles = createStyles(colors, fonts);
 
+  // ── inline reflection editor state ────────────────────────────────────────
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  function startEditing() {
+    setDraft(group.note?.text ?? "");
+    setEditing(true);
+    onReflectionPress?.(group.iso);
+  }
+
+  async function saveReflection() {
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      setEditing(false);
+      return;
+    }
+    const t = new Date().toISOString();
+    await putMany("notes", [{
+      id: group.note?.id ?? uid(),
+      date: group.iso,
+      text: trimmed,
+      createdAt: group.note?.createdAt ?? t,
+      updatedAt: t,
+    }]);
+    setEditing(false);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    setDraft("");
+  }
+
   return (
     <View style={styles.outer}>
       {/* Date column */}
@@ -199,15 +273,35 @@ export function DayGroup({ group, colors, fonts, onEntryPress, onReflectionPress
           </React.Fragment>
         ))}
 
-        {/* Reflection: show existing note text, or the "+ reflection" prompt when
-            showReflection is true. Culture / Trips / People pass showReflection=false. */}
+        {/* Reflection: inline editor, existing note, or "+ reflection" prompt.
+            Culture / Trips / People pass showReflection=false to hide entirely. */}
         {showReflection && (
-          group.note ? (
-            <Pressable onPress={() => onReflectionPress?.(group.iso)}>
+          editing ? (
+            <>
+              <TextInput
+                multiline
+                autoFocus
+                value={draft}
+                onChangeText={setDraft}
+                style={styles.reflectInput}
+                placeholder="How was the day?"
+                placeholderTextColor={colors.textTertiary}
+              />
+              <View style={styles.reflectActions}>
+                <Pressable onPress={saveReflection} style={styles.reflectSave}>
+                  <Text style={styles.reflectSaveText}>Save</Text>
+                </Pressable>
+                <Pressable onPress={cancelEditing} style={styles.reflectCancel}>
+                  <Text style={styles.reflectCancelText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </>
+          ) : group.note ? (
+            <Pressable onPress={startEditing}>
               <Text style={styles.reflectText}>{group.note.text}</Text>
             </Pressable>
           ) : (
-            <Pressable onPress={() => onReflectionPress?.(group.iso)}>
+            <Pressable onPress={startEditing}>
               <Text style={styles.reflectPrompt}>+ reflection for this day</Text>
             </Pressable>
           )
