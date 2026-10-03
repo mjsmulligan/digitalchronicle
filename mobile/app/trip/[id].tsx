@@ -10,6 +10,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
+import { KindIcon } from "../../src/components/KindIcon";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -38,14 +39,10 @@ function nights(trip: Trip): number {
   return Math.max(0, Math.round((+new Date(trip.end) - +new Date(trip.start)) / 86_400_000));
 }
 
-function entryEmoji(e: Entry): string {
-  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚆" : "🚗";
-  if (e.kind === "stay") return "🏨";
-  if (e.kind === "film") return "🎬";
-  if (e.kind === "episode") return "📺";
-  if (e.kind === "book") return "📖";
-  const cat = (e as Extract<Entry, { kind: "event" }>).category;
-  return cat === "concert" ? "🎵" : cat === "celebration" ? "🎉" : cat === "milestone" ? "🏆" : "📍";
+function entrySubkind(e: Entry): string | undefined {
+  if (e.kind === "leg") return e.mode;
+  if (e.kind === "event") return (e as Extract<Entry, { kind: "event" }>).category;
+  return undefined;
 }
 
 function groupByDay(entries: Entry[]): DayGroup[] {
@@ -58,8 +55,8 @@ function groupByDay(entries: Entry[]): DayGroup[] {
   return [...map.entries()].map(([iso, items]) => ({ iso, items }));
 }
 
-const PURPOSE_ICON: Record<string, string> = {
-  leisure: "🌴", work: "💼", family: "👨‍👩‍👧", other: "📌",
+const PURPOSE_KIND: Record<string, string> = {
+  leisure: "leisure", work: "work", family: "family",
 };
 
 // ── data ──────────────────────────────────────────────────────────────────────
@@ -90,7 +87,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     },
     headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
     tripDateRange: { ...textScale.sm, color: colors.textTertiary, fontFamily: fonts.mono, flex: 1 },
-    purposeIcon: { fontSize: 18, marginLeft: spacingScale.sm },
+    purposeIconWrap: { marginLeft: spacingScale.sm },
     tripTitle: {
       fontSize: 22,
       fontFamily: fonts.serifBold,
@@ -163,7 +160,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     // Suggestion card -- slightly dimmer border to visually separate the two sections
     cardSuggestion: { borderColor: colors.borderFaint },
 
-    cardIcon:    { fontSize: 18 },
     cardTitle:   { flex: 1, ...textScale.feedTitle, fontFamily: fonts.serifMedium, color: colors.textPrimary, fontWeight: "500" },
     cardChevron: { fontSize: 20, color: colors.border },
 
@@ -223,7 +219,7 @@ type Styles = ReturnType<typeof createStyles>;
 // ── components ────────────────────────────────────────────────────────────────
 
 /** A single entry card inside a day group — taps to entry detail */
-function EntryCard({ entry, styles }: { entry: Entry; styles: Styles }) {
+function EntryCard({ entry, styles, colors }: { entry: Entry; styles: Styles; colors: ThemeColors }) {
   const router = useRouter();
   const v = view(entry);
   return (
@@ -231,7 +227,7 @@ function EntryCard({ entry, styles }: { entry: Entry; styles: Styles }) {
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={() => router.push(`/entry/${entry.id}`)}
     >
-      <Text style={styles.cardIcon}>{entryEmoji(entry)}</Text>
+      <KindIcon kind={entry.kind} subkind={entrySubkind(entry)} size={18} color={colors.textSecondary} accessibilityLabel="" />
       <Text style={styles.cardTitle} numberOfLines={2}>{entryTitle(v)}</Text>
       <Text style={styles.cardChevron}>{"›"}</Text>
     </Pressable>
@@ -244,18 +240,18 @@ function SuggestionCard({
   onAdd,
   adding,
   styles,
-  accentColor,
+  colors,
 }: {
   entry: Entry;
   onAdd: () => void;
   adding: boolean;
   styles: Styles;
-  accentColor: string;
+  colors: ThemeColors;
 }) {
   const v = view(entry);
   return (
     <View style={[styles.card, styles.cardSuggestion]}>
-      <Text style={styles.cardIcon}>{entryEmoji(entry)}</Text>
+      <KindIcon kind={entry.kind} subkind={entrySubkind(entry)} size={18} color={colors.textSecondary} accessibilityLabel="" />
       <Text style={styles.cardTitle} numberOfLines={2}>{entryTitle(v)}</Text>
       <Pressable
         style={[styles.addBtn, adding && styles.addBtnDisabled]}
@@ -263,7 +259,7 @@ function SuggestionCard({
         disabled={adding}
       >
         {adding
-          ? <ActivityIndicator size="small" color={accentColor} />
+          ? <ActivityIndicator size="small" color={colors.accent} />
           : <Text style={styles.addBtnText}>+ Add</Text>
         }
       </Pressable>
@@ -272,7 +268,7 @@ function SuggestionCard({
 }
 
 /** Two-column date row for linked entries */
-function EntryDayGroup({ group, styles }: { group: DayGroup; styles: Styles }) {
+function EntryDayGroup({ group, styles, colors }: { group: DayGroup; styles: Styles; colors: ThemeColors }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
@@ -284,7 +280,7 @@ function EntryDayGroup({ group, styles }: { group: DayGroup; styles: Styles }) {
       </View>
       <View style={styles.dateRule} />
       <View style={styles.cardsCol}>
-        {group.items.map((e) => <EntryCard key={e.id} entry={e} styles={styles} />)}
+        {group.items.map((e) => <EntryCard key={e.id} entry={e} styles={styles} colors={colors} />)}
       </View>
     </View>
   );
@@ -296,13 +292,13 @@ function SuggestionDayGroup({
   addingId,
   onAdd,
   styles,
-  accentColor,
+  colors,
 }: {
   group: DayGroup;
   addingId: string | null;
   onAdd: (entry: Entry) => void;
   styles: Styles;
-  accentColor: string;
+  colors: ThemeColors;
 }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
@@ -322,7 +318,7 @@ function SuggestionDayGroup({
             onAdd={() => onAdd(e)}
             adding={addingId === e.id}
             styles={styles}
-            accentColor={accentColor}
+            colors={colors}
           />
         ))}
       </View>
@@ -427,7 +423,7 @@ export default function TripDetailScreen() {
       }
       renderItem={({ item }) => {
         if (item.kind === "entryDay") {
-          return <EntryDayGroup group={item.group} styles={styles} />;
+          return <EntryDayGroup group={item.group} styles={styles} colors={colors} />;
         }
         if (item.kind === "suggestHeader") {
           return (
@@ -454,7 +450,7 @@ export default function TripDetailScreen() {
             addingId={addingId}
             onAdd={addEntry}
             styles={styles}
-            accentColor={colors.accent}
+            colors={colors}
           />
         );
       }}
@@ -473,9 +469,14 @@ export default function TripDetailScreen() {
                 {fmt(trip.start)} {"→"} {fmt(trip.end)}
               </Text>
               {trip.purpose && (
-                <Text style={styles.purposeIcon}>
-                  {PURPOSE_ICON[trip.purpose] ?? "📌"}
-                </Text>
+                <View style={styles.purposeIconWrap}>
+                  <KindIcon
+                    kind={PURPOSE_KIND[trip.purpose] ?? "location"}
+                    size={18}
+                    color={colors.textSecondary}
+                    accessibilityLabel=""
+                  />
+                </View>
               )}
             </View>
             <Text style={styles.tripTitle}>{trip.title}</Text>

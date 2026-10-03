@@ -8,6 +8,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Person } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
+import { KindIcon } from "../../src/components/KindIcon";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -25,14 +26,10 @@ function parseDay(iso: string) {
   };
 }
 
-function entryEmoji(e: Entry): string {
-  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚆" : "🚗";
-  if (e.kind === "stay") return "🏨";
-  if (e.kind === "film") return "🎬";
-  if (e.kind === "episode") return "📺";
-  if (e.kind === "book") return "📖";
-  const cat = (e as Extract<Entry, { kind: "event" }>).category;
-  return cat === "concert" ? "🎵" : cat === "celebration" ? "🎉" : cat === "milestone" ? "🏆" : "📍";
+function entrySubkind(e: Entry): string | undefined {
+  if (e.kind === "leg") return e.mode;
+  if (e.kind === "event") return (e as Extract<Entry, { kind: "event" }>).category;
+  return undefined;
 }
 
 // ── data ──────────────────────────────────────────────────────────────────────
@@ -165,7 +162,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       gap: spacingScale.sm,
     },
     cardPressed: { opacity: 0.65 },
-    cardIcon:    { fontSize: 18 },
     cardTitle:   { flex: 1, ...textScale.feedTitle, fontFamily: fonts.serifMedium, color: colors.textPrimary, fontWeight: "500" },
     cardChevron: { fontSize: 20, color: colors.border },
 
@@ -187,7 +183,7 @@ type Styles = ReturnType<typeof createStyles>;
 
 // ── components ────────────────────────────────────────────────────────────────
 
-function EntryCard({ entry, styles }: { entry: Entry; styles: Styles }) {
+function EntryCard({ entry, styles, colors }: { entry: Entry; styles: Styles; colors: ThemeColors }) {
   const router = useRouter();
   const v = view(entry);
   return (
@@ -195,14 +191,14 @@ function EntryCard({ entry, styles }: { entry: Entry; styles: Styles }) {
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={() => router.push(`/entry/${entry.id}`)}
     >
-      <Text style={styles.cardIcon}>{entryEmoji(entry)}</Text>
+      <KindIcon kind={entry.kind} subkind={entrySubkind(entry)} size={18} color={colors.textSecondary} accessibilityLabel="" />
       <Text style={styles.cardTitle} numberOfLines={2}>{entryTitle(v)}</Text>
       <Text style={styles.cardChevron}>{"›"}</Text>
     </Pressable>
   );
 }
 
-function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
+function DayGroupRow({ group, styles, colors }: { group: DayGroup; styles: Styles; colors: ThemeColors }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
@@ -214,7 +210,7 @@ function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
       </View>
       <View style={styles.dateRule} />
       <View style={styles.cardsCol}>
-        {group.items.map((e) => <EntryCard key={e.id} entry={e} styles={styles} />)}
+        {group.items.map((e) => <EntryCard key={e.id} entry={e} styles={styles} colors={colors} />)}
       </View>
     </View>
   );
@@ -260,7 +256,7 @@ export default function PersonDetailScreen() {
       style={styles.list}
       data={groups}
       keyExtractor={(g) => g.iso}
-      renderItem={({ item }) => <DayGroupRow group={item} styles={styles} />}
+      renderItem={({ item }) => <DayGroupRow group={item} styles={styles} colors={colors} />}
       ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
       ListHeaderComponent={
         <>

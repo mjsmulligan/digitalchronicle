@@ -15,6 +15,7 @@ import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import { view, type Entry, type Film, type Episode, type Book, type JEvent } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
+import { KindIcon, StarRating } from "../../src/components/KindIcon";
 
 // ── types & helpers ───────────────────────────────────────────────────────────
 
@@ -40,11 +41,9 @@ function cultureTitle(e: CultureEntry): string {
   return (v as JEvent).artist;
 }
 
-function cultureEmoji(e: CultureEntry): string {
-  if (e.kind === "film") return "🎬";
-  if (e.kind === "episode") return "📺";
-  if (e.kind === "book") return "📖";
-  return "🎵";
+function cultureSubkind(e: CultureEntry): string | undefined {
+  if (e.kind === "event") return "concert";
+  return undefined;
 }
 
 const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN",
@@ -160,7 +159,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       gap: spacingScale.sm,
     },
     cardPressed: { opacity: 0.65 },
-    cardIcon: { fontSize: 18, lineHeight: 24, marginTop: 1 },
     cardBody: { flex: 1 },
     cardTitle: {
       ...textScale.feedTitle,
@@ -185,7 +183,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       justifyContent: "center",
       padding: spacingScale["2xl"],
     },
-    emptyIcon: { fontSize: 48, marginBottom: spacingScale.base },
     emptyTitle: {
       fontSize: 18,
       fontFamily: fonts.serifSemiBold,
@@ -224,29 +221,35 @@ function FilterPill({
   );
 }
 
-function EntryCard({ entry, styles }: { entry: CultureEntry; styles: Styles }) {
+function EntryCard({ entry, styles, colors }: { entry: CultureEntry; styles: Styles; colors: ThemeColors }) {
   const router = useRouter();
   const v = view(entry);
-  const stars =
-    v.rating !== undefined ? "★".repeat(Math.round(v.rating / 2)) : undefined;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={() => router.push(`/entry/${entry.id}`)}
     >
-      <Text style={styles.cardIcon}>{cultureEmoji(entry)}</Text>
+      <KindIcon
+        kind={entry.kind}
+        subkind={cultureSubkind(entry)}
+        size={18}
+        color={colors.textSecondary}
+        accessibilityLabel=""
+      />
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={2}>
           {cultureTitle(entry)}
         </Text>
-        {stars && <Text style={styles.cardStars}>{stars}</Text>}
+        {v.rating !== undefined && (
+          <StarRating rating={v.rating} color={colors.star} size={11} />
+        )}
       </View>
     </Pressable>
   );
 }
 
-function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
+function DayGroupRow({ group, styles, colors }: { group: DayGroup; styles: Styles; colors: ThemeColors }) {
   const { num, day, month, year } = parseDay(group.iso);
 
   return (
@@ -265,7 +268,7 @@ function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
       {/* Right: entry cards */}
       <View style={styles.entriesCol}>
         {group.items.map((entry) => (
-          <EntryCard key={entry.id} entry={entry} styles={styles} />
+          <EntryCard key={entry.id} entry={entry} styles={styles} colors={colors} />
         ))}
       </View>
     </View>
@@ -328,7 +331,7 @@ export default function CultureScreen() {
 
       {!groups.length ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>🎬</Text>
+          <KindIcon kind="film" size={48} color={colors.textTertiary} accessibilityLabel="" />
           <Text style={styles.emptyTitle}>Nothing here yet</Text>
           <Text style={styles.emptyHint}>
             Import Letterboxd, Netflix, or Goodreads data to populate Culture.
@@ -339,7 +342,7 @@ export default function CultureScreen() {
           style={styles.list}
           data={groups}
           keyExtractor={(g) => g.iso}
-          renderItem={({ item }) => <DayGroupRow group={item} styles={styles} />}
+          renderItem={({ item }) => <DayGroupRow group={item} styles={styles} colors={colors} />}
           ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
           contentContainerStyle={styles.listContent}
         />

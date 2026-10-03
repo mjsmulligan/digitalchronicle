@@ -25,6 +25,7 @@ import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
+import { KindIcon, StarRating } from "../../src/components/KindIcon";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -43,14 +44,10 @@ function parseDay(iso: string) {
   };
 }
 
-function kindIcon(e: Entry): string {
-  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚆" : "🚗";
-  if (e.kind === "stay")    return "🏨";
-  if (e.kind === "film")    return "🎬";
-  if (e.kind === "episode") return "📺";
-  if (e.kind === "book")    return "📖";
-  const cat = (e as Extract<Entry, { kind: "event" }>).category;
-  return cat === "concert" ? "🎵" : cat === "celebration" ? "🎉" : cat === "milestone" ? "🏆" : "📍";
+function entrySubkind(e: Entry): string | undefined {
+  if (e.kind === "leg") return e.mode;
+  if (e.kind === "event") return (e as Extract<Entry, { kind: "event" }>).category;
+  return undefined;
 }
 
 // ── data ─────────────────────────────────────────────────────────────────────
@@ -133,7 +130,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       gap: spacingScale.sm,
     },
     cardPressed: { opacity: 0.65 },
-    cardIcon: { fontSize: 18, lineHeight: 24, marginTop: 1 },
     cardBody: { flex: 1 },
     cardTitle: {
       ...textScale.feedTitle,
@@ -168,7 +164,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       justifyContent: "center",
       padding: spacingScale["2xl"],
     },
-    emptyIcon:  { fontSize: 48, marginBottom: spacingScale.base },
     emptyTitle: {
       fontSize: 20,
       fontFamily: fonts.serifSemiBold,
@@ -184,18 +179,23 @@ type Styles = ReturnType<typeof createStyles>;
 
 // ── components ────────────────────────────────────────────────────────────────
 
-function EntryCard({ item, styles }: { item: DayEntry; styles: Styles }) {
+function EntryCard({ item, styles, colors }: { item: DayEntry; styles: Styles; colors: ThemeColors }) {
   const router = useRouter();
   const { entry, tripTitle } = item;
   const v = view(entry);
-  const icon = kindIcon(entry);
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={() => router.push(`/entry/${entry.id}`)}
     >
-      <Text style={styles.cardIcon}>{icon}</Text>
+      <KindIcon
+        kind={entry.kind}
+        subkind={entrySubkind(entry)}
+        size={18}
+        color={colors.textSecondary}
+        accessibilityLabel=""
+      />
       <View style={styles.cardBody}>
         <Text style={styles.cardTitle} numberOfLines={2}>
           {entryTitle(v)}
@@ -206,16 +206,14 @@ function EntryCard({ item, styles }: { item: DayEntry; styles: Styles }) {
           </Text>
         )}
         {v.rating !== undefined && (
-          <Text style={styles.cardRating}>
-            {"★".repeat(Math.round(v.rating / 2))}
-          </Text>
+          <StarRating rating={v.rating} color={colors.star} size={11} />
         )}
       </View>
     </Pressable>
   );
 }
 
-function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
+function DayGroupRow({ group, styles, colors }: { group: DayGroup; styles: Styles; colors: ThemeColors }) {
   const { num, day, month, year } = parseDay(group.iso);
 
   return (
@@ -234,7 +232,7 @@ function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
       {/* Right: entry cards */}
       <View style={styles.entriesCol}>
         {group.items.map((item) => (
-          <EntryCard key={item.entry.id} item={item} styles={styles} />
+          <EntryCard key={item.entry.id} item={item} styles={styles} colors={colors} />
         ))}
       </View>
     </View>
@@ -269,7 +267,7 @@ export default function ChronicleScreen() {
   if (!groups.length) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyIcon}>📖</Text>
+        <KindIcon kind="book" size={48} color={colors.textTertiary} accessibilityLabel="" />
         <Text style={styles.emptyTitle}>Your journal is empty</Text>
         <Text style={styles.emptyHint}>
           Tap the import icon above to add your first entries.
@@ -283,7 +281,7 @@ export default function ChronicleScreen() {
       style={styles.list}
       data={groups}
       keyExtractor={(g) => g.iso}
-      renderItem={({ item }) => <DayGroupRow group={item} styles={styles} />}
+      renderItem={({ item }) => <DayGroupRow group={item} styles={styles} colors={colors} />}
       ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
       contentContainerStyle={styles.content}
     />

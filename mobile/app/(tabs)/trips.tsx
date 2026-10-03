@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Trip } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
+import { KindIcon } from "../../src/components/KindIcon";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,11 +40,11 @@ function nights(trip: Trip): number {
   );
 }
 
-const PURPOSE_ICON: Record<string, string> = {
-  leisure: "🌴",
-  work: "💼",
-  family: "👨‍👩‍👧",
-  other: "📌",
+/** Maps trip purpose to the KindIcon kind string. */
+const PURPOSE_KIND: Record<string, string> = {
+  leisure: "leisure",
+  work:    "work",
+  family:  "family",
 };
 
 // ── styles factory ────────────────────────────────────────────────────────────
@@ -121,7 +122,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       ...textScale.feedTitle,
       color: colors.textPrimary,
     },
-    purposeIcon: { fontSize: 18, lineHeight: 24 },
+
 
     cardMeta: { flexDirection: "row", gap: spacingScale.sm2, flexWrap: "wrap" },
     metaText: { ...textScale.sm, color: colors.textSecondary },
@@ -140,7 +141,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       justifyContent: "center",
       padding: spacingScale["2xl"],
     },
-    emptyIcon:  { fontSize: 48, marginBottom: spacingScale.base },
     emptyTitle: {
       fontSize: 18,
       fontFamily: fonts.serifSemiBold,
@@ -161,7 +161,7 @@ interface TripItem {
   entryCount: number;
 }
 
-function TripRow({ item, styles }: { item: TripItem; styles: Styles }) {
+function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; colors: ThemeColors }) {
   const { trip, entryCount } = item;
   const { num, day, month, year } = parseDay(trip.start);
   const n = nights(trip);
@@ -191,9 +191,12 @@ function TripRow({ item, styles }: { item: TripItem; styles: Styles }) {
               {trip.title}
             </Text>
             {trip.purpose && (
-              <Text style={styles.purposeIcon}>
-                {PURPOSE_ICON[trip.purpose] ?? "📌"}
-              </Text>
+              <KindIcon
+                kind={PURPOSE_KIND[trip.purpose] ?? "location"}
+                size={18}
+                color={colors.textSecondary}
+                accessibilityLabel=""
+              />
             )}
           </View>
           <View style={styles.cardMeta}>
@@ -234,7 +237,7 @@ export default function TripsScreen() {
   if (!trips.length) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyIcon}>✈️</Text>
+        <KindIcon kind="leg" subkind="air" size={48} color={colors.textTertiary} accessibilityLabel="" />
         <Text style={styles.emptyTitle}>No trips yet</Text>
         <Text style={styles.emptyHint}>
           Import a Viaduct or iCalendar file to populate your trips.
@@ -248,7 +251,7 @@ export default function TripsScreen() {
       style={styles.list}
       data={trips}
       keyExtractor={({ trip }) => trip.id}
-      renderItem={({ item }) => <TripRow item={item} styles={styles} />}
+      renderItem={({ item }) => <TripRow item={item} styles={styles} colors={colors} />}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       contentContainerStyle={styles.listContent}
     />

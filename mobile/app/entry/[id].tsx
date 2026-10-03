@@ -8,11 +8,12 @@ import { Stack, useLocalSearchParams } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book } from "@chronicle/journal/types";
 import { useTheme } from "../../src/components/ThemeProvider";
+import { KindIcon, StarRating } from "../../src/components/KindIcon";
+import { SourceMark } from "../../src/components/SourceMark";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(date: string): string {
-  // YYYY-MM-DD or YYYY-MM-DDTHH:mm → readable
   const d = date.slice(0, 10);
   const t = date.length > 10 ? date.slice(11, 16) : null;
   const [y, m, day] = d.split("-");
@@ -21,30 +22,41 @@ function fmt(date: string): string {
   return t ? `${label} ${t}` : label;
 }
 
-function stars(rating: number): string {
-  const filled = Math.round(rating / 2);
-  return "★".repeat(filled) + "☆".repeat(5 - filled);
+function modeLabel(mode: Leg["mode"]): string {
+  return mode === "air" ? "Flight" : mode === "rail" ? "Train" : "Drive";
 }
 
 function sourceLabel(source?: string): string {
   const map: Record<string, string> = {
     letterboxd: "Letterboxd",
-    netflix: "Netflix",
-    goodreads: "Goodreads",
-    viaduct: "Viaduct",
+    netflix:    "Netflix",
+    goodreads:  "Goodreads",
+    viaduct:    "Viaduct",
     "setlist.fm": "Setlist.fm",
-    manual: "Manual",
+    manual:     "Manual",
   };
   return source ? (map[source] ?? source) : "Unknown";
 }
 
-function modeLabel(mode: Leg["mode"]): string {
-  return mode === "air" ? "✈️ Flight" : mode === "rail" ? "🚂 Train" : "🚗 Drive";
-}
+// ── shared prop types ─────────────────────────────────────────────────────────
+
+type DetailStyles = {
+  title: object;
+  subtitleRow: object;
+  subtitle: object;
+  ratingRow: object;
+  ratingNum: object;
+  divider: object;
+  field: object;
+  fieldLabel: object;
+  fieldValue: object;
+};
+
+type IconColors = { secondary: string; star: string };
 
 // ── field components ──────────────────────────────────────────────────────────
 
-function Field({ label, value, styles }: { label: string; value?: string | null; styles: { field: object; fieldLabel: object; fieldValue: object } }) {
+function Field({ label, value, styles }: { label: string; value?: string | null; styles: DetailStyles }) {
   if (!value) return null;
   return (
     <View style={styles.field}>
@@ -54,24 +66,22 @@ function Field({ label, value, styles }: { label: string; value?: string | null;
   );
 }
 
-function Divider({ styles }: { styles: { divider: object } }) {
+function Divider({ styles }: { styles: Pick<DetailStyles, "divider"> }) {
   return <View style={styles.divider} />;
 }
 
 // ── per-kind detail blocks ────────────────────────────────────────────────────
 
-type DetailStyles = {
-  title: object; subtitle: object; rating: object; divider: object;
-  field: object; fieldLabel: object; fieldValue: object;
-};
-
-function LegDetail({ e, styles }: { e: Leg; styles: DetailStyles }) {
+function LegDetail({ e, styles, ic }: { e: Leg; styles: DetailStyles; ic: IconColors }) {
   const v = view(e);
   if (v.kind !== "leg") return null;
   return (
     <>
       <Text style={styles.title}>{v.fromName ?? v.from} {"→"} {v.toName ?? v.to}</Text>
-      <Text style={styles.subtitle}>{modeLabel(v.mode)}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="leg" subkind={v.mode} size={15} color={ic.secondary} />
+        <Text style={styles.subtitle}>{modeLabel(v.mode)}</Text>
+      </View>
       <Divider styles={styles} />
       <Field label="Date" value={fmt(v.start)} styles={styles} />
       {v.end && <Field label="Arrival" value={fmt(v.end)} styles={styles} />}
@@ -86,13 +96,16 @@ function LegDetail({ e, styles }: { e: Leg; styles: DetailStyles }) {
   );
 }
 
-function StayDetail({ e, styles }: { e: Stay; styles: DetailStyles }) {
+function StayDetail({ e, styles, ic }: { e: Stay; styles: DetailStyles; ic: IconColors }) {
   const v = view(e);
   if (v.kind !== "stay") return null;
   return (
     <>
       <Text style={styles.title}>{v.place}</Text>
-      <Text style={styles.subtitle}>🏨 Stay{v.city ? ` · ${v.city}` : ""}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="stay" size={15} color={ic.secondary} />
+        <Text style={styles.subtitle}>Stay{v.city ? ` · ${v.city}` : ""}</Text>
+      </View>
       <Divider styles={styles} />
       <Field label="Check-in" value={fmt(v.start)} styles={styles} />
       {v.end && <Field label="Check-out" value={fmt(v.end)} styles={styles} />}
@@ -102,15 +115,21 @@ function StayDetail({ e, styles }: { e: Stay; styles: DetailStyles }) {
   );
 }
 
-function FilmDetail({ e, styles }: { e: Film; styles: DetailStyles }) {
+function FilmDetail({ e, styles, ic }: { e: Film; styles: DetailStyles; ic: IconColors }) {
   const v = view(e);
   if (v.kind !== "film") return null;
   return (
     <>
       <Text style={styles.title}>{v.title}{v.year ? ` (${v.year})` : ""}</Text>
-      <Text style={styles.subtitle}>🎬 Film</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="film" size={15} color={ic.secondary} />
+        <Text style={styles.subtitle}>Film</Text>
+      </View>
       {v.rating !== undefined && (
-        <Text style={styles.rating}>{stars(v.rating)} {(v.rating / 2).toFixed(1)}</Text>
+        <View style={styles.ratingRow}>
+          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
+        </View>
       )}
       <Divider styles={styles} />
       <Field label="Watched" value={fmt(v.start)} styles={styles} />
@@ -120,15 +139,21 @@ function FilmDetail({ e, styles }: { e: Film; styles: DetailStyles }) {
   );
 }
 
-function EpisodeDetail({ e, styles }: { e: Episode; styles: DetailStyles }) {
+function EpisodeDetail({ e, styles, ic }: { e: Episode; styles: DetailStyles; ic: IconColors }) {
   const v = view(e);
   if (v.kind !== "episode") return null;
   return (
     <>
       <Text style={styles.title}>{v.episodeTitle ?? v.showTitle}</Text>
-      <Text style={styles.subtitle}>📺 {v.showTitle}{v.season ? ` · ${v.season}` : ""}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="episode" size={15} color={ic.secondary} />
+        <Text style={styles.subtitle}>{v.showTitle}{v.season ? ` · ${v.season}` : ""}</Text>
+      </View>
       {v.rating !== undefined && (
-        <Text style={styles.rating}>{stars(v.rating)} {(v.rating / 2).toFixed(1)}</Text>
+        <View style={styles.ratingRow}>
+          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
+        </View>
       )}
       <Divider styles={styles} />
       <Field label="Watched" value={fmt(v.start)} styles={styles} />
@@ -141,15 +166,21 @@ function EpisodeDetail({ e, styles }: { e: Episode; styles: DetailStyles }) {
   );
 }
 
-function BookDetail({ e, styles }: { e: Book; styles: DetailStyles }) {
+function BookDetail({ e, styles, ic }: { e: Book; styles: DetailStyles; ic: IconColors }) {
   const v = view(e);
   if (v.kind !== "book") return null;
   return (
     <>
       <Text style={styles.title}>{v.title}</Text>
-      <Text style={styles.subtitle}>📖 {v.author}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="book" size={15} color={ic.secondary} />
+        <Text style={styles.subtitle}>{v.author}</Text>
+      </View>
       {v.rating !== undefined && (
-        <Text style={styles.rating}>{stars(v.rating)} {(v.rating / 2).toFixed(1)}</Text>
+        <View style={styles.ratingRow}>
+          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
+        </View>
       )}
       <Divider styles={styles} />
       <Field label="Date read" value={fmt(v.start)} styles={styles} />
@@ -161,14 +192,16 @@ function BookDetail({ e, styles }: { e: Book; styles: DetailStyles }) {
   );
 }
 
-function EventDetail({ e, styles }: { e: JEvent; styles: DetailStyles }) {
+function EventDetail({ e, styles, ic }: { e: JEvent; styles: DetailStyles; ic: IconColors }) {
   const v = view(e);
   if (v.kind !== "event") return null;
-  const emoji = v.category === "concert" ? "🎵" : v.category === "celebration" ? "🎉" : v.category === "milestone" ? "🏆" : "📍";
   return (
     <>
       <Text style={styles.title}>{v.artist}</Text>
-      <Text style={styles.subtitle}>{emoji} {CATEGORY_LABEL[v.category]}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="event" subkind={v.category} size={15} color={ic.secondary} />
+        <Text style={styles.subtitle}>{CATEGORY_LABEL[v.category]}</Text>
+      </View>
       <Divider styles={styles} />
       <Field label="Date" value={fmt(v.start)} styles={styles} />
       <Field label="Venue" value={v.venue} styles={styles} />
@@ -198,13 +231,15 @@ export default function EntryDetailScreen() {
       padding: spacing.lg,
       gap: 4,
     },
-    title: { ...text.pageTitle, fontFamily: fonts.serifBold, fontWeight: "700", color: colors.textPrimary, marginBottom: 2 },
-    subtitle: { ...text.md, color: colors.textSecondary, marginBottom: 4 },
-    rating: { ...text.lg, color: colors.star, marginBottom: 4 },
-    divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.md },
-    field: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 5, gap: spacing.base },
-    fieldLabel: { ...text.smMd, fontFamily: fonts.mono, color: colors.textTertiary, fontWeight: "600", minWidth: 80 },
-    fieldValue: { ...text.md, color: colors.textDim, flex: 1, textAlign: "right" },
+    title:       { ...text.pageTitle, fontFamily: fonts.serifBold, fontWeight: "700", color: colors.textPrimary, marginBottom: 2 },
+    subtitleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
+    subtitle:    { ...text.md, color: colors.textSecondary },
+    ratingRow:   { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
+    ratingNum:   { ...text.sm, color: colors.star },
+    divider:     { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: spacing.md },
+    field:       { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", paddingVertical: 5, gap: spacing.base },
+    fieldLabel:  { ...text.smMd, fontFamily: fonts.mono, color: colors.textTertiary, fontWeight: "600", minWidth: 80 },
+    fieldValue:  { ...text.md, color: colors.textDim, flex: 1, textAlign: "right" },
 
     reflectionCard: {
       backgroundColor: colors.surface,
@@ -215,7 +250,7 @@ export default function EntryDetailScreen() {
       gap: spacing.sm,
     },
     reflectionLabel: { ...text.label, fontFamily: fonts.mono, color: colors.textTertiary },
-    reflectionText: { ...text.base, fontFamily: fonts.serifRegular, color: colors.textDim },
+    reflectionText:  { ...text.base, fontFamily: fonts.serifRegular, color: colors.textDim },
 
     metaCard: {
       backgroundColor: colors.surface,
@@ -225,10 +260,17 @@ export default function EntryDetailScreen() {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
     },
+    sourceFieldRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5, gap: spacing.base },
+    sourceValue:    { flexDirection: "row", alignItems: "center", gap: 6 },
 
-    notFound: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
+    notFound:     { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
     notFoundText: { ...text.lg, color: colors.textTertiary },
   }), [colors, fonts]);
+
+  const ic = useMemo<IconColors>(
+    () => ({ secondary: colors.textSecondary, star: colors.star }),
+    [colors],
+  );
 
   const entry = useMemo<Entry | undefined>(
     () => allEntries(journal).find((e) => e.id === id),
@@ -255,12 +297,12 @@ export default function EntryDetailScreen() {
       <Stack.Screen options={{ title: "", ...common.header }} />
 
       <View style={styles.card}>
-        {entry.kind === "leg"     && <LegDetail e={entry as Leg} styles={styles} />}
-        {entry.kind === "stay"    && <StayDetail e={entry as Stay} styles={styles} />}
-        {entry.kind === "film"    && <FilmDetail e={entry as Film} styles={styles} />}
-        {entry.kind === "episode" && <EpisodeDetail e={entry as Episode} styles={styles} />}
-        {entry.kind === "book"    && <BookDetail e={entry as Book} styles={styles} />}
-        {entry.kind === "event"   && <EventDetail e={entry as JEvent} styles={styles} />}
+        {entry.kind === "leg"     && <LegDetail     e={entry as Leg}     styles={styles} ic={ic} />}
+        {entry.kind === "stay"    && <StayDetail    e={entry as Stay}    styles={styles} ic={ic} />}
+        {entry.kind === "film"    && <FilmDetail    e={entry as Film}    styles={styles} ic={ic} />}
+        {entry.kind === "episode" && <EpisodeDetail e={entry as Episode} styles={styles} ic={ic} />}
+        {entry.kind === "book"    && <BookDetail    e={entry as Book}    styles={styles} ic={ic} />}
+        {entry.kind === "event"   && <EventDetail   e={entry as JEvent}  styles={styles} ic={ic} />}
       </View>
 
       {/* Reflection */}
@@ -280,7 +322,13 @@ export default function EntryDetailScreen() {
 
       {/* Source */}
       <View style={styles.metaCard}>
-        <Field label="Source" value={sourceLabel(entry.source)} styles={styles} />
+        <View style={styles.sourceFieldRow}>
+          <Text style={styles.fieldLabel}>Source</Text>
+          <View style={styles.sourceValue}>
+            <SourceMark source={entry.source ?? ""} size={18} />
+            <Text style={styles.fieldValue}>{sourceLabel(entry.source)}</Text>
+          </View>
+        </View>
         {entry.sourceRef && <Field label="Ref" value={entry.sourceRef} styles={styles} />}
       </View>
     </ScrollView>
