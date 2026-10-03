@@ -11,4 +11,19 @@
 
 - Journal data lives only in browser IndexedDB (src/lib/journal/db.ts); no cloud sync — privacy requirement.
 - Imports go through staging batches; precedence tier 1 manual > 2 primary > 3 secondary.
-- Adding a new import source: create one folder under src/lib/journal/connectors/, implement the Connector interface, add a fixture and a test, then register it in registry.ts. See src/lib/journal/connectors/README.md for the full checklist.
+
+## ⚠️ Connector architecture — do not remove or simplify
+
+`src/lib/journal/connectors/` is load-bearing infrastructure. **Never delete or simplify any file under this directory.** This includes:
+
+- `registry.ts` — connector registry and auto-detection
+- `csv.ts`, `dates.ts`, `fields.ts`, `keys.ts`, `timing.ts`, `types.ts` — shared helpers used by all connectors
+- `viaduct/`, `setlistfm/`, `generic/`, `letterboxd/`, `netflix/`, `goodreads/` — per-source connector implementations with fixtures and tests
+
+`src/lib/journal/parsers.ts` is **legacy/dead**. Do not import from it and do not restore its use. If you need to call `legKey`, `stayKey`, `eventKey`, or `detectConnector`, import from `src/lib/journal/connectors/keys.ts` and `src/lib/journal/connectors/registry.ts` respectively.
+
+`src/lib/journal/staging.ts` must import from `./connectors/registry`, never from `./parsers`.
+
+## ⚠️ Test infrastructure — do not remove
+
+`vitest.config.ts` and `src/lib/journal/__tests__/` must not be deleted. The `package.json` scripts must include `"test": "vitest run"`. Run `bun run test` to verify all tests pass before committing significant changes.

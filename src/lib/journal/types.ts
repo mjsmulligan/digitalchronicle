@@ -19,6 +19,10 @@ interface Base {
   id: string;
   source: Source;
   tier: Tier;
+  /** Person IDs (from the people store) who were present at this entry.
+   *  undefined / absent → the journal owner (isSelf person) is implicitly present.
+   *  [] → self was explicitly removed; no participants. */
+  participants?: string[];
   /** Local wall-clock time at the start place, "YYYY-MM-DDTHH:mm" (or date only) */
   start: string;
   /** Local wall-clock time at the end place */
@@ -35,6 +39,8 @@ interface Base {
   dedupeKey: string;
   /** Free-text personal reflection on this entry. Stored in IndexedDB; never exported. */
   reflection?: string;
+  /** @deprecated Legacy name for `reflection`; still written by existing UI and parsers. */
+  journal?: string;
   /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
   /**
@@ -99,7 +105,95 @@ export interface JEvent extends Base {
   setlist?: string[];
 }
 
-export type Entry = Leg | Stay | JEvent;
+/**
+ * A film watch event. The film metadata and the viewing record are the same
+ * thing — there is no separate Film record. A rewatch is a separate Film entry
+ * with a different dedupeKey (date differs).
+ *
+ * dedupeKey: `film|{normTitle}|{year}|{watchedDate}` — source-agnostic so that
+ * Letterboxd (tier 2) supersedes Netflix (tier 3) for the same watch.
+ */
+export interface Film extends Base {
+  kind: "film";
+  title: string;
+  /** Release year (not watch year) */
+  year?: number;
+  director?: string;
+  /** True when the source explicitly flags this as a rewatch */
+  rewatch?: boolean;
+}
+
+/**
+ * A single episode watch event. Series grouping is handled by `seriesId` (pointing
+ * at a Series container), mirroring the way tripId links entries to a Trip.
+ *
+ * dedupeKey: `episode|{normShowTitle}|{normSeason}|{normEpTitle}|{watchedDate}`
+ */
+export interface Episode extends Base {
+  kind: "episode";
+  showTitle: string;
+  /** Raw season label, e.g. "Season 4", "Limited Series" */
+  season?: string;
+  episodeTitle?: string;
+  episodeNumber?: number;
+  /** Reference to a Series container */
+  seriesId?: string;
+}
+
+/**
+ * A series container — groups episodes (TV) or volumes (books) the same way
+ * Trip groups legs/stays. Not an entry itself; never appears in the Entry union.
+ */
+export interface Series {
+  id: string;
+  kind: "series";
+  title: string;
+  /** "tv" for television shows; "book" for book series */
+  mediaType?: "tv" | "book";
+  createdAt: string;
+}
+
+/**
+ * A book read event. `start` = Date Read (completion date — "when this happened").
+ * An optional `dateStarted` can capture when reading began without overloading Base.end.
+ *
+ * dedupeKey: `book|{normTitle}|{normAuthor}|{dateRead}`
+ */
+export interface Book extends Base {
+  kind: "book";
+  /** Clean title — series suffix stripped, e.g. "Bridgerton" not "Bridgerton (Bridgertons, #1)" */
+  title: string;
+  author: string;
+  /** Original Publication Year */
+  year?: number;
+  goodreadsId?: string;
+  /** Parsed series name, e.g. "Bridgertons" */
+  series?: string;
+  /** Series position, e.g. 6 or 7.5 */
+  seriesNumber?: number;
+  /** Reference to a Series container */
+  seriesId?: string;
+  /** When reading started (YYYY-MM-DD). Separate from Base.start which is the completion date. */
+  dateStarted?: string;
+}
+
+export type Entry = Leg | Stay | JEvent | Film | Episode | Book;
+
+/**
+ * A person who appears in journal entries.
+ * Not a contact book — just enough to link entries to the same individual
+ * and support a person-centric view. All data stays in IndexedDB.
+ */
+export interface Person {
+  id: string;
+  name: string;
+  /** Alternative names / nicknames for matching (e.g. "Rob" for "Robert Smith"). */
+  aliases?: string[];
+  notes?: string;
+  /** Marks the journal owner. Exactly one Person should have isSelf: true. */
+  isSelf?: boolean;
+  createdAt: string;
+}
 
 export interface Note {
   id: string;
@@ -116,7 +210,6 @@ export interface Trip {
   title: string;
   start: string;
   end: string;
-  destinations: string[];
   notes: string;
   cover: string;
   createdAt: string;
@@ -133,13 +226,6 @@ export interface StagedRecord {
   selected: boolean;
 }
 
-export interface Cluster {
-  id: string;
-  title: string;
-  recordIds: string[];
-  accepted: boolean;
-}
-
 export interface StagingBatch {
   id: string;
   source: Source;
@@ -147,8 +233,18 @@ export interface StagingBatch {
   createdAt: string;
   records: StagedRecord[];
   errors: string[];
-  clusters: Cluster[];
-  gapDays: number;
+}
+
+export interface PlaceRecord {
+  id: string;
+  /** Normalised upper-case code or name, e.g. "DUB", "LONDON ST PANCRAS" */
+  code: string;
+  name: string;
+  lat: number;
+  lon: number;
+  /** IANA timezone, e.g. "Europe/Dublin". Optional — map still works without it. */
+  timezone?: string;
+  createdAt: string;
 }
 
 export interface JournalData {
@@ -156,11 +252,17 @@ export interface JournalData {
   legs: Leg[];
   stays: Stay[];
   events: JEvent[];
+  films: Film[];
+  episodes: Episode[];
+  books: Book[];
+  series: Series[];
   notes: Note[];
   staging: StagingBatch[];
+  people: Person[];
+  places: PlaceRecord[];
 }
 
-export const STORES = ["trips", "legs", "stays", "events", "notes", "staging"] as const;
+export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging", "people", "places"] as const;
 export type StoreName = (typeof STORES)[number];
 
 /**
@@ -182,8 +284,8 @@ export function view<T extends Entry>(e: T): T {
       v.endTz = timezoneFor(v.to);
       v.endUTC = v.end ? localToUTC(v.end, v.endTz) : undefined;
     }
-  } else if ("city" in keys || "start" in keys || "end" in keys) {
-    const tz = timezoneFor(v.city ?? "");
+  } else if (("city" in keys || "start" in keys || "end" in keys) && (v.kind === "stay" || v.kind === "event")) {
+    const tz = timezoneFor((v as { city?: string }).city ?? "");
     v.startTz = tz;
     v.startUTC = localToUTC(v.start, tz);
     v.endTz = v.end ? tz : undefined;
@@ -204,5 +306,8 @@ export function entryTitle(e: Entry): string {
   const v = view(e);
   if (v.kind === "leg") return `${v.from} → ${v.to}`;
   if (v.kind === "stay") return v.place;
+  if (v.kind === "film") return v.year ? `${v.title} (${v.year})` : v.title;
+  if (v.kind === "episode") return v.episodeTitle ? `${v.showTitle}: ${v.episodeTitle}` : v.showTitle;
+  if (v.kind === "book") return v.author ? `${v.title} — ${v.author}` : v.title;
   return v.category === "concert" && v.venue ? `${v.artist} @ ${v.venue}` : v.artist;
 }

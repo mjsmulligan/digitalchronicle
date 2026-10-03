@@ -1,0 +1,99 @@
+/**
+ * Chronicle — mobile entry point
+ *
+ * Boot sequence:
+ *   1. Open the SQLite database and initialise store tables.
+ *   2. Inject the SQLiteAdapter via setAdapter() — must happen before initJournal().
+ *   3. Call initJournal() which reads all stores into the React state layer.
+ *   4. Render the app once ready.
+ *
+ * The shared core engine (connectors, staging, types) is imported directly from
+ * the workspace root via the @chronicle/journal/* path aliases defined in
+ * babel.config.js and tsconfig.json.
+ */
+import { useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { StatusBar } from "expo-status-bar";
+import { SQLiteAdapter } from "./src/lib/storage/SQLiteAdapter";
+// These imports resolve to ../../src/lib/journal/ via the monorepo Metro config.
+// On the web they are imported from the same files — db.ts adapts to the adapter.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — relative import across monorepo boundary; Metro resolves correctly
+import { setAdapter, initJournal, useJournal } from "../src/lib/journal/db";
+
+export default function App() {
+  const [bootError, setBootError] = useState<string | null>(null);
+  const journal = useJournal();
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const sqliteAdapter = await SQLiteAdapter.open();
+        setAdapter(sqliteAdapter);
+        await initJournal();
+      } catch (err) {
+        setBootError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, []);
+
+  if (bootError) {
+    return (
+      <View style={styles.center}>
+        <Text style={styles.error}>Chronicle failed to start:{"\n"}{bootError}</Text>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
+
+  if (!journal.ready) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#6366f1" />
+        <Text style={styles.loading}>Loading Chronicle…</Text>
+        <StatusBar style="light" />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.center}>
+      <Text style={styles.title}>Chronicle</Text>
+      <Text style={styles.subtitle}>
+        {journal.trips.length} trips · {journal.legs.length} legs ·{" "}
+        {journal.films.length} films · {journal.books.length} books
+      </Text>
+      <StatusBar style="light" />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    backgroundColor: "#0f172a",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: "#f8fafc",
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: "#94a3b8",
+  },
+  loading: {
+    marginTop: 16,
+    fontSize: 14,
+    color: "#94a3b8",
+  },
+  error: {
+    fontSize: 14,
+    color: "#f87171",
+    textAlign: "center",
+  },
+});

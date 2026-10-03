@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { clearAll, replaceAll, useJournal } from "@/lib/journal/db";
 import { STORES, type JournalData } from "@/lib/journal/types";
@@ -26,8 +26,11 @@ const fmt = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${(n / 1e3
 function Backup() {
   const s = useJournal();
   const [est, setEst] = useState<{ usage?: number; quota?: number }>({});
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { navigator.storage?.estimate?.().then(setEst); }, [s]);
-  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, notes: s.notes, staging: s.staging };
+  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, films: s.films, episodes: s.episodes, books: s.books, series: s.series, notes: s.notes, staging: s.staging, people: s.people, places: s.places };
   const size = new Blob([JSON.stringify(data)]).size;
 
   const exportJSON = () => {
@@ -52,12 +55,19 @@ function Backup() {
     }
   };
 
+  const handleFileSelect = (file: File) => {
+    setPendingFile(file);
+    setRestoreOpen(true);
+    // Reset the input so the same file can be re-selected if needed
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-4xl font-semibold">Backup & data</h1>
       <p className="mb-6 text-muted-foreground">Everything lives in this browser only — no accounts, no cloud. Export regularly to keep your journal safe.</p>
 
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 xs:grid-cols-3 sm:grid-cols-6">
         {STORES.map((k) => (
           <div key={k} className="rounded-md border border-border bg-card p-3">
             <div className="font-serif text-2xl">{(s[k] as unknown[]).length}</div>
@@ -70,16 +80,40 @@ function Backup() {
       </p>
 
       <div className="mt-8 space-y-4">
-        <div className="flex items-center justify-between rounded-md border border-border bg-card p-4">
-          <div><h2 className="text-lg">Export everything</h2><p className="text-sm text-muted-foreground">One JSON file with every entry, trip, reflection and staged import.</p></div>
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-card p-4">
+          <div className="min-w-0 flex-1"><h2 className="text-lg">Export everything</h2><p className="text-sm text-muted-foreground">One JSON file with every entry, trip, reflection and staged import.</p></div>
           <Button onClick={exportJSON}>Download backup</Button>
         </div>
-        <div className="flex items-center justify-between rounded-md border border-border bg-card p-4">
-          <div><h2 className="text-lg">Restore from backup</h2><p className="text-sm text-muted-foreground">Replaces the current journal with the file's contents.</p></div>
-          <Button asChild variant="outline"><label className="cursor-pointer">Choose file<input type="file" accept=".json" className="hidden" onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} /></label></Button>
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-card p-4">
+          <div className="min-w-0 flex-1"><h2 className="text-lg">Restore from backup</h2><p className="text-sm text-muted-foreground">Replaces the current journal with the file's contents.</p></div>
+          <Button asChild variant="outline">
+            <label className="cursor-pointer">
+              Choose file
+              <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])} />
+            </label>
+          </Button>
         </div>
-        <div className="flex items-center justify-between rounded-md border border-destructive/40 bg-card p-4">
-          <div><h2 className="text-lg">Reset journal</h2><p className="text-sm text-muted-foreground">Permanently deletes all local data in this browser.</p></div>
+
+        {/* Restore confirmation dialog */}
+        <AlertDialog open={restoreOpen} onOpenChange={setRestoreOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Replace your journal with this backup?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingFile?.name && <><strong>{pendingFile.name}</strong> will replace everything currently in your journal. This can't be undone — export a backup first if you want to keep what's here.</>}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingFile(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={async () => {
+                if (pendingFile) await restore(pendingFile);
+                setPendingFile(null);
+              }}>Restore</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-destructive/40 bg-card p-4">
+          <div className="min-w-0 flex-1"><h2 className="text-lg">Reset journal</h2><p className="text-sm text-muted-foreground">Permanently deletes all local data in this browser.</p></div>
           <AlertDialog>
             <AlertDialogTrigger asChild><Button variant="destructive">Reset</Button></AlertDialogTrigger>
             <AlertDialogContent>

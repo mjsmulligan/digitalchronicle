@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -10,11 +10,15 @@ import { uid, type Purpose, type Trip } from "@/lib/journal/types";
 
 const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
 
-export function AddTripDialog() {
+export function AddTripDialog({ trip }: { trip?: Trip }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const today = new Date().toISOString().slice(0, 10);
-  const [f, setF] = useState<Record<string, string>>({});
+  const blank = (): Record<string, string> =>
+    trip
+      ? { title: trip.title, start: trip.start, end: trip.end, purpose: trip.purpose ?? "", notes: trip.notes ?? "" }
+      : {};
+  const [f, setF] = useState<Record<string, string>>(blank);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
 
@@ -28,40 +32,48 @@ export function AddTripDialog() {
     }
     setBusy(true);
     try {
-      const trip: Trip = {
-        id: uid(),
+      const next: Trip = {
+        id: trip?.id ?? uid(),
         title: f.title?.trim() || "Untitled trip",
         start,
         end,
-        destinations: (f.destinations ?? "").split(",").map((d) => d.trim()).filter(Boolean),
         notes: f.notes ?? "",
-        cover: "",
-        createdAt: new Date().toISOString(),
+        cover: trip?.cover ?? "",
+        createdAt: trip?.createdAt ?? new Date().toISOString(),
         purpose: (f.purpose as Purpose) || undefined,
       };
-      await putMany("trips", [trip]);
-      setF({});
+      await putMany("trips", [next]);
+      if (!trip) setF({});
       setOpen(false);
-      toast.success("Trip created.");
+      toast.success(trip ? "Trip saved." : "Trip created.");
     } catch (error) {
-      toast.error(`Could not create trip: ${error instanceof Error ? error.message : String(error)}`);
+      toast.error(`Could not save trip: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) setF(blank());
+      }}
+    >
       <DialogTrigger asChild>
-        <Button size="sm"><Plus className="h-4 w-4" /> New trip</Button>
+        {trip ? (
+          <Button size="sm" variant="outline"><Pencil className="h-4 w-4" /> Edit</Button>
+        ) : (
+          <Button size="sm"><Plus className="h-4 w-4" /> New trip</Button>
+        )}
       </DialogTrigger>
       <DialogContent>
-        <DialogHeader><DialogTitle>New trip</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{trip ? "Edit trip" : "New trip"}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-2">
           <Input className="col-span-2" placeholder="Trip title" value={f.title ?? ""} onChange={set("title")} />
           <label className="text-xs text-muted-foreground">Start<Input type="date" value={f.start ?? today} onChange={set("start")} /></label>
           <label className="text-xs text-muted-foreground">End<Input type="date" value={f.end ?? ""} onChange={set("end")} /></label>
-          <Input className="col-span-2" placeholder="Destinations (comma separated)" value={f.destinations ?? ""} onChange={set("destinations")} />
           <select
             className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm capitalize"
             value={f.purpose ?? ""}
@@ -72,7 +84,7 @@ export function AddTripDialog() {
           </select>
         </div>
         <Textarea placeholder="Trip reflections…" className="font-serif" value={f.notes ?? ""} onChange={set("notes")} />
-        <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : "Create trip"}</Button>
+        <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : trip ? "Save trip" : "Create trip"}</Button>
       </DialogContent>
     </Dialog>
   );
