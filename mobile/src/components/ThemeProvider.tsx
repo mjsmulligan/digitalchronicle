@@ -16,8 +16,10 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
+import { useColorScheme } from "react-native";
 import * as FileSystem from "expo-file-system/legacy";
 
 // ─── Token types ─────────────────────────────────────────────────────────────
@@ -147,8 +149,8 @@ const paper: ThemeDefinition = {
     textPrimary:       "#291C14",
     textDim:           "#706052",
     textSecondary:     "#706052",
-    textTertiary:      "#9A8B77",
-    textMuted:         "#9A8B77",
+    textTertiary:      "#786A57",
+    textMuted:         "#786A57",
     accent:            "#A5492B",
     accentBold:        "#8B3C22",
     accentSoft:        "#A5492B",
@@ -233,11 +235,10 @@ export const THEMES: Record<string, ThemeDefinition> = {
   paper,
 };
 
-const DEFAULT_THEME_ID = "leather";
+const DEFAULT_THEME_ID = "paper";
 
-function resolveTheme(id: string | null | undefined): ThemeDefinition {
-  return (id && THEMES[id]) || THEMES[DEFAULT_THEME_ID]!;
-}
+/** Virtual IDs that are not in THEMES but are valid selections. */
+const VIRTUAL_THEME_IDS = new Set(["system"]);
 
 // ─── Persistence (expo-file-system, no extra dependency) ─────────────────────
 
@@ -274,12 +275,16 @@ async function writePersistedThemeId(id: string): Promise<void> {
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 interface ThemeContextValue {
+  /** Raw selection: "paper" | "leather" | "system". */
+  themeId: string;
+  /** Resolved theme object (never "system" — always the concrete theme). */
   theme: ThemeDefinition;
   setThemeId: (id: string) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
-  theme: leather,
+  themeId: DEFAULT_THEME_ID,
+  theme: paper,
   setThemeId: () => {},
 });
 
@@ -290,25 +295,34 @@ interface ThemeProviderProps {
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<ThemeDefinition>(leather);
+  const colorScheme = useColorScheme();
+  const [themeId, setThemeIdState] = useState<string>(DEFAULT_THEME_ID);
+
+  // Resolve raw selection → concrete ThemeDefinition.
+  // "system" maps to Paper in light mode and Leather in dark mode.
+  const theme = useMemo<ThemeDefinition>(() => {
+    if (themeId === "system") {
+      return colorScheme === "dark" ? leather : paper;
+    }
+    return THEMES[themeId] ?? THEMES[DEFAULT_THEME_ID]!;
+  }, [themeId, colorScheme]);
 
   // Load the persisted choice once on mount.
   useEffect(() => {
     readPersistedThemeId().then((id) => {
-      if (id && THEMES[id] && id !== theme.id) {
-        setTheme(THEMES[id]!);
+      if (id && (THEMES[id] || VIRTUAL_THEME_IDS.has(id)) && id !== themeId) {
+        setThemeIdState(id);
       }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setThemeId = useCallback((id: string) => {
-    const next = resolveTheme(id);
-    setTheme(next);
+    setThemeIdState(id);
     writePersistedThemeId(id);
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, setThemeId }}>
+    <ThemeContext.Provider value={{ themeId, theme, setThemeId }}>
       {children}
     </ThemeContext.Provider>
   );
@@ -376,6 +390,8 @@ function makeCommon(colors: ThemeColors, fonts: ThemeFonts) {
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export interface UseThemeResult extends ThemeDefinition {
+  /** Raw theme selection: "paper" | "leather" | "system". May differ from `id` when "system" is active. */
+  themeId: string;
   text: typeof text;
   spacing: typeof spacing;
   radius: typeof radius;
@@ -393,8 +409,9 @@ export interface UseThemeResult extends ThemeDefinition {
  *   <Stack.Screen options={{ title: "", ...common.header }} />
  */
 export function useTheme(): UseThemeResult {
-  const { theme, setThemeId } = useContext(ThemeContext);
+  const { themeId, theme, setThemeId } = useContext(ThemeContext);
   return {
+    themeId,
     ...theme,
     text,
     spacing,

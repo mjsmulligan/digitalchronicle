@@ -70,7 +70,7 @@ const MODAL_SCREENS = new Set(["import", "import-people", "settings"]);
  * Contains all boot logic and renders the Stack navigator.
  */
 function RootLayoutInner() {
-  const { colors } = useTheme();
+  const { colors, mode } = useTheme();
 
   const [fontsLoaded, fontError] = useFonts({
     // Paper serif (Fraunces)
@@ -159,7 +159,7 @@ function RootLayoutInner() {
         }}
       >
         <ActivityIndicator size="large" color={colors.accent} />
-        <StatusBar style="light" />
+        <StatusBar style={mode === "dark" ? "light" : "dark"} />
       </View>
     );
   }

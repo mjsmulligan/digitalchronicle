@@ -6,9 +6,9 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "splash": {
-      "backgroundColor": "#0f172a"
+      "backgroundColor": "#F9F3E6"
     },
     "ios": {
       "supportsTablet": true,
@@ -17,7 +17,7 @@
     "android": {
       "package": "com.chronicle.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0f172a"
+        "backgroundColor": "#F9F3E6"
       },
       "intentFilters": [
         {

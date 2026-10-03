@@ -9,7 +9,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { clearAll, useJournal } from "@chronicle/journal/db";
-import { useTheme } from "../src/components/ThemeProvider";
+import { useTheme, THEMES } from "../src/components/ThemeProvider";
 
 export default function SettingsScreen() {
   const journal = useJournal();
@@ -17,7 +17,7 @@ export default function SettingsScreen() {
   const { top } = useSafeAreaInsets();
   const [clearing, setClearing] = useState(false);
   const dialog = useDialog();
-  const { colors, fonts, text, spacing, radius } = useTheme();
+  const { colors, fonts, text, spacing, radius, themeId, setThemeId } = useTheme();
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
@@ -95,7 +95,112 @@ export default function SettingsScreen() {
       color: colors.textMuted,
       textAlign: "center",
     },
+
+    // ── Appearance section ────────────────────────────────────────────
+    themeRow: {
+      flexDirection: "row",
+      gap: spacing.sm,
+      marginBottom: spacing.lg,
+    },
+    themeOption: {
+      flex: 1,
+      alignItems: "center",
+      gap: spacing.sm,
+    },
+    themeOptionInner: {
+      width: "100%",
+      aspectRatio: 0.85,
+      borderRadius: radius.lg,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+      overflow: "hidden",
+      justifyContent: "flex-end",
+    },
+    themeOptionActive: {
+      borderColor: colors.accent,
+      borderWidth: 2,
+    },
+    themeLabel: {
+      ...text.xs,
+      color: colors.textSecondary,
+      textAlign: "center",
+    },
+    themeLabelActive: {
+      color: colors.accent,
+      fontWeight: "600",
+    },
+    swatchBg: {
+      flex: 1,
+      padding: 8,
+      justifyContent: "flex-end",
+    },
+    swatchBgLeft: {
+      position: "absolute",
+      top: 0, left: 0, bottom: 0,
+      width: "50%",
+    },
+    swatchBgRight: {
+      position: "absolute",
+      top: 0, right: 0, bottom: 0,
+      width: "50%",
+    },
+    swatchDiagonal: {
+      flex: 1,
+      padding: 8,
+      justifyContent: "flex-end",
+    },
+    swatchSample: {
+      fontSize: 14,
+      fontWeight: "700",
+      lineHeight: 18,
+    },
+    swatchDots: {
+      flexDirection: "row",
+      gap: 4,
+      marginBottom: 6,
+    },
+    swatchDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    checkDot: {
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: colors.accent,
+      alignItems: "center",
+      justifyContent: "center",
+      position: "absolute",
+      top: 6,
+      right: 6,
+    },
   }), [colors, fonts]);
+
+  // Static swatch data — these are the literal token values from ThemeProvider
+  const THEME_OPTS = [
+    {
+      id:     "paper",
+      label:  "Paper",
+      bg:     THEMES["paper"]!.colors.bg,
+      ink:    THEMES["paper"]!.colors.textPrimary,
+      accent: THEMES["paper"]!.colors.accent,
+    },
+    {
+      id:     "leather",
+      label:  "Leather",
+      bg:     THEMES["leather"]!.colors.bg,
+      ink:    THEMES["leather"]!.colors.textPrimary,
+      accent: THEMES["leather"]!.colors.accent,
+    },
+    {
+      id:     "system",
+      label:  "System",
+      bg:     null,
+      ink:    null,
+      accent: null,
+    },
+  ] as const;
 
   const entryCount =
     journal.legs.length +
@@ -139,6 +244,54 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      {/* ── Appearance ─────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>Appearance</Text>
+      <View style={styles.themeRow}>
+        {THEME_OPTS.map((opt) => {
+          const active = themeId === opt.id;
+          return (
+            <Pressable
+              key={opt.id}
+              style={styles.themeOption}
+              onPress={() => setThemeId(opt.id)}
+              hitSlop={4}
+            >
+              <View style={[styles.themeOptionInner, active && styles.themeOptionActive]}>
+                {opt.id === "system" ? (
+                  // Split swatch: Paper bg left, Leather bg right
+                  <>
+                    <View style={[styles.swatchBgLeft,  { backgroundColor: THEMES["paper"]!.colors.bg }]} />
+                    <View style={[styles.swatchBgRight, { backgroundColor: THEMES["leather"]!.colors.bg }]} />
+                    <View style={[styles.swatchDiagonal, { position: "absolute", inset: 0 }]}>
+                      <View style={styles.swatchDots}>
+                        <View style={[styles.swatchDot, { backgroundColor: THEMES["paper"]!.colors.accent }]} />
+                        <View style={[styles.swatchDot, { backgroundColor: THEMES["leather"]!.colors.accent }]} />
+                      </View>
+                    </View>
+                  </>
+                ) : (
+                  <View style={[styles.swatchBg, { backgroundColor: opt.bg! }]}>
+                    <View style={styles.swatchDots}>
+                      <View style={[styles.swatchDot, { backgroundColor: opt.ink! }]} />
+                      <View style={[styles.swatchDot, { backgroundColor: opt.accent! }]} />
+                    </View>
+                  </View>
+                )}
+                {active && (
+                  <View style={styles.checkDot}>
+                    <Ionicons name="checkmark" size={11} color={colors.white} />
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.themeLabel, active && styles.themeLabelActive]}>
+                {opt.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {/* ── Database ────────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Database</Text>
 
       <View style={styles.card}>
