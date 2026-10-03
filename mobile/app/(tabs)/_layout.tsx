@@ -1,7 +1,9 @@
-import { Tabs, Link } from "expo-router";
+import { Tabs, Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
 import { colors, fonts, common } from "../../src/theme";
+import { FloatingNavBar } from "../../src/components/FloatingNavBar";
+import { useEffect, useState } from "react";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -20,28 +22,33 @@ function tabIcon(
 }
 
 export default function TabLayout() {
+  const router = useRouter();
+  const [activeTab, setActiveTab] = useState("index");
+
   return (
-    <Tabs
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.surface },
-        headerTintColor: colors.textBright,
-        headerShadowVisible: false,
-        headerTitleStyle: {
-          fontFamily: fonts.serifSemiBold,
-          fontWeight: "600",
-          fontSize: 18,
-          color: colors.textBright,
-        },
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
-        },
-        tabBarActiveTintColor: colors.accentSoft,
-        tabBarInactiveTintColor: colors.textMuted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-      }}
-    >
+    <View style={{ flex: 1 }}>
+      <Tabs
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.bg },
+          headerTintColor: colors.textPrimary,
+          headerShadowVisible: false,
+          headerTitleStyle: {
+            fontFamily: fonts.serifSemiBold,
+            fontWeight: "600",
+            fontSize: 18,
+            color: colors.textBright,
+          },
+          tabBarStyle: { display: "none" }, // Hide default tab bar
+          tabBarActiveTintColor: colors.accentSoft,
+          tabBarInactiveTintColor: colors.textMuted,
+          tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+        }}
+        sceneContainerStyle={{ paddingBottom: 100 }}
+        onIndexChange={(index) => {
+          const tabs = ["index", "trips", "culture", "people"];
+          setActiveTab(tabs[index]);
+        }}
+      >
       <Tabs.Screen
         name="index"
         options={{
@@ -87,14 +94,6 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="moments"
-        options={{
-          title: "Moments",
-          tabBarIcon: ({ focused }) =>
-            tabIcon(focused, "star", "star-outline"),
-        }}
-      />
-      <Tabs.Screen
         name="people"
         options={{
           title: "People",
@@ -110,5 +109,40 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+
+      {/* Floating navbar overlay at screen level */}
+      <FloatingNavBar
+        items={[
+          {
+            icon: "book-outline" as IoniconName,
+            activeIcon: "book" as IoniconName,
+            active: activeTab === "index",
+            label: "Chronicle",
+            onPress: () => router.navigate("index"),
+          },
+          {
+            icon: "airplane-outline" as IoniconName,
+            activeIcon: "airplane" as IoniconName,
+            active: activeTab === "trips",
+            label: "Trips",
+            onPress: () => router.navigate("trips"),
+          },
+          {
+            icon: "film-outline" as IoniconName,
+            activeIcon: "film" as IoniconName,
+            active: activeTab === "culture",
+            label: "Culture",
+            onPress: () => router.navigate("culture"),
+          },
+          {
+            icon: "people-outline" as IoniconName,
+            activeIcon: "people" as IoniconName,
+            active: activeTab === "people",
+            label: "People",
+            onPress: () => router.navigate("people"),
+          },
+        ]}
+      />
+    </View>
   );
 }
