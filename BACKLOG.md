@@ -4,89 +4,124 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 
 ---
 
-## 0. Data Model Decisions (apply to all categories)
+## Recently completed
 
-Agreed design decisions that cut across event types. Build these before or alongside the Books, Films and importer work so they are not retrofitted per category.
-
-- [ ] **Shared `rating` field on every event type.** Single optional number, normalised to 0-10 internally and displayed as stars (value / 2). Blank means unrated, never a default. The original value and scale from the source are kept in the provenance record (for example "4 of 5", "8.6 of 10"). One decimal place allowed.
-- [ ] **Shared `reflection` field on every event type.** Free text, generalising the existing Manual Overrides & Notes idea beyond days and trips. Imported reviews (Goodreads, Letterboxd) land here with a provenance marker. If edited in the app, the edit becomes the current text and the imported original is kept as the source version, so a re-import never overwrites it (same principle as Tier 1 manual overrides).
-- [ ] **Date precision flag** (day, month, year, unknown) on every entry. UTC, local time and timezone only where a real time exists. Needed for date-only sources such as Goodreads and Letterboxd.
-- [ ] **Provenance on every imported fact** (source name plus original row reference), consistent with the existing parsed-source-record retention.
-- [ ] **Participants:** names found in source data are offered as suggestions to add, never pre-seeded. Lightweight add/edit of people on any entry.
+- [x] **Shared `rating`, `reflection`, `datePrecision`, `sourceRef` fields** on Base — normalised across all entry types.
+- [x] **Film & Episode types** (`film`, `episode`) with `Series` container, rewatch flag, season/episode parsing.
+- [x] **Book type** (`book`) with clean title, author, series/seriesNumber.
+- [x] **Connector architecture** — registry, tier system, staging hub, dedup by source-agnostic keys.
+- [x] **Letterboxd connector** (tier 2) — `diary.csv` and `reviews.csv`; half-star ratings doubled to 0–10; rewatch flag.
+- [x] **Netflix connector** (tier 3) — `NetflixViewingHistory.csv`; auto-detects Film vs. Episode from title structure.
+- [x] **Goodreads connector** (tier 2) — `goodreads_library_export.csv`; read shelf only; series suffix parsing; date fallback with unknown precision.
+- [x] **Setlist.fm connector** (tier 2) — concert history with setlists.
+- [x] **Viaduct connector** (tier 2) — flights, trains, road segments.
+- [x] **Manual tier 1 overrides** — field-level corrections that survive re-imports.
+- [x] **Culture view** — films, TV episodes, books, and concerts in one view; series grouping; filter by kind or rating.
+- [x] **Moments view** — gatherings, celebrations, milestones, memories, activities; category filter pills.
+- [x] **Star rendering** — `rating` (0–10) displayed as half-stars in EntryCard and list views.
+- [x] **Book & Episode in quick-add dialog** — both kinds available in the manual add flow.
+- [x] **`dateStarted` UI** — optional reading-start date on Book entries.
+- [x] **iCalendar connector** (tier 3) — `.ics` files from Google/Apple/Outlook Calendar; multi-day all-day events → Stays; single-day → JEvents with keyword-inferred categories.
+- [x] **Import guide** (`docs/import-guide.md`) — per-source export instructions for all supported connectors.
+- [x] **People store** — `Person` records in IndexedDB with `isSelf` flag for journal owner; `participants?: string[]` on Base (undefined = self implicit, `[]` = self explicitly removed).
+- [x] **Contacts import** — vCard (`.vcf`) and Google Contacts CSV parser; preview and select before writing.
+- [x] **`/people` route** — self setup, people index with entry counts, contacts import section.
+- [x] **Participant picker on entry cards** — add/remove participants with typeahead search; create person on the fly; self shown by default.
+- [x] **`/people/:id` timeline** — per-person entry timeline with All / Trips / Culture / Moments filter pills; linked from the people index.
 
 ---
 
 ## 1. Active Priorities (Up Next)
 
-### Trip Management (Phase 1)
-- [x] **Manual Trip Creation:** Dedicated "+ New Trip" modal on `/trips` (title, start/end dates, destinations, purpose tag).
-- [x] **Entry Assignment & Detachment:** Dropdown/dialog to add existing flights, stays, concerts, or memories to a trip, or remove an item without dissolving the whole trip.
-- [x] **Smart Date Gathering:** One-click button on a trip card to detect and associate unassigned entries falling within that trip's date window. Reads and watches (books, films) that fall inside the window are surfaced as suggestions, never assigned automatically.
-- [x] **Trip Selector on Manual Entries:** Add trip picker directly into the "+ Add Entry" dialog.
+### People — remaining
+
+- [x] **People filter pills on Chronicle, Culture, and Moments** — a "person" pill that narrows the feed to entries a specific person was part of. Mirrors how category filters work today.
+- [ ] **Name resolution on import** — when a connector surfaces companion names, match against existing People by name/alias. Suggestions only; never auto-linked.
+
+### Trip Management
+
+- [ ] **Reads and watches inside trips** — books, films, and episodes that fall within a trip's date window are not currently surfaced in the trip view. Surface them as suggestions alongside transport and stays.
 
 ---
 
-## 2. New Categories & Culture Logging
-
-Rating and reflection use the shared fields from section 0, not category-specific ones.
-
-- [ ] **Books (`book` category):**
-  * Data model: a Book record (title, author, ISBN, page count) plus Read events that point at it. A re-read is simply another Read event on the same Book.
-  * Completion date as the event date, at day precision (see date precision flag).
-  * UI: Book icon, star badge rendering, filter pill on Chronicle and Events views.
-- [ ] **Films (`film` category):**
-  * Data model: a Film record (director, year) plus Watch events that point at it. A rewatch is another Watch event.
-  * UI: Film/clapperboard icon, star badge rendering, filter pill.
-
----
-
-## 3. Importers & Parsers (File-Drop via Staging Hub)
+## 2. Importers (Remaining)
 
 All importers feed into the Staging Hub for preview, duplicate detection, and tier-based conflict resolution before writing to IndexedDB.
 
-- [ ] **iCalendar (`.ics`):** Universal calendar format. Automatically parses events and detects multi-day reservations (hotels/Airbnb) as Stays vs. single-day moments as Events.
-- [ ] **Goodreads (`goodreads_library_export.csv`):**
-  * Import only the `read` shelf as events. To-read is possibilities, not what happened, so it is ignored. Currently-reading is a state, not an event.
-  * Date Read is the event date at day precision. If blank, import with unknown precision instead of dropping the row. Date Added is a low-confidence fallback only and must be flagged as such.
-  * My Rating of 0 means unrated: map to blank. Ratings 1 to 5 map to 2, 4, 6, 8, 10.
-  * My Review goes to reflection. Private Notes go to a second reflection or a tag.
-  * Read Count indicates how many Read events to expect for a book.
-  * Dedup key: Book Id plus date read, so importing a fresh export never duplicates events.
-  * ISBN lookups for covers and page counts are acceptable (non-personal reference data); keep the privacy policy on place names in mind for anything else.
-  * Verify the column names against a real export before building the parser.
-- [ ] **Letterboxd (`diary.csv`):**
-  * Ingests logged movies, release years, watch dates and ratings. Half-star ratings (0.5 to 5) map onto the 0-10 scale by doubling.
-  * Verify which export file holds review text. Believed to be `reviews.csv` rather than `diary.csv`; confirm against a real export.
-  * Rewatch flag maps to additional Watch events on the same Film.
-- [ ] **Resident Advisor / Songkick:** Club nights, DJ sets, and concert tickets.
-- [ ] **Foursquare / Swarm:** Restaurant, cafe, and cultural venue check-ins with companion mentions.
-- [ ] **Strava / GPX (Selective):** Major hikes and cycling routes without everyday workout clutter.
-- [ ] **Booking.com reviews (if available in an export):** review scores are 10-point and map straight onto the shared rating for Stays.
+- [ ] **Resident Advisor / Songkick** — club nights, DJ sets, and concert tickets as alternatives to Setlist.fm.
+- [ ] **Foursquare / Swarm** — restaurant, café, and cultural venue check-ins with companion mentions.
+- [ ] **Strava / GPX (selective)** — major hikes and cycling routes without everyday workout clutter.
+- [ ] **Booking.com reviews** — if available in an export; review scores are 10-point and map directly to the shared rating for Stays.
 
 ---
 
-## 4. Direct Local Integrations (Zero-Cloud Sync)
+## 3. Direct Local Integrations (Zero-Cloud Sync)
 
-Direct browser-to-service connections without any intermediary backend server. All tokens and credentials remain strictly on-device in browser storage.
+Direct browser-to-service connections. All tokens and credentials stay on-device in browser storage.
 
-- [ ] **Architecture & Staging Policy:**
-  * Client-side credentials (user API keys or OAuth tokens) stored in IndexedDB/localStorage.
-  * "Check for updates" / "Pull latest" actions deposit records into the **Staging Hub** rather than auto-committing, preserving intentional curation.
-- [ ] **Webcal / Private iCal Feeds:** Periodic client-side fetch of private calendar subscription links (e.g. Google Calendar secret iCal URL).
-- [ ] **setlist.fm API:** Direct username lookup to pull attended concerts and full song setlists automatically.
-- [ ] **Strava OAuth (PKCE flow):** Pure browser-based authentication to fetch milestone outdoor journeys.
+- [ ] **Architecture & Staging Policy** — client-side credentials in IndexedDB/localStorage; "pull latest" deposits into Staging rather than auto-committing.
+- [ ] **Webcal / Private iCal feeds** — periodic client-side fetch of private calendar subscription links (e.g. Google Calendar secret iCal URL).
+- [ ] **setlist.fm API** — direct username lookup to pull attended concerts and full setlists automatically, replacing the manual CSV export.
+- [ ] **Strava OAuth (PKCE flow)** — pure browser-based auth to fetch milestone outdoor journeys.
 
 ---
 
-## 5. Mobile & Packaging (Future Exploration)
+## 4. Data Model (Outstanding)
 
-- [ ] **Capacitor Hybrid Shell:** Package the client bundle into an Android APK with native performance and offline-first reliability.
-- [ ] **Android System "Share To" Intent:** Register the app to accept `.csv`, `.ics`, and `.json` files directly from mobile downloads or email attachments into the Staging Hub.
-- [ ] **Persistent Storage Durability:** Explore Origin Private File System (OPFS) or a native SQLite plugin via Capacitor to prevent accidental browser cache eviction.
+- [ ] **Field-level dedup resolution** — the current tier model assigns precedence to a whole entry. Cross-source imports (e.g. Netflix has the accurate watch date; Letterboxd has the rating and review) could benefit from field-level merging. The `reflection` field is already preserved this way in `commitBatch`; generalise the pattern.
+- [ ] **`Read Count` from Goodreads** — a count > 1 implies re-reads that aren't individually dated. Currently imported as a single entry; consider surfacing the count as metadata or prompting the user to add re-read entries.
+- [ ] **Private Notes from Goodreads** — currently dropped. Consider mapping to a second reflection or a private tag.
+
+---
+
+## 5. React Native (Expo) — Mobile Companion
+
+Chronicle is transitioning to a native iOS and Android app via a **pragmatic hybrid monorepo**: the root web app (TanStack Start + Vite + Tailwind + shadcn/ui) stays intact and the `src/lib/journal/` core engine remains the single source of truth, shared with a new `./mobile` Expo project.
+
+### Why React Native over Capacitor — four pillars
+
+1. **Virtualization & performance** — `FlashList` / `@shopify/flash-list` handles lifetime logs (thousands of days, concerts, trips) without janking. A web view cannot efficiently virtualise this volume.
+2. **Durable local storage** — `expo-sqlite` with FTS5 gives a proper embedded SQL engine, avoiding IndexedDB eviction on low-storage Android devices that silently wipe browser data.
+3. **On-device native sources** — system Calendar (`expo-calendar`), Location visits (`expo-location`), and the native Share Sheet intent give Chronicle data that a web app can never access.
+4. **Rich media sandbox** — photos, audio notes, and ticket PDFs stored in the native app sandbox persist reliably via `expo-file-system` / `expo-media-library`.
+
+### Repo structure
+
+```
+digitalchronicle/          ← existing web root (TanStack Start)
+  src/lib/journal/         ← shared core engine (connectors, staging, types)
+    storage.ts             ← StorageAdapter interface (NEW — web + mobile share this)
+    db.ts                  ← IDBAdapter implements StorageAdapter (web only)
+  mobile/                  ← Expo companion app (NEW)
+    metro.config.js        ← watchFolders + nodeModulesPaths for shared src/
+    tsconfig.json          ← path aliases: @chronicle/journal → ../src/lib/journal
+    src/lib/storage/
+      SQLiteAdapter.ts     ← SQLiteAdapter implements StorageAdapter (mobile)
+```
+
+### Phase 1 — Storage abstraction (in progress)
+
+- [x] **`StorageAdapter` interface** — `src/lib/journal/storage.ts`; CRUD for all stores; shared by web and mobile.
+- [x] **`IDBAdapter` class** — `db.ts` refactored so IndexedDB is one concrete implementation; `setAdapter()` lets mobile inject its own adapter before `initJournal()`.
+- [x] **`mobile/` scaffold** — Expo project with TypeScript, `expo-sqlite`, Metro monorepo config, and a basic `SQLiteAdapter` implementation.
+
+### Phase 2 — Native shell
+
+- [x] **Expo Router navigation** — Tab bar: Chronicle · Trips · Culture · People. (Moments deferred — see below.)
+- [ ] **Share Sheet intent handler** — accept `.csv`, `.ics`, `.vcf`, `.json` from iOS/Android Share → deposit into Staging Hub.
+- [ ] **`expo-calendar` integration** — pull system Calendar events on permission grant; feed into iCalendar connector.
+- [ ] **Offline-first sync indicator** — badge on import tab showing unreviewed Staging records.
+- [ ] **Moments tab** — gatherings, celebrations, milestones, memories, activities (`JEvent` kinds excluding `concert`). Deferred until at least one import connector surfaces these entry types automatically (e.g. Foursquare/Swarm for check-ins, Strava for activities, or a manual quick-add flow). The `JEvent` data model and `EventCategory` type are already in place. See also: Importers section.
+
+### Phase 3 — Rich media & search
+
+- [ ] **Full-text search** — SQLite FTS5 virtual table over entry titles, reflections, and setlists; search bar on Chronicle view.
+- [ ] **Photo attachments** — attach photos from `expo-media-library` to entries; thumbnails in entry cards.
+- [ ] **Audio notes** — short voice memos attached to entries via `expo-av`.
+- [ ] **Ticket PDF vault** — store and view ticket PDFs in the native file sandbox.
 
 ---
 
 ## 6. Infrastructure & Developer Experience
 
-- [ ] **GitHub Two-Way Sync:** Connect repository to GitHub for smooth local collaboration with Git and Claude Code.
-- [ ] **Automated Backup Reminders:** Local banner reminding users to export a JSON snapshot after significant batch commits.
+- [ ] **Automated Backup Reminders** — local banner reminding users to export a JSON snapshot after significant batch commits.

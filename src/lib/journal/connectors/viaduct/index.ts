@@ -66,7 +66,7 @@ function parseViaduct(text: string): ParseResult {
         "train_code",
       ]),
       seat: pick(r, ["Seat", "Coach/Seat"]),
-      journal: pick(r, ["Notes", "Note"]) || undefined,
+      reflection: pick(r, ["Notes", "Note"]) || undefined,
       dedupeKey: "",
       createdAt: now(),
       confidence: confidenceFrom(r, "confirmed"),
@@ -75,7 +75,7 @@ function parseViaduct(text: string): ParseResult {
       raw: r,
     };
     withTiming(leg);
-    leg.dedupeKey = legKey(leg);
+    leg.dedupeKey = legKey(leg, "viaduct");
     out.entries.push({ entry: leg, warnings: legWarnings(leg), sourceRow });
   });
   return out;

@@ -5,12 +5,13 @@ import { allEntries, putMany, removeMany, useJournal, storeFor } from "@/lib/jou
 import { EntryCard } from "@/components/journal/EntryCard";
 import { AddTripDialog } from "@/components/journal/AddTripDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { entryTitle, type Entry, type Purpose, type Trip } from "@/lib/journal/types";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { entryTitle, type Entry, type Trip } from "@/lib/journal/types";
 
-const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
 const day = (e: Entry) => e.start.slice(0, 10);
 
 export const Route = createFileRoute("/trips")({
@@ -28,9 +29,8 @@ export const Route = createFileRoute("/trips")({
 function TripCard({ trip }: { trip: Trip }) {
   const s = useJournal();
   const [open, setOpen] = useState(false);
-  const [t, setT] = useState(trip);
-  const [dest, setDest] = useState(trip.destinations.join(", "));
   const [pick, setPick] = useState("");
+  const [dissolveOpen, setDissolveOpen] = useState(false);
 
   const entries = allEntries(s);
   const members = entries.filter((e) => e.tripId === trip.id).sort((a, b) => a.start.localeCompare(b.start));
@@ -38,15 +38,6 @@ function TripCard({ trip }: { trip: Trip }) {
   const inWindow = unassigned.filter((e) => day(e) >= trip.start && day(e) <= trip.end);
   const nights = Math.max(0, Math.round((+new Date(trip.end) - +new Date(trip.start)) / 86400000));
   const legs = members.filter((e) => e.kind === "leg");
-
-  const save = async () => {
-    if (t.end < t.start) {
-      toast.error("The end date can't be before the start date.");
-      return;
-    }
-    await putMany("trips", [{ ...t, destinations: dest.split(",").map((d) => d.trim()).filter(Boolean) }]);
-    toast.success("Trip saved.");
-  };
 
   const attach = async (list: Entry[]) => {
     for (const e of list) await putMany(storeFor(e), [{ ...e, tripId: trip.id }]);
@@ -63,48 +54,50 @@ function TripCard({ trip }: { trip: Trip }) {
 
   return (
     <article className="rounded-md border border-border bg-card">
-      <button onClick={() => setOpen(!open)} className="w-full p-5 text-left">
-        <p className="font-mono text-xs text-muted-foreground">{trip.start} → {trip.end} · {nights} nights</p>
-        <div className="mt-1 flex flex-wrap items-baseline gap-2">
-          <h2 className="text-2xl">{trip.title}</h2>
-          {trip.purpose && <Badge variant="secondary" className="capitalize">{trip.purpose}</Badge>}
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">{trip.destinations.join(" · ")}</p>
-        <div className="mt-3 flex gap-4 font-mono text-xs">
-          <span>{legs.filter((l) => l.kind === "leg" && l.mode === "air").length} flights</span>
-          <span>{legs.filter((l) => l.kind === "leg" && l.mode === "rail").length} trains</span>
-          <span>{members.filter((e) => e.kind === "stay").length} stays</span>
-          <span>{members.filter((e) => e.kind === "event").length} events</span>
-        </div>
-      </button>
+      <div className="flex items-start gap-3 p-5">
+        <button onClick={() => setOpen(!open)} className="min-w-0 flex-1 text-left">
+          <p className="font-mono text-xs text-muted-foreground">{trip.start} → {trip.end} · {nights} nights</p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-2">
+            <h2 className="text-2xl">{trip.title}</h2>
+            {trip.purpose && <Badge variant="secondary" className="capitalize">{trip.purpose}</Badge>}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs">
+            <span>{legs.filter((l) => l.kind === "leg" && l.mode === "air").length} flights</span>
+            <span>{legs.filter((l) => l.kind === "leg" && l.mode === "rail").length} trains</span>
+            <span>{members.filter((e) => e.kind === "stay").length} stays</span>
+            <span>{members.filter((e) => e.kind === "event").length} events</span>
+          </div>
+        </button>
+        <AddTripDialog trip={trip} />
+      </div>
       {open && (
         <div className="space-y-4 border-t border-border p-5">
-          <div className="grid grid-cols-2 gap-2">
-            <Input className="col-span-2" value={t.title} onChange={(e) => setT({ ...t, title: e.target.value })} placeholder="Trip title" />
-            <label className="text-xs text-muted-foreground">Start<Input type="date" value={t.start} onChange={(e) => setT({ ...t, start: e.target.value })} /></label>
-            <label className="text-xs text-muted-foreground">End<Input type="date" value={t.end} onChange={(e) => setT({ ...t, end: e.target.value })} /></label>
-            <Input className="col-span-2" value={dest} onChange={(e) => setDest(e.target.value)} placeholder="Destinations (comma separated)" />
-            <select
-              className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm capitalize"
-              value={t.purpose ?? ""}
-              onChange={(e) => setT({ ...t, purpose: (e.target.value as Purpose) || undefined })}
-            >
-              <option value="">Purpose (optional)</option>
-              {PURPOSES.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}
-            </select>
-          </div>
-          <Textarea value={t.notes} onChange={(e) => setT({ ...t, notes: e.target.value })} placeholder="Trip reflections…" className="font-serif" />
+          {trip.notes && <p className="whitespace-pre-wrap font-serif text-sm text-muted-foreground">{trip.notes}</p>}
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={save}>Save</Button>
             <Button size="sm" variant="outline" onClick={gather}>
               Gather entries in these dates{inWindow.length ? ` (${inWindow.length})` : ""}
             </Button>
-            <Button size="sm" variant="outline" onClick={async () => {
-              for (const m of members) await putMany(storeFor(m), [{ ...m, tripId: undefined }]);
-              await removeMany("trips", [trip.id]);
-              toast.success("Trip dissolved. Its entries stay in your chronicle.");
-            }}>Dissolve trip</Button>
+            <Button size="sm" variant="outline" onClick={() => setDissolveOpen(true)}>Dissolve trip</Button>
           </div>
+
+          <AlertDialog open={dissolveOpen} onOpenChange={setDissolveOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Dissolve "{trip.title}"?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  The trip record will be removed, but all {members.length} {members.length === 1 ? "entry" : "entries"} stay in your chronicle unaffected.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={async () => {
+                  for (const m of members) await putMany(storeFor(m), [{ ...m, tripId: undefined }]);
+                  await removeMany("trips", [trip.id]);
+                  toast.success("Trip dissolved. Its entries stay in your chronicle.");
+                }}>Dissolve</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
           <div className="flex gap-2">
             <select

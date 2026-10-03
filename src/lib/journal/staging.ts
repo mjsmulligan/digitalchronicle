@@ -1,8 +1,8 @@
-import { allEntries, getState, putMany, removeMany, storeFor } from "./db";
+import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor } from "./db";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
-import { loadStations, locate } from "./geo";
+import { loadStations } from "./geo";
 import {
-  day, uid, view, type Cluster, type Entry, type StagedRecord, type StagingBatch, type Trip,
+  uid, view, type Entry, type StagedRecord, type StagingBatch,
 } from "./types";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
@@ -18,35 +18,19 @@ function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>)
 
 export function placeLabel(e: Entry): string {
   const v = view(e);
-  if (v.kind === "leg") return locate(v.to)?.name.replace(/ (Heathrow|Gatwick|Brandenburg|CDG|Schiphol|Haneda|Narita|Kansai|JFK|Fiumicino|Hbf|Centraal|Nord|Midi|St Pancras|hl\.n\.)$/, "") ?? v.toName ?? v.to;
+  if (v.kind === "leg") return v.toName ?? v.to;
   if (v.kind === "stay") return v.city ?? v.place;
+  if (v.kind === "film") return v.title;
+  if (v.kind === "episode") return v.showTitle;
+  if (v.kind === "book") return v.title;
   return v.city || v.venue;
 }
 
-export function clusterRecords(records: StagedRecord[], gapDays: number): Cluster[] {
-  const items = records.filter((r) => r.selected && (r.status === "new" || r.status === "supersedes")).map((r) => r.entry).sort((a, b) => a.start.localeCompare(b.start));
-  const clusters: Entry[][] = [];
-  let lastEnd = 0;
-  for (const e of items) {
-    const s = new Date(day(e.start) + "T00:00").getTime();
-    const en = new Date(day(e.end ?? e.start) + "T00:00").getTime();
-    if (!clusters.length || s - lastEnd > gapDays * 86400000) clusters.push([]);
-    clusters[clusters.length - 1].push(e);
-    lastEnd = Math.max(s === lastEnd ? lastEnd : s, en);
-  }
-  return clusters.map((c) => ({ id: uid(), title: suggestTitle(c), recordIds: c.map((e) => e.id), accepted: c.some((e) => e.kind !== "event") }));
-}
-
-export function suggestTitle(c: Entry[]): string {
-  const origin = c.find((e) => e.kind === "leg");
-  const home = origin?.kind === "leg" ? placeLabel({ ...origin, to: origin.from } as Entry) : "";
-  const dests = [...new Set(c.map(placeLabel))].filter((d) => d && d !== home);
-  const month = new Date(day(c[0].start) + "T00:00").toLocaleDateString("en-GB", { month: "short", year: "numeric" });
-  return `${dests.slice(0, 3).join(" · ") || "Trip"} — ${month}`;
-}
-
 export async function stageFile(filename: string, text: string, forced?: string) {
-  const header = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0].toLowerCase();
+  // Connectors resolve place names against the gazetteer during parsing —
+  // make sure it's loaded (lazy-loaded module) before we start.
+  await loadStations();
+  const header = text.replace(/^﻿/, "").split(/\r?\n/, 1)[0].toLowerCase();
 
   // Reject explicitly unsupported formats before any parsing.
   for (const fmt of UNSUPPORTED_FORMATS) {
@@ -58,7 +42,6 @@ export async function stageFile(filename: string, text: string, forced?: string)
     : detectConnector(filename, text);
   const source = connector.id;
 
-  await loadStations();
   let res;
   try {
     res = await connector.parse({ name: filename, text });
@@ -67,13 +50,21 @@ export async function stageFile(filename: string, text: string, forced?: string)
   }
   const existing = new Map(allEntries(getState()).map((e) => [e.dedupeKey, e]));
   const seen = new Set<string>();
-  const records: StagedRecord[] = res.entries.map(({ entry, warnings, sourceRow }) => {
+
+  // Chunk the classify loop so the UI thread isn't starved on large imports
+  // (e.g. 4000-row Netflix history). Yield every 200 entries.
+  const CLASSIFY_CHUNK = 200;
+  const records: StagedRecord[] = [];
+  for (let i = 0; i < res.entries.length; i++) {
+    if (i > 0 && i % CLASSIFY_CHUNK === 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    const { entry, warnings, sourceRow } = res.entries[i];
     entry.sourceRef = `${filename}#row${sourceRow}`;
     const c = classify(entry, existing, seen);
-    return { entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" };
-  });
-  const batch: StagingBatch = { id: uid(), source, filename, createdAt: new Date().toISOString(), records, errors: res.errors, clusters: [], gapDays: 2 };
-  batch.clusters = clusterRecords(records, batch.gapDays);
+    records.push({ entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" });
+  }
+  const batch: StagingBatch = { id: uid(), source, filename, createdAt: new Date().toISOString(), records, errors: res.errors };
   await putMany("staging", [batch]);
   return batch;
 }
@@ -82,11 +73,12 @@ export async function saveBatch(b: StagingBatch) {
   await putMany("staging", [b]);
 }
 
+const COMMIT_CHUNK = 100;
+
 export async function commitBatch(b: StagingBatch) {
   const s = getState();
   const byId = new Map(allEntries(s).map((e) => [e.id, e]));
-  const idMap = new Map<string, string>();
-  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [] };
+  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [], films: [], episodes: [], books: [] };
   let count = 0;
   for (const r of b.records) {
     if (!r.selected) continue;
@@ -94,34 +86,41 @@ export async function commitBatch(b: StagingBatch) {
     if (r.status === "new") e = r.entry;
     else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
       const old = byId.get(r.matchId)!;
-      // Replace source data but keep sovereign overrides, journal & trip link
-      e = { ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides, journal: old.journal ?? r.entry.journal } as Entry;
+      // Replace source data but keep sovereign overrides, reflection & trip link
+      e = { ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides, reflection: old.reflection ?? r.entry.reflection } as Entry;
     } else continue;
-    idMap.set(r.entry.id, e.id);
     writes[storeFor(e)].push(e);
     count++;
   }
-  const trips: Trip[] = [];
-  const all = Object.values(writes).flat();
-  const find = (id: string) => all.find((e) => e.id === (idMap.get(id) ?? id));
-  for (const c of b.clusters) {
-    if (!c.accepted) continue;
-    const members = c.recordIds.map(find).filter(Boolean) as Entry[];
-    if (!members.length) continue;
-    members.sort((a, b) => a.start.localeCompare(b.start));
-    const trip: Trip = {
-      id: uid(), title: c.title, start: day(members[0].start),
-      end: day(members.reduce((m, e) => ((e.end ?? e.start) > m ? e.end ?? e.start : m), members[0].start)),
-      destinations: [...new Set(members.map(placeLabel))], notes: "", cover: "", createdAt: new Date().toISOString(),
-    };
-    trip.cover = `${members.filter((e) => e.kind === "leg").length} legs · ${members.filter((e) => e.kind === "event").length} events · ${trip.destinations.length} places`;
-    members.forEach((m) => (m.tripId = trip.id));
-    trips.push(trip);
+
+  // Flatten all entries to write so we can report progress across store types.
+  const allWrites: { store: keyof typeof writes; entry: Entry }[] = [];
+  for (const store of ["legs", "stays", "events", "films", "episodes", "books"] as const) {
+    for (const entry of writes[store]) allWrites.push({ store, entry });
   }
-  await putMany("legs", writes.legs);
-  await putMany("stays", writes.stays);
-  await putMany("events", writes.events);
-  await putMany("trips", trips);
+
+  const total = allWrites.length;
+  setCommitProgress({ batchId: b.id, done: 0, total });
+
+  // Write in chunks, yielding between each so the UI can update the progress bar.
+  for (let i = 0; i < allWrites.length; i += COMMIT_CHUNK) {
+    const chunk = allWrites.slice(i, i + COMMIT_CHUNK);
+
+    // Group this chunk by store for a single putMany call per store.
+    const chunkByStore: Record<string, Entry[]> = {};
+    for (const { store, entry } of chunk) {
+      (chunkByStore[store] ??= []).push(entry);
+    }
+    for (const [store, entries] of Object.entries(chunkByStore)) {
+      await putMany(store as "legs" | "stays" | "events" | "films" | "episodes" | "books", entries);
+    }
+
+    setCommitProgress({ batchId: b.id, done: Math.min(i + COMMIT_CHUNK, total), total });
+    // Yield so React can re-render the progress bar before the next chunk.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+
   await removeMany("staging", [b.id]);
-  return { count, trips: trips.length };
+  setCommitProgress(null);
+  return { count };
 }

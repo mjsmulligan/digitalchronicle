@@ -11,10 +11,14 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as BackupRouteImport } from './routes/backup'
+import { Route as CultureRouteImport } from './routes/culture'
 import { Route as EventsRouteImport } from './routes/events'
 import { Route as ImportRouteImport } from './routes/import'
+import { Route as MomentsRouteImport } from './routes/moments'
+import { Route as PeopleRouteImport } from './routes/people'
 import { Route as PlacesRouteImport } from './routes/places'
 import { Route as TripsRouteImport } from './routes/trips'
+import { Route as PeopleIdRouteImport } from './routes/people.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -24,6 +28,11 @@ const IndexRoute = IndexRouteImport.update({
 const BackupRoute = BackupRouteImport.update({
   id: '/backup',
   path: '/backup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CultureRoute = CultureRouteImport.update({
+  id: '/culture',
+  path: '/culture',
   getParentRoute: () => rootRouteImport,
 } as any)
 const EventsRoute = EventsRouteImport.update({
@@ -36,6 +45,16 @@ const ImportRoute = ImportRouteImport.update({
   path: '/import',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MomentsRoute = MomentsRouteImport.update({
+  id: '/moments',
+  path: '/moments',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PeopleRoute = PeopleRouteImport.update({
+  id: '/people',
+  path: '/people',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PlacesRoute = PlacesRouteImport.update({
   id: '/places',
   path: '/places',
@@ -46,46 +65,96 @@ const TripsRoute = TripsRouteImport.update({
   path: '/trips',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PeopleIdRoute = PeopleIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => PeopleRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/backup': typeof BackupRoute
+  '/culture': typeof CultureRoute
   '/events': typeof EventsRoute
   '/import': typeof ImportRoute
+  '/moments': typeof MomentsRoute
+  '/people': typeof PeopleRouteWithChildren
   '/places': typeof PlacesRoute
   '/trips': typeof TripsRoute
+  '/people/$id': typeof PeopleIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/backup': typeof BackupRoute
+  '/culture': typeof CultureRoute
   '/events': typeof EventsRoute
   '/import': typeof ImportRoute
+  '/moments': typeof MomentsRoute
+  '/people': typeof PeopleRouteWithChildren
   '/places': typeof PlacesRoute
   '/trips': typeof TripsRoute
+  '/people/$id': typeof PeopleIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/backup': typeof BackupRoute
+  '/culture': typeof CultureRoute
   '/events': typeof EventsRoute
   '/import': typeof ImportRoute
+  '/moments': typeof MomentsRoute
+  '/people': typeof PeopleRouteWithChildren
   '/places': typeof PlacesRoute
   '/trips': typeof TripsRoute
+  '/people/$id': typeof PeopleIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/backup' | '/events' | '/import' | '/places' | '/trips'
+  fullPaths:
+    | '/'
+    | '/backup'
+    | '/culture'
+    | '/events'
+    | '/import'
+    | '/moments'
+    | '/people'
+    | '/places'
+    | '/trips'
+    | '/people/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/backup' | '/events' | '/import' | '/places' | '/trips'
+  to:
+    | '/'
+    | '/backup'
+    | '/culture'
+    | '/events'
+    | '/import'
+    | '/moments'
+    | '/people'
+    | '/places'
+    | '/trips'
+    | '/people/$id'
   id:
-    '__root__' | '/' | '/backup' | '/events' | '/import' | '/places' | '/trips'
+    | '__root__'
+    | '/'
+    | '/backup'
+    | '/culture'
+    | '/events'
+    | '/import'
+    | '/moments'
+    | '/people'
+    | '/places'
+    | '/trips'
+    | '/people/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BackupRoute: typeof BackupRoute
+  CultureRoute: typeof CultureRoute
   EventsRoute: typeof EventsRoute
   ImportRoute: typeof ImportRoute
+  MomentsRoute: typeof MomentsRoute
+  PeopleRoute: typeof PeopleRouteWithChildren
   PlacesRoute: typeof PlacesRoute
   TripsRoute: typeof TripsRoute
 }
@@ -106,6 +175,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BackupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/culture': {
+      id: '/culture'
+      path: '/culture'
+      fullPath: '/culture'
+      preLoaderRoute: typeof CultureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/events': {
       id: '/events'
       path: '/events'
@@ -118,6 +194,20 @@ declare module '@tanstack/react-router' {
       path: '/import'
       fullPath: '/import'
       preLoaderRoute: typeof ImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/moments': {
+      id: '/moments'
+      path: '/moments'
+      fullPath: '/moments'
+      preLoaderRoute: typeof MomentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/people': {
+      id: '/people'
+      path: '/people'
+      fullPath: '/people'
+      preLoaderRoute: typeof PeopleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/places': {
@@ -134,14 +224,35 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TripsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/people/$id': {
+      id: '/people/$id'
+      path: '/$id'
+      fullPath: '/people/$id'
+      preLoaderRoute: typeof PeopleIdRouteImport
+      parentRoute: typeof PeopleRoute
+    }
   }
 }
+
+interface PeopleRouteChildren {
+  PeopleIdRoute: typeof PeopleIdRoute
+}
+
+const PeopleRouteChildren: PeopleRouteChildren = {
+  PeopleIdRoute: PeopleIdRoute,
+}
+
+const PeopleRouteWithChildren =
+  PeopleRoute._addFileChildren(PeopleRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BackupRoute: BackupRoute,
+  CultureRoute: CultureRoute,
   EventsRoute: EventsRoute,
   ImportRoute: ImportRoute,
+  MomentsRoute: MomentsRoute,
+  PeopleRoute: PeopleRouteWithChildren,
   PlacesRoute: PlacesRoute,
   TripsRoute: TripsRoute,
 }

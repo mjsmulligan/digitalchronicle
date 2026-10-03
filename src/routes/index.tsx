@@ -3,11 +3,17 @@ import { useMemo, useState } from "react";
 import { allEntries, putMany, useJournal } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
 import { AddEntryDialog } from "@/components/journal/AddEntryDialog";
+import { PersonFilter } from "@/components/journal/PersonFilter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { day, entryTitle, uid, type Entry, type Note } from "@/lib/journal/types";
+import { day, entryTitle, uid, type Entry, type Note, type Person } from "@/lib/journal/types";
 import { cn } from "@/lib/utils";
+
+function entryHasPerson(e: Entry, person: Person): boolean {
+  if (person.isSelf) return !e.participants || e.participants.includes(person.id);
+  return e.participants?.includes(person.id) ?? false;
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -34,7 +40,7 @@ type F = (typeof FILTERS)[number]["id"];
 
 function matches(e: Entry, f: F) {
   if (f === "all") return true;
-  if (f === "travel") return e.kind !== "event";
+  if (f === "travel") return e.kind === "leg" || e.kind === "stay";
   if (e.kind !== "event") return false;
   if (f === "social") return e.category === "gathering" || e.category === "celebration";
   if (f === "memory") return e.category === "memory" || e.category === "activity";
@@ -48,7 +54,7 @@ function DayNote({ date, note }: { date: string; note?: Note }) {
     return note ? (
       <p onClick={() => setEditing(true)} className="cursor-text whitespace-pre-wrap border-l-2 border-primary pl-3 font-serif text-[15px] italic">{note.text}</p>
     ) : (
-      <button onClick={() => setEditing(true)} className="text-xs text-muted-foreground hover:text-foreground">+ reflection for this day</button>
+      <button onClick={() => setEditing(true)} className="block min-h-[44px] text-xs text-muted-foreground hover:text-foreground">+ reflection for this day</button>
     );
   return (
     <div className="space-y-2">
@@ -67,19 +73,30 @@ function Chronicle() {
   const [filter, setFilter] = useState<F>("all");
   const [q, setQ] = useState("");
   const [newDay, setNewDay] = useState("");
+  const [personId, setPersonId] = useState<string | null>(null);
+
+  const activePerson = personId ? s.people.find((p) => p.id === personId) ?? null : null;
 
   const days = useMemo(() => {
     const map = new Map<string, { entries: Entry[]; note?: Note }>();
     const get = (d: string) => map.get(d) ?? (map.set(d, { entries: [] }), map.get(d)!);
     const ql = q.toLowerCase();
     if (filter !== "notes")
-      allEntries(s).filter((e) => matches(e, filter) && (!ql || (entryTitle(e) + (e.journal ?? "")).toLowerCase().includes(ql))).forEach((e) => get(day(e.overrides?.start ?? e.start)).entries.push(e));
-    s.notes.filter((n) => n.date && (!ql || n.text.toLowerCase().includes(ql))).forEach((n) => {
-      if (filter === "all" || filter === "notes" || map.has(n.date!)) get(n.date!).note = n;
-    });
+      allEntries(s)
+        .filter((e) =>
+          matches(e, filter) &&
+          (!ql || (entryTitle(e) + (e.journal ?? "")).toLowerCase().includes(ql)) &&
+          (!activePerson || entryHasPerson(e, activePerson)),
+        )
+        .forEach((e) => get(day(e.overrides?.start ?? e.start)).entries.push(e));
+    // Only show notes when not filtering by person (notes don't have participants)
+    if (!activePerson)
+      s.notes.filter((n) => n.date && (!ql || n.text.toLowerCase().includes(ql))).forEach((n) => {
+        if (filter === "all" || filter === "notes" || map.has(n.date!)) get(n.date!).note = n;
+      });
     if (newDay) get(newDay);
     return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([d, v]) => ({ d, ...v, entries: v.entries.sort((a, b) => (a.overrides?.start ?? a.start).localeCompare(b.overrides?.start ?? b.start)) }));
-  }, [s, filter, q, newDay]);
+  }, [s, filter, q, newDay, activePerson]);
 
   const tripOf = (d: string) => s.trips.find((t) => d >= t.start && d <= t.end);
   const total = s.legs.length + s.stays.length + s.events.length;
@@ -92,19 +109,22 @@ function Chronicle() {
           <p className="text-muted-foreground">{total} entries · {s.notes.length} reflections · {s.trips.length} trips</p>
         </div>
         <div className="flex gap-2">
-          <Input type="date" className="w-40" onChange={(e) => setNewDay(e.target.value)} title="Jump to / write about a day" />
+          <Input type="date" className="w-40" onChange={(e) => setNewDay(e.target.value)} aria-label="Jump to or write about a day" title="Jump to or write about a day" />
           <AddEntryDialog />
         </div>
       </header>
-      <div className="mb-6 flex flex-wrap gap-1">
-        {FILTERS.map((f) => (
-          <button key={f.id} onClick={() => setFilter(f.id)} className={cn("rounded-full border border-border px-3 py-1 text-sm", filter === f.id ? "bg-foreground text-background" : "hover:bg-accent")}>{f.label}</button>
-        ))}
-        <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="ml-auto h-8 w-40" />
+      <div className="mb-6 space-y-2">
+        <div className="flex flex-wrap gap-1">
+          {FILTERS.map((f) => (
+            <button key={f.id} onClick={() => setFilter(f.id)} className={cn("rounded-full border border-border px-3 py-1.5 text-sm", filter === f.id ? "bg-foreground text-background" : "hover:bg-accent")}>{f.label}</button>
+          ))}
+        </div>
+        <PersonFilter people={s.people} value={personId} onChange={setPersonId} />
+        <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="h-8 w-full sm:w-40" />
       </div>
 
       {s.ready && total === 0 && s.notes.length === 0 && (
-        <div className="rounded-md border border-dashed border-border p-10 text-center">
+        <div className="rounded-md border border-dashed border-border p-6 text-center md:p-10">
           <h2 className="text-2xl">Your journal is empty</h2>
           <p className="mt-2 text-muted-foreground">Add an entry, or import concert, flight, rail and life-event exports.</p>
           <Button asChild className="mt-4"><Link to="/import">Import data or load samples</Link></Button>
