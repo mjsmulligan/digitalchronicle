@@ -244,7 +244,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       paddingVertical: spacingScale.md,
     },
     groupHeaderPressed:    { opacity: 0.55 },
-    groupHeaderTitle:      { ...textScale.smMd, fontFamily: fonts.serifMedium, fontWeight: "500", color: colors.textPrimary, flex: 1 },
+    groupHeaderTitle:      { ...textScale.feedTitle, fontFamily: fonts.serifMedium, fontWeight: "500", color: colors.textPrimary, flex: 1 },
     groupHeaderTitleFixed: { flex: undefined },
     groupHeaderSubtitle:   { fontSize: 10, fontFamily: fonts.mono, color: colors.textTertiary },
 
