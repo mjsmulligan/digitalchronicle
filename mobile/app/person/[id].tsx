@@ -109,6 +109,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
 
     sectionLabel: {
       ...textScale.label,
+      fontFamily: fonts.mono,
       color: colors.textTertiary,
       paddingHorizontal: spacingScale.base,
       paddingTop: spacingScale.md,
@@ -131,16 +132,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     dateNum: {
       fontFamily: fonts.serifBold,
       fontWeight: "700",
-      fontSize: 34,
-      lineHeight: 38,
+      ...textScale.dayNum,
       color: colors.textBright,
     },
     dateSub: {
+      fontFamily: fonts.mono,
       fontSize: 10,
       fontWeight: "700",
-      letterSpacing: 0.6,
+      letterSpacing: 0.8,
       color: colors.textTertiary,
       lineHeight: 15,
+      textTransform: "uppercase" as const,
     },
     dateRule: {
       width: 1,
@@ -164,7 +166,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     },
     cardPressed: { opacity: 0.65 },
     cardIcon:    { fontSize: 18 },
-    cardTitle:   { flex: 1, ...textScale.base, color: colors.textPrimary, fontWeight: "500" },
+    cardTitle:   { flex: 1, ...textScale.feedTitle, fontFamily: fonts.serifMedium, color: colors.textPrimary, fontWeight: "500" },
     cardChevron: { fontSize: 20, color: colors.border },
 
     daySeparator: {

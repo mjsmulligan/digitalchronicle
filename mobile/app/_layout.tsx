@@ -20,6 +20,19 @@ import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
 import { useFonts } from "expo-font";
 import {
+  Fraunces_400Regular,
+  Fraunces_500Medium,
+  Fraunces_600SemiBold,
+} from "@expo-google-fonts/fraunces";
+import {
+  IBMPlexSans_400Regular,
+  IBMPlexSans_500Medium,
+} from "@expo-google-fonts/ibm-plex-sans";
+import {
+  JetBrainsMono_400Regular,
+  JetBrainsMono_500Medium,
+} from "@expo-google-fonts/jetbrains-mono";
+import {
   Lora_400Regular,
   Lora_500Medium,
   Lora_600SemiBold,
@@ -60,6 +73,17 @@ function RootLayoutInner() {
   const { colors } = useTheme();
 
   const [fontsLoaded, fontError] = useFonts({
+    // Paper serif (Fraunces)
+    Fraunces_400Regular,
+    Fraunces_500Medium,
+    Fraunces_600SemiBold,
+    // Paper sans (IBM Plex Sans)
+    IBMPlexSans_400Regular,
+    IBMPlexSans_500Medium,
+    // Paper mono (JetBrains Mono)
+    JetBrainsMono_400Regular,
+    JetBrainsMono_500Medium,
+    // Leather serif (Lora)
     Lora_400Regular,
     Lora_500Medium,
     Lora_600SemiBold,

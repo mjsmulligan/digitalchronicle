@@ -1,16 +1,22 @@
-import { Tabs, Link, useRouter } from "expo-router";
+import { Tabs, Link, useRouter, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { FloatingNavBar } from "../../src/components/FloatingNavBar";
-import { useEffect, useState } from "react";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
 export default function TabLayout() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("index");
+  const pathname = usePathname();
   const { colors, fonts } = useTheme();
+
+  // Derive active tab from current path so FloatingNavBar stays in sync
+  // without needing the non-existent onIndexChange prop on Tabs.
+  const activeTab = pathname.startsWith("/trips") ? "trips"
+    : pathname.startsWith("/culture") ? "culture"
+    : pathname.startsWith("/people") ? "people"
+    : "index";
 
   function tabIcon(
     focused: boolean,
@@ -43,11 +49,6 @@ export default function TabLayout() {
           tabBarActiveTintColor: colors.accentSoft,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-        }}
-        sceneContainerStyle={{ paddingBottom: 100 }}
-        onIndexChange={(index) => {
-          const tabs = ["index", "trips", "culture", "people"];
-          setActiveTab(tabs[index]);
         }}
       >
       <Tabs.Screen
@@ -119,28 +120,28 @@ export default function TabLayout() {
             activeIcon: "book" as IoniconName,
             active: activeTab === "index",
             label: "Chronicle",
-            onPress: () => router.navigate("index"),
+            onPress: () => router.navigate("/"),
           },
           {
             icon: "airplane-outline" as IoniconName,
             activeIcon: "airplane" as IoniconName,
             active: activeTab === "trips",
             label: "Trips",
-            onPress: () => router.navigate("trips"),
+            onPress: () => router.navigate("/(tabs)/trips"),
           },
           {
             icon: "film-outline" as IoniconName,
             activeIcon: "film" as IoniconName,
             active: activeTab === "culture",
             label: "Culture",
-            onPress: () => router.navigate("culture"),
+            onPress: () => router.navigate("/(tabs)/culture"),
           },
           {
             icon: "people-outline" as IoniconName,
             activeIcon: "people" as IoniconName,
             active: activeTab === "people",
             label: "People",
-            onPress: () => router.navigate("people"),
+            onPress: () => router.navigate("/(tabs)/people"),
           },
         ]}
       />

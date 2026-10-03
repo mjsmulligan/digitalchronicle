@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme';
+import { useTheme } from '../components/ThemeProvider';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -20,6 +20,45 @@ interface FloatingNavBarProps {
 
 export const FloatingNavBar: React.FC<FloatingNavBarProps> = ({ items }) => {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      position: 'absolute',
+      bottom: 16,
+      left: 16,
+      right: 16,
+      zIndex: 1000,
+    },
+    navBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      alignItems: 'center',
+      height: 56,
+      borderRadius: 12,
+      backgroundColor: colors.surface,
+      ...Platform.select({
+        ios: {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 8,
+        },
+        android: {
+          elevation: 8,
+        },
+      }),
+    },
+    navItem: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 8,
+    },
+    pressed: {
+      opacity: 0.7,
+    },
+  }), [colors]);
 
   return (
     <View
@@ -54,41 +93,3 @@ export const FloatingNavBar: React.FC<FloatingNavBarProps> = ({ items }) => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 16,
-    left: 16,
-    right: 16,
-    zIndex: 1000,
-  },
-  navBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    height: 56,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  navItem: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 8,
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-});
