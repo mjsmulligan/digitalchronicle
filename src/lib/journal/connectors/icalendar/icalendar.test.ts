@@ -124,8 +124,8 @@ describe("icalendar connector", () => {
       expect(entry.end).toBe("2026-06-08");
     });
 
-    it("dedupeKey starts with icalendar|stay|", () => {
-      expect(r.entries[1].entry.dedupeKey).toMatch(/^icalendar\|stay\|/);
+    it("dedupeKey starts with stay|", () => {
+      expect(r.entries[1].entry.dedupeKey).toMatch(/^stay\|/);
     });
   });
 

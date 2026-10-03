@@ -75,7 +75,7 @@ function parseViaduct(text: string): ParseResult {
       raw: r,
     };
     withTiming(leg);
-    leg.dedupeKey = legKey(leg, "viaduct");
+    leg.dedupeKey = legKey(leg);
     out.entries.push({ entry: leg, warnings: legWarnings(leg), sourceRow });
   });
   return out;

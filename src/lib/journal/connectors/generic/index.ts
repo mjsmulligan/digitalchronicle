@@ -113,7 +113,7 @@ function parseGeneric(text: string): ParseResult {
       if (!leg.from || !leg.to)
         return out.errors.push(`Row ${sourceRow}: leg missing from/to`);
       withTiming(leg);
-      leg.dedupeKey = legKey(leg, "generic");
+      leg.dedupeKey = legKey(leg);
       out.entries.push({ entry: leg, warnings: legWarnings(leg), sourceRow });
     } else if (
       ["stay", "hotel", "lodging", "accommodation"].includes(type)
@@ -132,7 +132,7 @@ function parseGeneric(text: string): ParseResult {
         startUTC: localToUTC(start, tz),
         endUTC: end ? localToUTC(end, tz) : undefined,
       };
-      s.dedupeKey = stayKey(s, "generic");
+      s.dedupeKey = stayKey(s);
       out.entries.push({
         entry: s,
         warnings: end ? [] : ["No check-out date"],

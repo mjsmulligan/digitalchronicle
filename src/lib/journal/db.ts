@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { STORES, type JournalData, type StoreName, type Entry, type PlaceRecord, type StagingBatch } from "./types";
+import { STORES, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch } from "./types";
 import { loadStations } from "./geo";
 import type { StorageAdapter, Row } from "./storage";
 
@@ -125,6 +125,91 @@ function hasJournalPlaces(data: Partial<JournalData>): boolean {
 
 // ─── Public API (unchanged signatures) ───────────────────────────────────────
 
+// ─── One-time dedupeKey migration ─────────────────────────────────────────────
+
+/**
+ * Recomputes Leg and Stay dedupeKeys from source-namespaced format
+ * (e.g. "viaduct|leg|...") to source-agnostic format ("leg|...").
+ * No-op on subsequent boots once all keys are already in the new format.
+ * If the key change reveals true duplicates, the higher-precedence record
+ * (lower tier, then reflection present, then earlier createdAt) is kept.
+ */
+async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
+  const legs = (data.legs ?? []) as Leg[];
+  const stays = (data.stays ?? []) as Stay[];
+
+  const staleLegIds = new Set(legs.filter((l) => !l.dedupeKey.startsWith("leg|")).map((l) => l.id));
+  const staleStayIds = new Set(stays.filter((s) => !s.dedupeKey.startsWith("stay|")).map((s) => s.id));
+
+  if (staleLegIds.size === 0 && staleStayIds.size === 0) return;
+
+  // Recompute keys for stale records
+  const updatedLegs = legs.map((l) =>
+    staleLegIds.has(l.id)
+      ? { ...l, dedupeKey: `leg|${l.start.slice(0, 10)}|${l.from.toUpperCase()}|${l.to.toUpperCase()}` }
+      : l,
+  );
+  const updatedStays = stays.map((s) =>
+    staleStayIds.has(s.id)
+      ? { ...s, dedupeKey: `stay|${s.start.slice(0, 10)}|${s.place.toLowerCase()}` }
+      : s,
+  );
+
+  // If two records now share a key, keep the better one
+  function pick<T extends { id: string; tier: number; reflection?: string; journal?: string; createdAt: string }>(
+    items: T[],
+  ): { keep: T; discard: T[] } {
+    if (items.length === 1) return { keep: items[0], discard: [] };
+    const sorted = [...items].sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier; // lower tier = higher precedence
+      const aHasRef = !!(a.reflection ?? a.journal);
+      const bHasRef = !!(b.reflection ?? b.journal);
+      if (aHasRef !== bHasRef) return aHasRef ? -1 : 1;
+      return a.createdAt < b.createdAt ? -1 : 1;
+    });
+    return { keep: sorted[0], discard: sorted.slice(1) };
+  }
+
+  const legByKey = new Map<string, Leg[]>();
+  for (const l of updatedLegs) (legByKey.get(l.dedupeKey) ?? legByKey.set(l.dedupeKey, []).get(l.dedupeKey)!).push(l);
+
+  const stayByKey = new Map<string, Stay[]>();
+  for (const s of updatedStays) (stayByKey.get(s.dedupeKey) ?? stayByKey.set(s.dedupeKey, []).get(s.dedupeKey)!).push(s);
+
+  const legWrites: Leg[] = [];
+  const legRemoveIds: string[] = [];
+  for (const group of legByKey.values()) {
+    const hasStale = group.some((l) => staleLegIds.has(l.id));
+    if (!hasStale) continue; // no key change in this group, nothing to write
+    const { keep, discard } = pick(group);
+    legWrites.push(keep);
+    legRemoveIds.push(...discard.map((l) => l.id));
+  }
+
+  const stayWrites: Stay[] = [];
+  const stayRemoveIds: string[] = [];
+  for (const group of stayByKey.values()) {
+    const hasStale = group.some((s) => staleStayIds.has(s.id));
+    if (!hasStale) continue;
+    const { keep, discard } = pick(group);
+    stayWrites.push(keep);
+    stayRemoveIds.push(...discard.map((s) => s.id));
+  }
+
+  if (legWrites.length) await adapter.putMany("legs", legWrites);
+  if (legRemoveIds.length) await adapter.removeMany("legs", legRemoveIds);
+  if (stayWrites.length) await adapter.putMany("stays", stayWrites);
+  if (stayRemoveIds.length) await adapter.removeMany("stays", stayRemoveIds);
+
+  // Update data in-place so the subsequent emit reflects the migrated state
+  const discardLegs = new Set(legRemoveIds);
+  const discardStays = new Set(stayRemoveIds);
+  const legWriteMap = new Map(legWrites.map((l) => [l.id, l]));
+  const stayWriteMap = new Map(stayWrites.map((s) => [s.id, s]));
+  data.legs = updatedLegs.filter((l) => !discardLegs.has(l.id)).map((l) => legWriteMap.get(l.id) ?? l);
+  data.stays = updatedStays.filter((s) => !discardStays.has(s.id)).map((s) => stayWriteMap.get(s.id) ?? s);
+}
+
 let initPromise: Promise<void> | undefined;
 
 export function initJournal(): Promise<void> {
@@ -134,6 +219,7 @@ export function initJournal(): Promise<void> {
     if (hasJournalPlaces(data)) {
       await loadStations();
     }
+    await migrateLegStayKeys(data);
     emit({ ...data, ready: true });
   })().catch((error: unknown) => {
     initPromise = undefined;
