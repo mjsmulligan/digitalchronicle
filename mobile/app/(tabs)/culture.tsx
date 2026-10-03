@@ -1,11 +1,11 @@
 /**
  * Culture tab — films, TV episodes, books, and concerts.
  *
- * Matches the web layout: separate sections per category with sub-grouping.
+ * Matches the web layout: separate sections per category with series grouping.
  *   · Concerts — grouped by year
- *   · Films    — grouped by year
- *   · TV       — grouped by show (e.g. all Bridgerton episodes together)
- *   · Books    — series grouped, standalone interleaved by date
+ *   · Films    — grouped by title series (text before ":"), standalone otherwise
+ *   · TV       — grouped by Series container (seriesId → journal.series), fallback to showTitle
+ *   · Books    — grouped by series field, standalone interleaved by date
  *
  * Filter pills narrow to a single category; all sections show when "All" is active.
  */
@@ -21,11 +21,11 @@ import {
 import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import {
-  type Entry,
   type Film,
   type Episode,
   type Book,
   type JEvent,
+  type Series,
 } from "@chronicle/journal/types";
 import {
   useTheme,
@@ -65,12 +65,14 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 // ── grouping helpers ──────────────────────────────────────────────────────────
 
-interface SeriesGroup {
+// ── Books ─────────────────────────────────────────────────────────────────────
+
+interface BookSeriesGroup {
   name: string;
   books: Book[];
 }
 
-function groupBooksBySeries(books: Book[]): { standalone: Book[]; series: SeriesGroup[] } {
+function groupBooksBySeries(books: Book[]): { standalone: Book[]; series: BookSeriesGroup[] } {
   const seriesMap = new Map<string, Book[]>();
   const standalone: Book[] = [];
   for (const b of books) {
@@ -82,7 +84,7 @@ function groupBooksBySeries(books: Book[]): { standalone: Book[]; series: Series
       standalone.push(b);
     }
   }
-  const series: SeriesGroup[] = [...seriesMap.entries()]
+  const series: BookSeriesGroup[] = [...seriesMap.entries()]
     .map(([name, bks]) => ({
       name,
       books: [...bks].sort((a, b) => (a.seriesNumber ?? 999) - (b.seriesNumber ?? 999)),
@@ -91,23 +93,79 @@ function groupBooksBySeries(books: Book[]): { standalone: Book[]; series: Series
   return { standalone, series };
 }
 
+// ── Films ─────────────────────────────────────────────────────────────────────
+
+interface FilmSeriesGroup {
+  name: string;
+  films: Film[];
+}
+
+/**
+ * Groups films by the text before the first ":" in the title (e.g. "Mission Impossible:
+ * Fallout" → series "Mission Impossible"). Films without a colon are standalone.
+ * Series entries are sorted by most-recent watch date; within a series, by watch date desc.
+ * The final list interleaves series and standalone by most-recent entry date.
+ */
+function groupFilmsBySeries(films: Film[]): {
+  standalone: Film[];
+  series: FilmSeriesGroup[];
+} {
+  const seriesMap = new Map<string, Film[]>();
+  const standalone: Film[] = [];
+  for (const f of films) {
+    const colonIdx = f.title.indexOf(":");
+    if (colonIdx > 0) {
+      const name = f.title.slice(0, colonIdx).trim();
+      const arr = seriesMap.get(name) ?? [];
+      arr.push(f);
+      seriesMap.set(name, arr);
+    } else {
+      standalone.push(f);
+    }
+  }
+  // Single-entry "series" are demoted to standalone
+  const series: FilmSeriesGroup[] = [];
+  for (const [name, fs] of seriesMap.entries()) {
+    if (fs.length === 1) {
+      standalone.push(fs[0]);
+    } else {
+      series.push({
+        name,
+        films: [...fs].sort((a, b) => sortDate(b).localeCompare(sortDate(a))),
+      });
+    }
+  }
+  series.sort((a, b) => sortDate(b.films[0]).localeCompare(sortDate(a.films[0])));
+  return { standalone, series };
+}
+
+// ── TV / Episodes ─────────────────────────────────────────────────────────────
+
 interface ShowGroup {
-  showTitle: string;
+  title: string;      // canonical title from Series container, or showTitle fallback
   episodes: Episode[];
   latestDate: string;
 }
 
-function groupEpisodesByShow(episodes: Episode[]): ShowGroup[] {
+/**
+ * Groups episodes by their Series container title (via seriesId → journal.series).
+ * Episodes without a matching series fall back to their showTitle.
+ */
+function groupEpisodesBySeries(episodes: Episode[], seriesContainers: Series[]): ShowGroup[] {
+  const seriesById = new Map<string, Series>(seriesContainers.map((s) => [s.id, s]));
   const map = new Map<string, Episode[]>();
   for (const ep of episodes) {
-    const arr = map.get(ep.showTitle) ?? [];
+    const key = ep.seriesId
+      ? (seriesById.get(ep.seriesId)?.title ?? ep.showTitle)
+      : ep.showTitle;
+    const arr = map.get(key) ?? [];
     arr.push(ep);
-    map.set(ep.showTitle, arr);
+    map.set(key, arr);
   }
   return [...map.entries()]
-    .map(([showTitle, eps]) => {
+    .map(([title, eps]) => {
       const sorted = [...eps].sort((a, b) => sortDate(b).localeCompare(sortDate(a)));
-      return { showTitle, episodes: sorted, latestDate: sortDate(sorted[0]) };
+      return { title, episodes: sorted, latestDate: sortDate(sorted[0]) };
     })
     .sort((a, b) => b.latestDate.localeCompare(a.latestDate));
 }
@@ -165,7 +223,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       color: colors.textTertiary,
     },
 
-    // Group header (year / show title / series name)
+    // Group header (series name / show title / year)
     groupHeader: {
       paddingHorizontal: spacingScale.base,
       paddingTop: spacingScale.md,
@@ -277,32 +335,33 @@ export default function CultureScreen() {
       }));
   }, [allConcerts]);
 
-  const filmsByYear = useMemo(() => {
-    const map = new Map<string, Film[]>();
-    for (const f of journal.films) {
-      const yr = (f.overrides?.start ?? f.start).slice(0, 4) || "????";
-      const arr = map.get(yr) ?? [];
-      arr.push(f);
-      map.set(yr, arr);
-    }
-    return [...map.entries()]
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([year, list]) => ({
-        year,
-        list: list.sort((a, b) => sortDate(b).localeCompare(sortDate(a))),
-      }));
+  // Films: interleaved series + standalone, sorted by most-recent date
+  const filmSections = useMemo(() => {
+    const { standalone, series } = groupFilmsBySeries(journal.films);
+    type Section =
+      | { type: "series";     data: FilmSeriesGroup; date: string }
+      | { type: "standalone"; data: Film;            date: string };
+    const all: Section[] = [
+      ...series.map((sg) => ({ type: "series"     as const, data: sg,    date: sortDate(sg.films[0]) })),
+      ...standalone.map((f) => ({ type: "standalone" as const, data: f,  date: sortDate(f) })),
+    ];
+    return all.sort((a, b) => b.date.localeCompare(a.date));
   }, [journal.films]);
 
-  const showGroups = useMemo(() => groupEpisodesByShow(journal.episodes), [journal.episodes]);
+  // TV: grouped by Series container title (or showTitle fallback)
+  const showGroups = useMemo(
+    () => groupEpisodesBySeries(journal.episodes, journal.series),
+    [journal.episodes, journal.series],
+  );
 
   const bookSections = useMemo(() => {
     const { standalone, series } = groupBooksBySeries(journal.books);
     type Section =
-      | { type: "series";     data: SeriesGroup; date: string }
-      | { type: "standalone"; data: Book;        date: string };
+      | { type: "series";     data: BookSeriesGroup; date: string }
+      | { type: "standalone"; data: Book;            date: string };
     const all: Section[] = [
-      ...series.map((sg) => ({ type: "series"     as const, data: sg,           date: sortDate(sg.books[0]) })),
-      ...standalone.map((b) => ({ type: "standalone" as const, data: b, date: sortDate(b) })),
+      ...series.map((sg) => ({ type: "series"     as const, data: sg,    date: sortDate(sg.books[0]) })),
+      ...standalone.map((b) => ({ type: "standalone" as const, data: b,  date: sortDate(b) })),
     ];
     return all.sort((a, b) => b.date.localeCompare(a.date));
   }, [journal.books]);
@@ -313,11 +372,51 @@ export default function CultureScreen() {
     const items: ListItem[] = [];
     const showHeaders = filter === "all";
 
-    // Helper: push entries with hairline separators between them
+    // Helper: push entries with hairlines between them
     function pushEntries(entries: CultureEntry[]) {
       entries.forEach((e, i) => {
         if (i > 0) items.push({ type: "separator", id: `sep-${e.id}` });
         items.push({ type: "entry", id: e.id, entry: e });
+      });
+    }
+
+    // Helper: push a section (series/standalone interleaved) like Books or Films
+    function pushSeriesSection<
+      G extends { name: string },
+      E extends CultureEntry,
+    >(
+      sections: Array<
+        | { type: "series"; data: G; date: string }
+        | { type: "standalone"; data: E; date: string }
+      >,
+      getEntries: (g: G) => E[],
+      countLabel: (n: number) => string,
+    ) {
+      sections.forEach((sec, si) => {
+        if (si > 0) {
+          const prev = sections[si - 1];
+          if (sec.type === "series" || prev.type === "series") {
+            items.push({ type: "groupGap", id: `gap-sec-${si}` });
+          } else {
+            items.push({ type: "separator", id: `sep-sec-${si}` });
+          }
+        }
+        if (sec.type === "series") {
+          const g = sec.data as G;
+          const entries = getEntries(g);
+          const seriesAvg = avgRating(entries);
+          items.push({
+            type: "groupHeader",
+            id: `gh-${g.name}`,
+            title: g.name,
+            subtitle: countLabel(entries.length),
+            avg: seriesAvg,
+          });
+          pushEntries(entries);
+        } else {
+          const e = sec.data as E;
+          items.push({ type: "entry", id: e.id, entry: e });
+        }
       });
     }
 
@@ -328,7 +427,6 @@ export default function CultureScreen() {
       }
       concertsByYear.forEach(({ year, list }, yi) => {
         if (yi > 0) items.push({ type: "groupGap", id: `gap-c-${year}` });
-        // Year sub-heading: always shown when there are multiple years, or when showing single-category
         if (concertsByYear.length > 1 || !showHeaders) {
           items.push({ type: "groupHeader", id: `gh-c-${year}`, title: year, subtitle: String(list.length) });
         }
@@ -342,13 +440,11 @@ export default function CultureScreen() {
       if (showHeaders) {
         items.push({ type: "sectionHeader", id: "sh-films", title: `Films · ${journal.films.length}` });
       }
-      filmsByYear.forEach(({ year, list }, yi) => {
-        if (yi > 0) items.push({ type: "groupGap", id: `gap-f-${year}` });
-        if (filmsByYear.length > 1 || !showHeaders) {
-          items.push({ type: "groupHeader", id: `gh-f-${year}`, title: year, subtitle: String(list.length) });
-        }
-        pushEntries(list);
-      });
+      pushSeriesSection(
+        filmSections,
+        (g: FilmSeriesGroup) => g.films,
+        (n) => `${n} films`,
+      );
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-films" });
     }
 
@@ -361,12 +457,12 @@ export default function CultureScreen() {
           title: `TV · ${journal.episodes.length} episodes · ${showGroups.length} shows`,
         });
       }
-      showGroups.forEach(({ showTitle, episodes: eps }, si) => {
+      showGroups.forEach(({ title, episodes: eps }, si) => {
         if (si > 0) items.push({ type: "groupGap", id: `gap-s-${si}` });
         items.push({
           type: "groupHeader",
-          id: `gh-s-${showTitle}`,
-          title: showTitle,
+          id: `gh-s-${title}`,
+          title,
           subtitle: `${eps.length} ep`,
         });
         pushEntries(eps);
@@ -379,39 +475,15 @@ export default function CultureScreen() {
       if (showHeaders) {
         items.push({ type: "sectionHeader", id: "sh-books", title: `Books · ${journal.books.length}` });
       }
-      bookSections.forEach((sec, si) => {
-        if (si > 0) {
-          const prev = bookSections[si - 1];
-          // Group gap before/after a series; hairline between consecutive standalones
-          if (sec.type === "series" || prev.type === "series") {
-            items.push({ type: "groupGap", id: `gap-bk-${si}` });
-          } else {
-            items.push({ type: "separator", id: `sep-bk-${si}` });
-          }
-        }
-        if (sec.type === "series") {
-          const sg = sec.data as SeriesGroup;
-          const seriesAvg = avgRating(sg.books);
-          items.push({
-            type: "groupHeader",
-            id: `gh-bk-${sg.name}`,
-            title: sg.name,
-            subtitle: `${sg.books.length} ${sg.books.length === 1 ? "book" : "books"} read`,
-            avg: seriesAvg,
-          });
-          sg.books.forEach((b, i) => {
-            if (i > 0) items.push({ type: "separator", id: `sep-bks-${b.id}` });
-            items.push({ type: "entry", id: b.id, entry: b });
-          });
-        } else {
-          const b = sec.data as Book;
-          items.push({ type: "entry", id: b.id, entry: b });
-        }
-      });
+      pushSeriesSection(
+        bookSections,
+        (g: BookSeriesGroup) => g.books,
+        (n) => `${n} ${n === 1 ? "book" : "books"} read`,
+      );
     }
 
     return items;
-  }, [filter, allConcerts, concertsByYear, filmsByYear, showGroups, bookSections, journal]);
+  }, [filter, allConcerts, concertsByYear, filmSections, showGroups, bookSections, journal]);
 
   const isEmpty = counts.all === 0;
 
