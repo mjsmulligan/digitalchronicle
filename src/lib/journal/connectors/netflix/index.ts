@@ -13,9 +13,18 @@
  *  2. "{Show}: Limited Series: {Episode}"     → Episode, season="Limited Series"
  *  3. "{Show}: {SeasonLabel}: {Episode}"
  *     where SeasonLabel ~ /^(Season|Part|Volume|Chapter|Series)\s+\d+/i
+ *     or Chapter + word ordinal (e.g. "Chapter One" — used by Stranger Things S1)
  *     or is a 4-digit year (e.g. WWE SmackDown: 2025: ...)
  *                                             → Episode
- *  4. No pattern matched                      → Film
+ *  4. "{Show}: {SeasonLabel}{N}: {Episode}"
+ *     where SeasonLabel ends with a digit (e.g. "Stranger Things 5") → Episode
+ *  5. Two-pass heuristics for ambiguous titles:
+ *     a. 2-part titles: if the same first segment appears with 2+ distinct second
+ *        segments, classify as Episode (showTitle=parts[0], episodeTitle=parts[1])
+ *     b. 3+-part titles: if the same "A: B" prefix appears 2+ times across all
+ *        3+-part rows, treat "A: B" as the show title and recurse into parts 2+
+ *        for season/episode (handles "Star Trek: Discovery", "Criminal: UK", etc.)
+ *  6. No pattern matched → Film (can be corrected manually)
  *
  * Tier: 3 — automated play history; accurate date but no curation, rating, or intent.
  */
@@ -42,39 +51,89 @@ function norm(s: string): string {
   return s.trim().toLowerCase();
 }
 
-/** Season-like label patterns. */
+/**
+ * Season-like label patterns.
+ *
+ * Standard:   "Season 3", "Part 2", "Volume 1", "Series 4", "Chapter 7"
+ * Ordinal:    "Chapter One" … "Chapter Twelve" — Netflix Stranger Things S1 format
+ * Year label: "2025" (WWE SmackDown etc.)
+ * Trailing N: parts[1] ends with " <digit>" e.g. "Stranger Things 5" — Netflix's
+ *             format for numbered seasons whose name repeats the show title
+ */
 const SEASON_LABEL_RE =
-  /^(Season|Part|Volume|Chapter|Series)\s+\d+/i;
+  /^(Season|Part|Volume|Series)\s+\d+/i;
+
+const CHAPTER_LABEL_RE =
+  /^Chapter\s+(\d+|One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|Eleven|Twelve)/i;
+
 const YEAR_LABEL_RE = /^\d{4}$/;
+
+/** True when `segment` looks like a season label in any of the known formats. */
+function isSeasonLabel(segment: string): boolean {
+  return (
+    /^limited series$/i.test(segment) ||
+    SEASON_LABEL_RE.test(segment) ||
+    CHAPTER_LABEL_RE.test(segment) ||
+    YEAR_LABEL_RE.test(segment) ||
+    // "Stranger Things 5", "Beyond 2" — show title repeated + season number
+    /\s\d+$/.test(segment)
+  );
+}
 
 type ParsedTitle =
   | { kind: "film"; title: string }
   | { kind: "episode"; showTitle: string; season: string; episodeTitle: string };
 
 /**
- * Parse a Netflix title string into either a Film or Episode descriptor.
- * Netflix encodes show structure with colons: "Show: Season N: Episode"
+ * Parse a Netflix title string into either a Film or Episode descriptor,
+ * given pre-computed prefix frequency maps for the two-pass heuristics.
  */
-function parseTitle(raw: string): ParsedTitle {
+function parseTitle(
+  raw: string,
+  twoPartPrefixCount: Map<string, number>,
+  compoundPrefixCount: Map<string, number>,
+): ParsedTitle {
   const parts = raw.split(":").map((p) => p.trim());
 
+  // ── 3+ part title ──────────────────────────────────────────────────────────
   if (parts.length >= 3) {
-    const show = parts[0];
-    const middle = parts[1];
-    // Remainder after show and season label
-    const episode = parts.slice(2).join(": ").trim();
+    const p1 = parts[1];
 
-    if (
-      /^limited series$/i.test(middle) ||
-      SEASON_LABEL_RE.test(middle) ||
-      YEAR_LABEL_RE.test(middle)
-    ) {
-      return { kind: "episode", showTitle: show, season: middle, episodeTitle: episode };
+    // Pass A: standard/ordinal/year/trailing-digit season label in parts[1].
+    // This check takes priority — if parts[1] IS a season label, the show title
+    // is just parts[0] regardless of how many rows share the compound prefix.
+    // (e.g. "Stranger Things: Stranger Things 5: ..." — "Stranger Things 5" ends
+    // with a digit and is a season, not part of the show title.)
+    if (isSeasonLabel(p1)) {
+      const episodeTitle = parts.slice(2).join(": ").trim();
+      return { kind: "episode", showTitle: parts[0], season: p1, episodeTitle };
+    }
+
+    // Pass B: compound show title ("Star Trek: Discovery", "Criminal: UK", etc.)
+    // Only reached when parts[1] is NOT a season label.
+    // If the "parts[0]: parts[1]" prefix was seen 2+ times across all 3+-part rows,
+    // the show title spans the first two segments.
+    const compoundKey = norm(`${parts[0]}:${p1}`);
+    if ((compoundPrefixCount.get(compoundKey) ?? 0) >= 2) {
+      const showTitle = `${parts[0]}: ${p1}`;
+      const rest = parts.slice(2);
+      // Check whether parts[2] is itself a season label
+      if (rest.length >= 2 && isSeasonLabel(rest[0])) {
+        return { kind: "episode", showTitle, season: rest[0], episodeTitle: rest.slice(1).join(": ").trim() };
+      }
+      return { kind: "episode", showTitle, season: "", episodeTitle: rest.join(": ").trim() };
     }
   }
 
-  // Two parts: "Show: Something" — not enough info to confirm episode structure.
-  // Treat as Film (can be corrected manually).
+  // ── 2-part title ───────────────────────────────────────────────────────────
+  if (parts.length === 2) {
+    // Two-pass: if same first segment seen 2+ times → it's a show
+    if ((twoPartPrefixCount.get(norm(parts[0])) ?? 0) >= 2) {
+      return { kind: "episode", showTitle: parts[0], season: "", episodeTitle: parts[1] };
+    }
+  }
+
+  // ── Fallback: film ─────────────────────────────────────────────────────────
   return { kind: "film", title: raw.trim() };
 }
 
@@ -102,22 +161,29 @@ async function parseNetflix(text: string): Promise<ParseResult> {
   const out: ParseResult = { entries: [], errors: [] };
   const rows = csvRows(text);
 
-  // Two-pass classification for ambiguous 2-part titles ("Show: Episode Title").
-  // If the same first segment appears with 2+ distinct second segments, it's a
-  // show — classify those rows as episodes. Singletons remain as films.
+  // ── Pre-pass: build prefix frequency maps ─────────────────────────────────
+
+  // Map 1: for 2-part titles — count how many rows share the same first segment
   const twoPartPrefixCount = new Map<string, number>();
+  // Map 2: for 3+-part titles — count how many rows share the same first-two-segment compound
+  const compoundPrefixCount = new Map<string, number>();
+
   for (const { row: r } of rows) {
     const rawTitle = (r["Title"] as string | undefined)?.trim() ?? "";
     const parts = rawTitle.split(":").map((p) => p.trim());
     if (parts.length === 2) {
-      const prefix = norm(parts[0]);
-      twoPartPrefixCount.set(prefix, (twoPartPrefixCount.get(prefix) ?? 0) + 1);
+      const key = norm(parts[0]);
+      twoPartPrefixCount.set(key, (twoPartPrefixCount.get(key) ?? 0) + 1);
+    }
+    if (parts.length >= 3) {
+      const key = norm(`${parts[0]}:${parts[1]}`);
+      compoundPrefixCount.set(key, (compoundPrefixCount.get(key) ?? 0) + 1);
     }
   }
 
+  // ── Main pass: classify and emit entries ──────────────────────────────────
+
   for (let i = 0; i < rows.length; i++) {
-    // Yield every PARSE_CHUNK rows so the spinner can render and the thread
-    // doesn't lock up on large files (e.g. 4000-row Netflix history).
     if (i > 0 && i % PARSE_CHUNK === 0) await yieldToUI();
 
     const { row: r, sourceRow } = rows[i];
@@ -135,13 +201,7 @@ async function parseNetflix(text: string): Promise<ParseResult> {
       continue;
     }
 
-    // Override 2-part titles where the prefix is a known show (seen 2+ times)
-    const parts = rawTitle.split(":").map((p) => p.trim());
-    const is2PartShow = parts.length === 2 && (twoPartPrefixCount.get(norm(parts[0])) ?? 0) >= 2;
-
-    const parsed = is2PartShow
-      ? { kind: "episode" as const, showTitle: parts[0], season: "", episodeTitle: parts[1] }
-      : parseTitle(rawTitle);
+    const parsed = parseTitle(rawTitle, twoPartPrefixCount, compoundPrefixCount);
 
     if (parsed.kind === "film") {
       const film: Film = {
@@ -202,6 +262,6 @@ export const connector: Connector = {
     return 0;
   },
   parse({ text }) {
-    return parseNetflix(text); // async — returns Promise<ParseResult>
+    return parseNetflix(text);
   },
 };
