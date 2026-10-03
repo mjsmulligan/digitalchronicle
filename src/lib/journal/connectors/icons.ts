@@ -137,7 +137,7 @@ export const SOURCE_MARKS: Record<string, SourceMarkDef> = {
 
   // Iarnród Éireann / Irish Rail — double-diamond hexagon mark, traced from official SVG.
   // Outer silhouette of the five-triangle logo (viewBox 1–499 × 1–333), normalised to 24×24.
-  "irish-rail": { type: "path", d: "M3 12 L9 6 L15 6 L21 12 L15 18 L9 18 Z", style: "solid", color: "#3e6f15" },
+  "irish-rail": { type: "text", label: "IE", bg: "#3e6f15", fg: "#ffffff" },
 };
 
 // ── Operator name aliases ─────────────────────────────────────────────────────
