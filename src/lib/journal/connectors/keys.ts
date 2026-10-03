@@ -1,22 +1,28 @@
 /**
  * Deduplication key builders.
- * Keys are namespaced by source so that e.g. a viaduct rail leg and a
- * manually-entered leg with the same route and date are stored as separate
- * records (each source owns its own key space).
  *
- * Format: <source>|<kind>|<date>|<discriminator…>
- * Example: viaduct|leg|2024-06-01|BHM|MAN
+ * Leg and Stay keys are source-agnostic so that the tier system can arbitrate
+ * when the same journey arrives from two different connectors (e.g. a Viaduct
+ * CSV and a generic import). Film and Episode keys already follow this pattern.
+ *
+ * Event keys remain source-namespaced for now because there is only one event
+ * connector; that can be revisited if a second event source is added.
+ *
+ * Format:
+ *   leg:   leg|<date>|<FROM>|<TO>
+ *   stay:  stay|<date>|<place>
+ *   event: <source>|event|<date>|<artist>
  */
 import type { JEvent, Leg, Stay } from "../types";
 
-export function legKey(l: Pick<Leg, "start" | "from" | "to">, source: string) {
-  return `${source}|leg|${l.start.slice(0, 10)}|${l.from.toUpperCase()}|${l.to.toUpperCase()}`;
+export function legKey(l: Pick<Leg, "start" | "from" | "to">) {
+  return `leg|${l.start.slice(0, 10)}|${l.from.toUpperCase()}|${l.to.toUpperCase()}`;
 }
 
 export function eventKey(e: Pick<JEvent, "start" | "artist">, source: string) {
   return `${source}|event|${e.start.slice(0, 10)}|${e.artist.toLowerCase()}`;
 }
 
-export function stayKey(s: Pick<Stay, "start" | "place">, source: string) {
-  return `${source}|stay|${s.start.slice(0, 10)}|${s.place.toLowerCase()}`;
+export function stayKey(s: Pick<Stay, "start" | "place">) {
+  return `stay|${s.start.slice(0, 10)}|${s.place.toLowerCase()}`;
 }

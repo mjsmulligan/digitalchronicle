@@ -220,7 +220,7 @@ function parseIcs(text: string): ParseResult {
         endUTC: localToUTC(dtend.dateStr, tz),
         dedupeKey: "",
       };
-      s.dedupeKey = stayKey(s, SOURCE);
+      s.dedupeKey = stayKey(s);
       out.entries.push({
         entry: s,
         warnings: city ? [] : ["No city detected in LOCATION — check the place name"],
