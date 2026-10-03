@@ -7,7 +7,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Person } from "@chronicle/journal/types";
-import { colors, fonts, text, spacing, radius, common } from "../../src/theme";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -52,9 +52,140 @@ function groupByDay(entries: Entry[]): DayGroup[] {
   return [...map.entries()].map(([iso, items]) => ({ iso, items }));
 }
 
+// ── styles factory ────────────────────────────────────────────────────────────
+
+const DATE_COL_W = 52;
+
+function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
+  return StyleSheet.create({
+    list: { flex: 1, backgroundColor: colors.bg },
+    content: { paddingBottom: spacingScale["3xl"] },
+
+    // Profile card
+    profileCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale["2xl"],
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacingScale.lg,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacingScale.base,
+      margin: spacingScale.base,
+      marginBottom: spacingScale.sm,
+    },
+    avatar: {
+      width: 56,
+      height: 56,
+      borderRadius: radiusScale.full,
+      backgroundColor: colors.border,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    avatarSelf: { backgroundColor: colors.surfaceAccent },
+    avatarText: { color: colors.textDim, fontSize: 18, fontWeight: "700" },
+    profileBody: { flex: 1 },
+    nameRow: { flexDirection: "row", alignItems: "center", gap: spacingScale.sm, marginBottom: 4 },
+    name: {
+      fontSize: 20,
+      fontFamily: fonts.serifBold,
+      fontWeight: "700",
+      color: colors.textPrimary,
+    },
+    selfBadge: {
+      color: colors.accentBadge,
+      fontSize: 10,
+      fontWeight: "700",
+      backgroundColor: colors.surfaceAccentDeep,
+      paddingHorizontal: spacingScale.sm2,
+      paddingVertical: 2,
+      borderRadius: radiusScale.sm,
+      overflow: "hidden",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+    },
+    aliases: { ...textScale.smMd, color: colors.textTertiary, marginBottom: 4 },
+    notes: { ...textScale.md, color: colors.textSecondary, marginTop: 4 },
+
+    sectionLabel: {
+      ...textScale.label,
+      color: colors.textTertiary,
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.md,
+      marginBottom: 0,
+    },
+
+    // Two-column layout
+    dayGroup: {
+      flexDirection: "row",
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.xl,
+      paddingBottom: spacingScale.sm,
+    },
+    dateCol: {
+      width: DATE_COL_W,
+      alignItems: "center",
+      paddingTop: 2,
+      flexShrink: 0,
+    },
+    dateNum: {
+      fontFamily: fonts.serifBold,
+      fontWeight: "700",
+      fontSize: 34,
+      lineHeight: 38,
+      color: colors.textBright,
+    },
+    dateSub: {
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 0.6,
+      color: colors.textTertiary,
+      lineHeight: 15,
+    },
+    dateRule: {
+      width: 1,
+      alignSelf: "stretch",
+      backgroundColor: colors.border,
+      marginHorizontal: spacingScale.md,
+      marginTop: 4,
+    },
+    cardsCol: { flex: 1, gap: spacingScale.sm },
+
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm,
+    },
+    cardPressed: { opacity: 0.65 },
+    cardIcon:    { fontSize: 18 },
+    cardTitle:   { flex: 1, ...textScale.base, color: colors.textPrimary, fontWeight: "500" },
+    cardChevron: { fontSize: 20, color: colors.border },
+
+    daySeparator: {
+      height: 1,
+      backgroundColor: colors.borderFaint,
+      marginHorizontal: spacingScale.base,
+    },
+
+    empty: { paddingTop: spacingScale.xl, paddingHorizontal: spacingScale.base, alignItems: "center" },
+    emptyText: { ...textScale.md, color: colors.textMuted },
+
+    notFound: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
+    notFoundText: { ...textScale.lg, color: colors.textTertiary },
+  });
+}
+
+type Styles = ReturnType<typeof createStyles>;
+
 // ── components ────────────────────────────────────────────────────────────────
 
-function EntryCard({ entry }: { entry: Entry }) {
+function EntryCard({ entry, styles }: { entry: Entry; styles: Styles }) {
   const router = useRouter();
   const v = view(entry);
   return (
@@ -64,12 +195,12 @@ function EntryCard({ entry }: { entry: Entry }) {
     >
       <Text style={styles.cardIcon}>{entryEmoji(entry)}</Text>
       <Text style={styles.cardTitle} numberOfLines={2}>{entryTitle(v)}</Text>
-      <Text style={styles.cardChevron}>›</Text>
+      <Text style={styles.cardChevron}>{"›"}</Text>
     </Pressable>
   );
 }
 
-function DayGroupRow({ group }: { group: DayGroup }) {
+function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
@@ -81,7 +212,7 @@ function DayGroupRow({ group }: { group: DayGroup }) {
       </View>
       <View style={styles.dateRule} />
       <View style={styles.cardsCol}>
-        {group.items.map((e) => <EntryCard key={e.id} entry={e} />)}
+        {group.items.map((e) => <EntryCard key={e.id} entry={e} styles={styles} />)}
       </View>
     </View>
   );
@@ -92,6 +223,8 @@ function DayGroupRow({ group }: { group: DayGroup }) {
 export default function PersonDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const journal = useJournal();
+  const { colors, fonts, common } = useTheme();
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   const person = useMemo<Person | undefined>(
     () => journal.people.find((p) => p.id === id),
@@ -125,7 +258,7 @@ export default function PersonDetailScreen() {
       style={styles.list}
       data={groups}
       keyExtractor={(g) => g.iso}
-      renderItem={({ item }) => <DayGroupRow group={item} />}
+      renderItem={({ item }) => <DayGroupRow group={item} styles={styles} />}
       ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
       ListHeaderComponent={
         <>
@@ -166,130 +299,3 @@ export default function PersonDetailScreen() {
     />
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
-
-const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: colors.bg },
-  content: { paddingBottom: spacing["3xl"] },
-
-  // Profile card
-  profileCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius["2xl"],
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.base,
-    margin: spacing.base,
-    marginBottom: spacing.sm,
-  },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: radius.full,
-    backgroundColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarSelf: { backgroundColor: colors.surfaceAccent },
-  avatarText: { color: colors.textDim, fontSize: 18, fontWeight: "700" },
-  profileBody: { flex: 1 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: 4 },
-  name: {
-    fontSize: 20,
-    fontFamily: fonts.serifBold,
-    fontWeight: "700",
-    color: colors.textPrimary,
-  },
-  selfBadge: {
-    color: colors.accentBadge,
-    fontSize: 10,
-    fontWeight: "700",
-    backgroundColor: colors.surfaceAccentDeep,
-    paddingHorizontal: spacing.sm2,
-    paddingVertical: 2,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  aliases: { ...text.smMd, color: colors.textTertiary, marginBottom: 4 },
-  notes: { ...text.md, color: colors.textSecondary, marginTop: 4 },
-
-  sectionLabel: {
-    ...text.label,
-    color: colors.textTertiary,
-    paddingHorizontal: spacing.base,
-    paddingTop: spacing.md,
-    marginBottom: 0,
-  },
-
-  // Two-column layout
-  dayGroup: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.base,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.sm,
-  },
-  dateCol: {
-    width: DATE_COL_W,
-    alignItems: "center",
-    paddingTop: 2,
-    flexShrink: 0,
-  },
-  dateNum: {
-    fontFamily: fonts.serifBold,
-    fontWeight: "700",
-    fontSize: 34,
-    lineHeight: 38,
-    color: colors.textBright,
-  },
-  dateSub: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    color: colors.textTertiary,
-    lineHeight: 15,
-  },
-  dateRule: {
-    width: 1,
-    alignSelf: "stretch",
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-    marginTop: 4,
-  },
-  cardsCol: { flex: 1, gap: spacing.sm },
-
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.md,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  cardPressed: { opacity: 0.65 },
-  cardIcon:    { fontSize: 18 },
-  cardTitle:   { flex: 1, ...text.base, color: colors.textPrimary, fontWeight: "500" },
-  cardChevron: { fontSize: 20, color: colors.border },
-
-  daySeparator: {
-    height: 1,
-    backgroundColor: colors.borderFaint,
-    marginHorizontal: spacing.base,
-  },
-
-  empty: { paddingTop: spacing.xl, paddingHorizontal: spacing.base, alignItems: "center" },
-  emptyText: { ...text.md, color: colors.textMuted },
-
-  notFound: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
-  notFoundText: { ...text.lg, color: colors.textTertiary },
-});

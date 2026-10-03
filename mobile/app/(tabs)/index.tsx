@@ -2,13 +2,13 @@
  * Chronicle tab — chronological feed of all entry kinds.
  *
  * Layout: journal two-column pattern
- *   ┌────────┬──┬──────────────────────────────────┐
- *   │  20    │  │  ┌──────────────────────────────┐ │
- *   │  SUN   │  │  │ Entry title          FLIGHT  │ │
- *   │  SEPT  │  │  └──────────────────────────────┘ │
- *   │  2026  │  │  ┌──────────────────────────────┐ │
- *   │        │  │  │ Another entry          FILM  │ │
- *   └────────┴──┴──────────────────────────────────┘
+ *   +--------+--+----------------------------------+
+ *   |  20    |  |  +------------------------------+ |
+ *   |  SUN   |  |  | Entry title          FLIGHT  | |
+ *   |  SEPT  |  |  +------------------------------+ |
+ *   |  2026  |  |  +------------------------------+ |
+ *   |        |  |  | Another entry          FILM  | |
+ *   +--------+--+----------------------------------+
  *
  * The date column anchors each day like a page of a Moleskine.
  * The vertical rule between them is a quiet journal-spine metaphor.
@@ -24,7 +24,7 @@ import {
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry } from "@chronicle/journal/types";
-import { colors, fonts, text, spacing, radius } from "../../src/theme";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -65,9 +65,122 @@ interface DayGroup {
   items: DayEntry[];
 }
 
+// ── styles factory ────────────────────────────────────────────────────────────
+
+const DATE_COL_W = 52;
+
+function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
+  return StyleSheet.create({
+    list:    { flex: 1, backgroundColor: colors.bg },
+    content: { paddingBottom: spacingScale["3xl"] },
+
+    // Day group row
+    dayGroup: {
+      flexDirection: "row",
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.xl,
+      paddingBottom: spacingScale.sm,
+    },
+
+    // Date column
+    dateCol: {
+      width: DATE_COL_W,
+      alignItems: "center",
+      paddingTop: 2,
+      flexShrink: 0,
+    },
+    dateNum: {
+      fontFamily: fonts.serifBold,
+      fontWeight: "700",
+      fontSize: 34,
+      lineHeight: 38,
+      color: colors.textBright,
+    },
+    dateSub: {
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 0.6,
+      color: colors.textTertiary,
+      lineHeight: 15,
+    },
+
+    // Vertical rule between date and entries
+    dateRule: {
+      width: 1,
+      alignSelf: "stretch",
+      backgroundColor: colors.border,
+      marginHorizontal: spacingScale.md,
+      marginTop: 4,
+    },
+
+    // Entries column
+    entriesCol: {
+      flex: 1,
+      gap: spacingScale.sm,
+    },
+
+    // Entry card
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.md,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: spacingScale.sm,
+    },
+    cardPressed: { opacity: 0.65 },
+    cardIcon: { fontSize: 18, lineHeight: 24, marginTop: 1 },
+    cardBody: { flex: 1 },
+    cardTitle: {
+      ...textScale.base,
+      color: colors.textPrimary,
+      fontWeight: "500",
+      marginBottom: 3,
+    },
+    cardTrip: {
+      ...textScale.xs,
+      color: colors.accentSoft,
+      fontWeight: "600",
+      letterSpacing: 0.4,
+      marginTop: 2,
+    },
+    cardRating: { ...textScale.xs, color: colors.star, marginTop: 3 },
+
+    // Separator between days
+    daySeparator: {
+      height: 1,
+      backgroundColor: colors.borderFaint,
+      marginHorizontal: spacingScale.base,
+    },
+
+    // Empty state
+    empty: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacingScale["2xl"],
+    },
+    emptyIcon:  { fontSize: 48, marginBottom: spacingScale.base },
+    emptyTitle: {
+      fontSize: 20,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      color: colors.textPrimary,
+      marginBottom: spacingScale.sm,
+    },
+    emptyHint:  { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+  });
+}
+
+type Styles = ReturnType<typeof createStyles>;
+
 // ── components ────────────────────────────────────────────────────────────────
 
-function EntryCard({ item }: { item: DayEntry }) {
+function EntryCard({ item, styles }: { item: DayEntry; styles: Styles }) {
   const router = useRouter();
   const { entry, tripTitle } = item;
   const v = view(entry);
@@ -85,7 +198,7 @@ function EntryCard({ item }: { item: DayEntry }) {
         </Text>
         {tripTitle && (
           <Text style={styles.cardTrip} numberOfLines={1}>
-            ◆ {tripTitle}
+            {"◆"} {tripTitle}
           </Text>
         )}
         {v.rating !== undefined && (
@@ -98,7 +211,7 @@ function EntryCard({ item }: { item: DayEntry }) {
   );
 }
 
-function DayGroupRow({ group }: { group: DayGroup }) {
+function DayGroupRow({ group, styles }: { group: DayGroup; styles: Styles }) {
   const { num, day, month, year } = parseDay(group.iso);
 
   return (
@@ -117,7 +230,7 @@ function DayGroupRow({ group }: { group: DayGroup }) {
       {/* Right: entry cards */}
       <View style={styles.entriesCol}>
         {group.items.map((item) => (
-          <EntryCard key={item.entry.id} item={item} />
+          <EntryCard key={item.entry.id} item={item} styles={styles} />
         ))}
       </View>
     </View>
@@ -128,6 +241,8 @@ function DayGroupRow({ group }: { group: DayGroup }) {
 
 export default function ChronicleScreen() {
   const journal = useJournal();
+  const { colors, fonts } = useTheme();
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   const groups = useMemo<DayGroup[]>(() => {
     const entries = allEntries(journal).sort((a, b) =>
@@ -164,118 +279,9 @@ export default function ChronicleScreen() {
       style={styles.list}
       data={groups}
       keyExtractor={(g) => g.iso}
-      renderItem={({ item }) => <DayGroupRow group={item} />}
+      renderItem={({ item }) => <DayGroupRow group={item} styles={styles} />}
       ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
       contentContainerStyle={styles.content}
     />
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
-
-const styles = StyleSheet.create({
-  list:    { flex: 1, backgroundColor: colors.bg },
-  content: { paddingBottom: spacing["3xl"] },
-
-  // Day group row
-  dayGroup: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.base,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.sm,
-  },
-
-  // Date column
-  dateCol: {
-    width: DATE_COL_W,
-    alignItems: "center",
-    paddingTop: 2,
-    flexShrink: 0,
-  },
-  dateNum: {
-    fontFamily: fonts.serifBold,
-    fontWeight: "700",
-    fontSize: 34,
-    lineHeight: 38,
-    color: colors.textBright,
-  },
-  dateSub: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    color: colors.textTertiary,
-    lineHeight: 15,
-  },
-
-  // Vertical rule between date and entries
-  dateRule: {
-    width: 1,
-    alignSelf: "stretch",
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-    marginTop: 4,
-  },
-
-  // Entries column
-  entriesCol: {
-    flex: 1,
-    gap: spacing.sm,
-  },
-
-  // Entry card
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.md,
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-  },
-  cardPressed: { opacity: 0.65 },
-  cardIcon: { fontSize: 18, lineHeight: 24, marginTop: 1 },
-  cardBody: { flex: 1 },
-  cardTitle: {
-    ...text.base,
-    color: colors.textPrimary,
-    fontWeight: "500",
-    marginBottom: 3,
-  },
-  cardTrip: {
-    ...text.xs,
-    color: colors.accentSoft,
-    fontWeight: "600",
-    letterSpacing: 0.4,
-    marginTop: 2,
-  },
-  cardRating: { ...text.xs, color: colors.star, marginTop: 3 },
-
-  // Separator between days
-  daySeparator: {
-    height: 1,
-    backgroundColor: colors.borderFaint,
-    marginHorizontal: spacing.base,
-  },
-
-  // Empty state
-  empty: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing["2xl"],
-  },
-  emptyIcon:  { fontSize: 48, marginBottom: spacing.base },
-  emptyTitle: {
-    fontSize: 20,
-    fontFamily: fonts.serifSemiBold,
-    fontWeight: "600",
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  emptyHint:  { ...text.md, color: colors.textTertiary, textAlign: "center" },
-});

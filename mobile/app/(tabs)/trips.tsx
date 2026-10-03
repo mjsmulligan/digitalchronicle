@@ -8,9 +8,8 @@ import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import { fonts } from "../../src/theme";
 import type { Trip } from "@chronicle/journal/types";
-import { colors, text, spacing, radius } from "../../src/theme";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +46,114 @@ const PURPOSE_ICON: Record<string, string> = {
   other: "📌",
 };
 
+// ── styles factory ────────────────────────────────────────────────────────────
+
+const DATE_COL_W = 52;
+
+function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
+  return StyleSheet.create({
+    list: { flex: 1, backgroundColor: colors.bg },
+    listContent: { paddingBottom: spacingScale["3xl"] },
+
+    // Two-column row
+    row: {
+      flexDirection: "row",
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.xl,
+      paddingBottom: spacingScale.sm,
+    },
+
+    // Date column
+    dateCol: {
+      width: DATE_COL_W,
+      alignItems: "center",
+      paddingTop: 2,
+      flexShrink: 0,
+    },
+    dateNum: {
+      fontFamily: fonts.serifBold,
+      fontWeight: "700",
+      fontSize: 34,
+      lineHeight: 38,
+      color: colors.textBright,
+    },
+    dateSub: {
+      fontSize: 10,
+      fontWeight: "700",
+      letterSpacing: 0.6,
+      color: colors.textTertiary,
+      lineHeight: 15,
+    },
+
+    // Vertical rule
+    dateRule: {
+      width: 1,
+      alignSelf: "stretch",
+      backgroundColor: colors.border,
+      marginHorizontal: spacingScale.md,
+      marginTop: 4,
+    },
+
+    // Card column
+    cardCol: { flex: 1 },
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radiusScale.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.md,
+    },
+    cardPressed: { opacity: 0.65 },
+
+    cardTop: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: spacingScale.sm,
+      marginBottom: spacingScale.sm,
+    },
+    tripTitle: {
+      flex: 1,
+      fontFamily: fonts.serifBold,
+      fontWeight: "700",
+      fontSize: 17,
+      lineHeight: 23,
+      color: colors.textPrimary,
+    },
+    purposeIcon: { fontSize: 18, lineHeight: 24 },
+
+    cardMeta: { flexDirection: "row", gap: spacingScale.sm2, flexWrap: "wrap" },
+    metaText: { ...textScale.sm, color: colors.textSecondary },
+    metaDot: { ...textScale.sm, color: colors.textMuted },
+
+    separator: {
+      height: 1,
+      backgroundColor: colors.borderFaint,
+      marginHorizontal: spacingScale.base,
+    },
+
+    empty: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacingScale["2xl"],
+    },
+    emptyIcon:  { fontSize: 48, marginBottom: spacingScale.base },
+    emptyTitle: {
+      fontSize: 18,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      color: colors.textPrimary,
+      marginBottom: spacingScale.sm,
+    },
+    emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+  });
+}
+
+type Styles = ReturnType<typeof createStyles>;
+
 // ── components ────────────────────────────────────────────────────────────────
 
 interface TripItem {
@@ -54,7 +161,7 @@ interface TripItem {
   entryCount: number;
 }
 
-function TripRow({ item }: { item: TripItem }) {
+function TripRow({ item, styles }: { item: TripItem; styles: Styles }) {
   const { trip, entryCount } = item;
   const { num, day, month, year } = parseDay(trip.start);
   const n = nights(trip);
@@ -90,12 +197,12 @@ function TripRow({ item }: { item: TripItem }) {
             )}
           </View>
           <View style={styles.cardMeta}>
-            <Text style={styles.metaText}>→ {fmtEnd(trip.end)}</Text>
-            <Text style={styles.metaDot}>·</Text>
+            <Text style={styles.metaText}>{"→"} {fmtEnd(trip.end)}</Text>
+            <Text style={styles.metaDot}>{"·"}</Text>
             <Text style={styles.metaText}>
               {n} {n === 1 ? "night" : "nights"}
             </Text>
-            <Text style={styles.metaDot}>·</Text>
+            <Text style={styles.metaDot}>{"·"}</Text>
             <Text style={styles.metaText}>
               {entryCount} {entryCount === 1 ? "entry" : "entries"}
             </Text>
@@ -110,6 +217,8 @@ function TripRow({ item }: { item: TripItem }) {
 
 export default function TripsScreen() {
   const journal = useJournal();
+  const { colors, fonts } = useTheme();
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   const trips = useMemo<TripItem[]>(() => {
     const entries = allEntries(journal);
@@ -139,113 +248,9 @@ export default function TripsScreen() {
       style={styles.list}
       data={trips}
       keyExtractor={({ trip }) => trip.id}
-      renderItem={({ item }) => <TripRow item={item} />}
+      renderItem={({ item }) => <TripRow item={item} styles={styles} />}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       contentContainerStyle={styles.listContent}
     />
   );
 }
-
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
-
-const styles = StyleSheet.create({
-  list: { flex: 1, backgroundColor: colors.bg },
-  listContent: { paddingBottom: spacing["3xl"] },
-
-  // Two-column row
-  row: {
-    flexDirection: "row",
-    paddingHorizontal: spacing.base,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.sm,
-  },
-
-  // Date column
-  dateCol: {
-    width: DATE_COL_W,
-    alignItems: "center",
-    paddingTop: 2,
-    flexShrink: 0,
-  },
-  dateNum: {
-    fontFamily: fonts.serifBold,
-    fontWeight: "700",
-    fontSize: 34,
-    lineHeight: 38,
-    color: colors.textBright,
-  },
-  dateSub: {
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    color: colors.textTertiary,
-    lineHeight: 15,
-  },
-
-  // Vertical rule
-  dateRule: {
-    width: 1,
-    alignSelf: "stretch",
-    backgroundColor: colors.border,
-    marginHorizontal: spacing.md,
-    marginTop: 4,
-  },
-
-  // Card column
-  cardCol: { flex: 1 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md2,
-    paddingVertical: spacing.md,
-  },
-  cardPressed: { opacity: 0.65 },
-
-  cardTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  tripTitle: {
-    flex: 1,
-    fontFamily: fonts.serifBold,
-    fontWeight: "700",
-    fontSize: 17,
-    lineHeight: 23,
-    color: colors.textPrimary,
-  },
-  purposeIcon: { fontSize: 18, lineHeight: 24 },
-
-  cardMeta: { flexDirection: "row", gap: spacing.sm2, flexWrap: "wrap" },
-  metaText: { ...text.sm, color: colors.textSecondary },
-  metaDot: { ...text.sm, color: colors.textMuted },
-
-  separator: {
-    height: 1,
-    backgroundColor: colors.borderFaint,
-    marginHorizontal: spacing.base,
-  },
-
-  empty: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing["2xl"],
-  },
-  emptyIcon:  { fontSize: 48, marginBottom: spacing.base },
-  emptyTitle: {
-    fontSize: 18,
-    fontFamily: fonts.serifSemiBold,
-    fontWeight: "600",
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
-});

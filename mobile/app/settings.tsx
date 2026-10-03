@@ -2,14 +2,14 @@
  * Settings screen — developer/utility options.
  * Reachable via the gear icon in the Chronicle header.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { clearAll, useJournal } from "@chronicle/journal/db";
-import { colors, fonts, text, spacing, radius } from "../src/theme";
+import { useTheme } from "../src/components/ThemeProvider";
 
 export default function SettingsScreen() {
   const journal = useJournal();
@@ -17,6 +17,85 @@ export default function SettingsScreen() {
   const { top } = useSafeAreaInsets();
   const [clearing, setClearing] = useState(false);
   const dialog = useDialog();
+  const { colors, fonts, text, spacing, radius } = useTheme();
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
+
+    dragHandle: {
+      width: 36,
+      height: 4,
+      backgroundColor: colors.border,
+      borderRadius: 2,
+      alignSelf: "center",
+      marginBottom: spacing.lg,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: spacing.xl,
+    },
+    modalTitle: {
+      fontSize: 22,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      color: colors.textBright,
+    },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      backgroundColor: colors.surface,
+      borderRadius: 9999,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+
+    sectionTitle: { ...text.label, color: colors.textTertiary, marginBottom: 10 },
+
+    card: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: spacing.lg,
+      overflow: "hidden",
+    },
+    statRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingHorizontal: spacing.base,
+      paddingVertical: 13,
+    },
+    statLabel: { ...text.base, color: colors.textDim },
+    statValue: { ...text.base, color: colors.textPrimary, fontWeight: "600" },
+    divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+
+    resetBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.deleteBg,
+      paddingVertical: 14,
+      marginBottom: 10,
+    },
+    resetBtnDisabled: { opacity: 0.5 },
+    resetBtnText: { ...text.base, color: colors.error, fontWeight: "600" },
+
+    resetHint: {
+      ...text.sm,
+      color: colors.textMuted,
+      textAlign: "center",
+    },
+  }), [colors, fonts]);
 
   const entryCount =
     journal.legs.length +
@@ -93,81 +172,3 @@ export default function SettingsScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
-
-  dragHandle: {
-    width: 36,
-    height: 4,
-    backgroundColor: colors.border,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: spacing.lg,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: spacing.xl,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontFamily: fonts.serifSemiBold,
-    fontWeight: "600",
-    color: colors.textBright,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    backgroundColor: colors.surface,
-    borderRadius: 9999,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-
-  sectionTitle: { ...text.label, color: colors.textTertiary, marginBottom: 10 },
-
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: spacing.lg,
-    overflow: "hidden",
-  },
-  statRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: spacing.base,
-    paddingVertical: 13,
-  },
-  statLabel: { ...text.base, color: colors.textDim },
-  statValue: { ...text.base, color: colors.textPrimary, fontWeight: "600" },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
-
-  resetBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.deleteBg,
-    paddingVertical: 14,
-    marginBottom: 10,
-  },
-  resetBtnDisabled: { opacity: 0.5 },
-  resetBtnText: { ...text.base, color: colors.error, fontWeight: "600" },
-
-  resetHint: {
-    ...text.sm,
-    color: colors.textMuted,
-    textAlign: "center",
-  },
-});

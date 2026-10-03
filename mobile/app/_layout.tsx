@@ -14,7 +14,7 @@
  *   screen can read the file with expo-file-system and stage it.
  */
 import { useEffect, useRef } from "react";
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 import { Stack, SplashScreen, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
@@ -27,7 +27,7 @@ import {
 } from "@expo-google-fonts/lora";
 import { SQLiteAdapter } from "../src/lib/storage/SQLiteAdapter";
 import { setAdapter, initJournal, useJournal } from "@chronicle/journal/db";
-import { colors } from "../src/theme";
+import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -52,7 +52,13 @@ function looksLikeImportUri(url: string): boolean {
 // screen (a dev-only artefact), we redirect home instead.
 const MODAL_SCREENS = new Set(["import", "import-people", "settings"]);
 
-export default function RootLayout() {
+/**
+ * Inner layout — runs inside ThemeProvider so it can call useTheme().
+ * Contains all boot logic and renders the Stack navigator.
+ */
+function RootLayoutInner() {
+  const { colors } = useTheme();
+
   const [fontsLoaded, fontError] = useFonts({
     Lora_400Regular,
     Lora_500Medium,
@@ -65,7 +71,7 @@ export default function RootLayout() {
   const segments = useSegments();
   const booted = useRef(false);
 
-  // Boot: open SQLite → inject adapter → load all stores.
+  // Boot: open SQLite then inject adapter then load all stores.
   // Claim booted.current BEFORE any async work so that hot-reload re-mounts
   // (which re-run effects) don't open a second conflicting SQLite connection.
   useEffect(() => {
@@ -97,7 +103,7 @@ export default function RootLayout() {
   // Guard: if expo-router restores a stale navigation state that lands
   // directly on a modal screen (common during hot-reload in development),
   // redirect to the tabs root. Runs ONCE when the journal first becomes
-  // ready — deliberately excludes segments from the dep array so it
+  // ready -- deliberately excludes segments from the dep array so it
   // doesn't re-fire on every navigation the user makes afterward.
   useEffect(() => {
     if (!journal.ready) return;
@@ -120,7 +126,14 @@ export default function RootLayout() {
 
   if (!journal.ready || (!fontsLoaded && !fontError)) {
     return (
-      <View style={styles.loading}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.bg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <ActivityIndicator size="large" color={colors.accent} />
         <StatusBar style="light" />
       </View>
@@ -158,11 +171,14 @@ export default function RootLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
+/**
+ * Root layout — wraps everything in ThemeProvider so every descendant
+ * can call useTheme(). Boot logic lives in RootLayoutInner.
+ */
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <RootLayoutInner />
+    </ThemeProvider>
+  );
+}
