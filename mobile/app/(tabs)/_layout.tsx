@@ -3,13 +3,53 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { FloatingNavBar } from "../../src/components/FloatingNavBar";
+import { useJournal } from "@chronicle/journal/db";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
+
+/**
+ * Shared top-bar right side: Sources icon (with dot when staged items are
+ * pending) + Settings icon. Rendered on every tab via screenOptions.headerRight.
+ */
+function HeaderRight({ stagingCount }: { stagingCount: number }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: "row", gap: 4, marginRight: 8 }}>
+      <Link href="/import" asChild>
+        <Pressable style={{ padding: 8 }}>
+          <View>
+            <Ionicons name="cloud-upload-outline" size={22} color={colors.accentSoft} />
+            {stagingCount > 0 && (
+              <View
+                style={{
+                  position: "absolute",
+                  top: 1,
+                  right: 1,
+                  width: 7,
+                  height: 7,
+                  borderRadius: 3.5,
+                  backgroundColor: colors.error,
+                }}
+              />
+            )}
+          </View>
+        </Pressable>
+      </Link>
+      <Link href="/settings" asChild>
+        <Pressable style={{ padding: 8 }}>
+          <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
+        </Pressable>
+      </Link>
+    </View>
+  );
+}
 
 export default function TabLayout() {
   const router = useRouter();
   const pathname = usePathname();
   const { colors, fonts } = useTheme();
+  const journal = useJournal();
+  const stagingCount = journal.staging.length;
 
   // Derive active tab from current path so FloatingNavBar stays in sync
   // without needing the non-existent onIndexChange prop on Tabs.
@@ -48,28 +88,16 @@ export default function TabLayout() {
             color: colors.textBright,
           },
           tabBarStyle: { display: "none" },
+          // Shared top-bar right side on every tab (spec 6.2)
+          headerRight: () => <HeaderRight stagingCount={stagingCount} />,
         }}
       >
       <Tabs.Screen
         name="index"
         options={{
-          title: "Chronicle",
+          title: "Journal",
           tabBarLabel: "Chronicle",
           tabBarIcon: ({ focused }) => tabIcon(focused, "book", "book-outline"),
-          headerRight: () => (
-            <View style={{ flexDirection: "row", gap: 4, marginRight: 8 }}>
-              <Link href="/import" asChild>
-                <Pressable style={{ padding: 8 }}>
-                  <Ionicons name="cloud-upload-outline" size={22} color={colors.accentSoft} />
-                </Pressable>
-              </Link>
-              <Link href="/settings" asChild>
-                <Pressable style={{ padding: 8 }}>
-                  <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
-                </Pressable>
-              </Link>
-            </View>
-          ),
         }}
       />
       <Tabs.Screen
@@ -78,13 +106,6 @@ export default function TabLayout() {
           title: "Trips",
           tabBarIcon: ({ focused }) =>
             tabIcon(focused, "airplane", "airplane-outline"),
-          headerRight: () => (
-            <Link href="/trip/new" asChild>
-              <Pressable style={{ padding: 8, marginRight: 8 }}>
-                <Ionicons name="add" size={26} color={colors.accentSoft} />
-              </Pressable>
-            </Link>
-          ),
         }}
       />
       <Tabs.Screen
@@ -100,13 +121,6 @@ export default function TabLayout() {
           title: "People",
           tabBarIcon: ({ focused }) =>
             tabIcon(focused, "people", "people-outline"),
-          headerRight: () => (
-            <Link href="/import-people" asChild>
-              <Pressable style={{ padding: 8, marginRight: 8 }}>
-                <Ionicons name="person-add-outline" size={22} color={colors.accentSoft} />
-              </Pressable>
-            </Link>
-          ),
         }}
       />
     </Tabs>
