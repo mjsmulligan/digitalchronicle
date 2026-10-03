@@ -28,9 +28,10 @@ export function SourceMark({ source, size = 20, accessibilityLabel }: SourceMark
   const borderRadius = Math.round(size * 0.25);
 
   if (mark.type === "path") {
-    // SVG glyph chip — same design as before
+    const isSolid = mark.style === "solid";
     const iconSize = Math.round(size * 0.7);
-    const bgColor = `${mark.color}26`; // 15 % opacity
+    const bgColor = isSolid ? mark.color : `${mark.color}26`; // solid or 15 % tint
+    const glyphColor = isSolid ? "#ffffff" : mark.color;
 
     return (
       <View
@@ -46,7 +47,7 @@ export function SourceMark({ source, size = 20, accessibilityLabel }: SourceMark
           justifyContent: "center",
         }}
       >
-        <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill={mark.color}>
+        <Svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill={glyphColor}>
           <Path d={mark.d} />
         </Svg>
       </View>
