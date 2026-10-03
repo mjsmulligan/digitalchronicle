@@ -189,8 +189,12 @@ export const text = {
   xl:    { fontSize: 18, lineHeight: 26 } as const,
   "2xl": { fontSize: 20, lineHeight: 28 } as const,
   "3xl": { fontSize: 22, lineHeight: 30 } as const,
-  "4xl": { fontSize: 28, lineHeight: 36 } as const,
-  hero:  { fontSize: 48, lineHeight: 56 } as const,
+  "4xl":      { fontSize: 28, lineHeight: 36 } as const,
+  hero:       { fontSize: 48, lineHeight: 56 } as const,
+  // Named type roles (spec 4.4)
+  dayNum:     { fontSize: 32, lineHeight: 36 } as const,
+  feedTitle:  { fontSize: 17, lineHeight: 24 } as const,
+  pageTitle:  { fontSize: 28, lineHeight: 34 } as const,
   label: {
     fontSize: 11,
     fontWeight: "700" as const,
@@ -336,6 +340,7 @@ function makeCommon(colors: ThemeColors, fonts: ThemeFonts) {
     },
     sectionLabel: {
       ...text.label,
+      fontFamily: fonts.mono,
       color: colors.textTertiary,
       marginBottom: spacing.sm,
     },

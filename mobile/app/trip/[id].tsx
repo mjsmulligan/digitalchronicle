@@ -89,7 +89,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       marginBottom: 0,
     },
     headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
-    tripDateRange: { ...textScale.sm, color: colors.textTertiary, fontFamily: "monospace", flex: 1 },
+    tripDateRange: { ...textScale.sm, color: colors.textTertiary, fontFamily: fonts.mono, flex: 1 },
     purposeIcon: { fontSize: 18, marginLeft: spacingScale.sm },
     tripTitle: {
       fontSize: 22,
@@ -121,17 +121,18 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     dateNum: {
       fontFamily: fonts.serifBold,
       fontWeight: "700",
-      fontSize: 34,
-      lineHeight: 38,
+      ...textScale.dayNum,
       color: colors.textBright,
     },
     dateNumDim: { color: colors.textTertiary },
     dateSub: {
+      fontFamily: fonts.mono,
       fontSize: 10,
       fontWeight: "700",
-      letterSpacing: 0.6,
+      letterSpacing: 0.8,
       color: colors.textTertiary,
       lineHeight: 15,
+      textTransform: "uppercase" as const,
     },
 
     // Vertical rule
@@ -163,7 +164,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     cardSuggestion: { borderColor: colors.borderFaint },
 
     cardIcon:    { fontSize: 18 },
-    cardTitle:   { flex: 1, ...textScale.base, color: colors.textPrimary, fontWeight: "500" },
+    cardTitle:   { flex: 1, ...textScale.feedTitle, fontFamily: fonts.serifMedium, color: colors.textPrimary, fontWeight: "500" },
     cardChevron: { fontSize: 20, color: colors.border },
 
     addBtn: {

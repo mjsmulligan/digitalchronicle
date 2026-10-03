@@ -92,16 +92,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     dateNum: {
       fontFamily: fonts.serifBold,
       fontWeight: "700",
-      fontSize: 34,
-      lineHeight: 38,
+      ...textScale.dayNum,
       color: colors.textBright,
     },
     dateSub: {
+      fontFamily: fonts.mono,
       fontSize: 10,
       fontWeight: "700",
-      letterSpacing: 0.6,
+      letterSpacing: 0.8,
       color: colors.textTertiary,
       lineHeight: 15,
+      textTransform: "uppercase" as const,
     },
 
     // Vertical rule between date and entries
@@ -135,16 +136,19 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     cardIcon: { fontSize: 18, lineHeight: 24, marginTop: 1 },
     cardBody: { flex: 1 },
     cardTitle: {
-      ...textScale.base,
+      ...textScale.feedTitle,
+      fontFamily: fonts.serifMedium,
       color: colors.textPrimary,
       fontWeight: "500",
       marginBottom: 3,
     },
     cardTrip: {
       ...textScale.xs,
+      fontFamily: fonts.mono,
       color: colors.accentSoft,
       fontWeight: "600",
-      letterSpacing: 0.4,
+      letterSpacing: 0.8,
+      textTransform: "uppercase" as const,
       marginTop: 2,
     },
     cardRating: { ...textScale.xs, color: colors.star, marginTop: 3 },
