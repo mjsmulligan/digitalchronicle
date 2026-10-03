@@ -25,9 +25,9 @@
  *     </>
  *   );
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, fonts, spacing, radius } from "../theme";
+import { useTheme, spacing, radius } from "../components/ThemeProvider";
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -117,6 +117,81 @@ export function Dialog({
   lockBackdrop,
   onDismiss,
 }: DialogProps) {
+  const { colors, fonts } = useTheme();
+
+  const styles = useMemo(() => StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.65)",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: spacing["2xl"],
+    },
+    card: {
+      width: "100%",
+      backgroundColor: colors.surface,
+      borderRadius: radius["2xl"],
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.xl,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.5,
+      shadowRadius: 24,
+      elevation: 16,
+    },
+    title: {
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600" as const,
+      fontSize: 18,
+      color: colors.textBright,
+      marginBottom: spacing.sm,
+    },
+    message: {
+      fontSize: 14,
+      lineHeight: 21,
+      color: colors.textSecondary,
+      marginBottom: spacing.xl,
+    },
+    actions: {
+      flexDirection: "row" as const,
+      gap: spacing.sm,
+    },
+    actionsSingle: {
+      justifyContent: "flex-end" as const,
+    },
+    btn: {
+      flex: 1,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.md2,
+      borderRadius: radius.lg,
+      alignItems: "center" as const,
+      backgroundColor: colors.accentBold,
+    },
+    btnCancel: {
+      backgroundColor: "transparent",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    btnDestructive: {
+      backgroundColor: colors.error,
+    },
+    btnPressed: {
+      opacity: 0.7,
+    },
+    btnText: {
+      fontSize: 14,
+      fontWeight: "600" as const,
+      color: colors.white,
+    },
+    btnTextCancel: {
+      color: colors.textSecondary,
+    },
+    btnTextDestructive: {
+      color: colors.white,
+    },
+  }), [colors, fonts]);
+
   const handleAction = (action: DialogAction) => {
     onDismiss();
     action.onPress?.();
@@ -170,84 +245,3 @@ export function Dialog({
   );
 }
 
-// ── styles ────────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: spacing["2xl"],
-  },
-
-  card: {
-    width: "100%",
-    backgroundColor: colors.surface,
-    borderRadius: radius["2xl"],
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.xl,
-    // Subtle shadow so it lifts off the backdrop
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-
-  title: {
-    fontFamily: fonts.serifSemiBold,
-    fontWeight: "600",
-    fontSize: 18,
-    color: colors.textBright,
-    marginBottom: spacing.sm,
-  },
-
-  message: {
-    fontSize: 14,
-    lineHeight: 21,
-    color: colors.textSecondary,
-    marginBottom: spacing.xl,
-  },
-
-  actions: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  actionsSingle: {
-    justifyContent: "flex-end",
-  },
-
-  btn: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md2,
-    borderRadius: radius.lg,
-    alignItems: "center",
-    backgroundColor: colors.accentBold,
-  },
-  btnCancel: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  btnDestructive: {
-    backgroundColor: colors.error,
-  },
-  btnPressed: {
-    opacity: 0.7,
-  },
-
-  btnText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.white,
-  },
-  btnTextCancel: {
-    color: colors.textSecondary,
-  },
-  btnTextDestructive: {
-    color: colors.white,
-  },
-});
