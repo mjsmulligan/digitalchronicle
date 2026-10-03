@@ -106,8 +106,12 @@ function parseGeneric(text: string): ParseResult {
         mode,
         from: pick(r, ["from", "origin"]),
         to: pick(r, ["to", "destination"]),
-        flightNumber: pick(r, ["flightnumber", "flight"]) || undefined,
-        operator: pick(r, ["operator", "airline"]) || undefined,
+        flightNumber: pick(r, ["flightnumber", "flight_number", "flight"]) || undefined,
+        operator: pick(r, ["operator", "airline"]) ||
+          // Derive from IATA carrier prefix (e.g. "FR3670" → "FR") when no
+          // explicit operator column exists (Google Wallet CSV, etc.)
+          (pick(r, ["flightnumber", "flight_number", "flight"]) || "").match(/^([A-Z]{2})/)?.[1] ||
+          undefined,
         dedupeKey: "",
       };
       if (!leg.from || !leg.to)
