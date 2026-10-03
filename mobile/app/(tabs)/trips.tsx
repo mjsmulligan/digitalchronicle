@@ -6,7 +6,7 @@
  */
 import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Trip } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
@@ -55,6 +55,19 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
     list: { flex: 1, backgroundColor: colors.bg },
     listContent: { paddingBottom: spacingScale["3xl"] },
+    listAction: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      paddingHorizontal: spacingScale.base,
+      minHeight: 48,
+    },
+    listActionText: {
+      fontSize: 14,
+      fontFamily: fonts.sans,
+      color: colors.accentSoft,
+      fontWeight: "500",
+    },
 
     // Two-column row
     row: {
@@ -254,6 +267,13 @@ export default function TripsScreen() {
       renderItem={({ item }) => <TripRow item={item} styles={styles} colors={colors} />}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       contentContainerStyle={styles.listContent}
+      ListHeaderComponent={
+        <Link href="/trip/new" asChild>
+          <Pressable style={styles.listAction}>
+            <Text style={styles.listActionText}>New trip</Text>
+          </Pressable>
+        </Link>
+      }
     />
   );
 }

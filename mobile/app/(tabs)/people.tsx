@@ -4,10 +4,10 @@
  */
 import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Person } from "@chronicle/journal/types";
-import { useTheme, type ThemeColors, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,8 +17,21 @@ function entryCountFor(personId: string, entries: ReturnType<typeof allEntries>)
 
 // ── styles factory ────────────────────────────────────────────────────────────
 
-function createStyles(colors: ThemeColors) {
+function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
+    listAction: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      paddingHorizontal: spacingScale.base,
+      minHeight: 48,
+    },
+    listActionText: {
+      fontSize: 14,
+      fontFamily: fonts.sans,
+      color: colors.accentSoft,
+      fontWeight: "500",
+    },
     list: { flex: 1, backgroundColor: colors.bg },
     row: {
       flexDirection: "row",
@@ -125,8 +138,8 @@ function PersonRow({
 
 export default function PeopleScreen() {
   const journal = useJournal();
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { colors, fonts } = useTheme();
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   const sorted = useMemo(() => {
     const entries = allEntries(journal);
@@ -145,7 +158,7 @@ export default function PeopleScreen() {
         <Text style={styles.emptyIcon}>👤</Text>
         <Text style={styles.emptyTitle}>No people yet</Text>
         <Text style={styles.emptyHint}>
-          Tap the import icon above to add people from a .vcf or contacts CSV file.
+          Use Import contacts to add people from a .vcf or contacts CSV file.
         </Text>
       </View>
     );
@@ -159,6 +172,13 @@ export default function PeopleScreen() {
       renderItem={({ item: { person, entryCount } }) => (
         <PersonRow person={person} entryCount={entryCount} styles={styles} />
       )}
+      ListHeaderComponent={
+        <Link href="/import-people" asChild>
+          <Pressable style={styles.listAction}>
+            <Text style={styles.listActionText}>Import contacts</Text>
+          </Pressable>
+        </Link>
+      }
     />
   );
 }

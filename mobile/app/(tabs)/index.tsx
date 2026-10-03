@@ -1,157 +1,32 @@
 /**
  * Chronicle tab — chronological feed of all entry kinds.
  *
- * Layout: journal two-column pattern
- *   +--------+--+----------------------------------+
- *   |  20    |  |  +------------------------------+ |
- *   |  SUN   |  |  | Entry title          FLIGHT  | |
- *   |  SEPT  |  |  +------------------------------+ |
- *   |  2026  |  |  +------------------------------+ |
- *   |        |  |  | Another entry          FILM  | |
- *   +--------+--+----------------------------------+
+ * Layout: one DayGroup per calendar day, newest first.
+ * Each DayGroup renders the date column, a vertical spine rule, optional
+ * trip label, entry rows (hairline-separated, not cards), and a reflection
+ * prompt at the bottom — matching the web Chronicle feed (src/routes/index.tsx).
  *
- * The date column anchors each day like a page of a Moleskine.
- * The vertical rule between them is a quiet journal-spine metaphor.
+ * Search, kind/category filters, and the People filter are WP1.10.
  */
 import { useMemo } from "react";
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import { entryTitle, view, type Entry } from "@chronicle/journal/types";
-import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
-import { KindIcon, StarRating } from "../../src/components/KindIcon";
+import { type Entry, type Note } from "@chronicle/journal/types";
+import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "../../src/components/ThemeProvider";
+import { KindIcon } from "../../src/components/KindIcon";
+import { DayGroup, type DayGroupData } from "../../src/components/DayGroup";
 
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN",
-                      "JUL","AUG","SEP","OCT","NOV","DEC"];
-const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-
-function parseDay(iso: string) {
-  // Use noon to avoid DST edge-cases shifting the date
-  const d = new Date(iso + "T12:00:00");
-  return {
-    num:   d.getDate().toString(),
-    day:   DAYS_SHORT[d.getDay()],
-    month: MONTHS_SHORT[d.getMonth()],
-    year:  d.getFullYear().toString(),
-  };
-}
-
-function entrySubkind(e: Entry): string | undefined {
-  if (e.kind === "leg") return e.mode;
-  if (e.kind === "event") return (e as Extract<Entry, { kind: "event" }>).category;
-  return undefined;
-}
-
-// ── data ─────────────────────────────────────────────────────────────────────
-
-interface DayEntry {
-  entry: Entry;
-  tripTitle?: string;
-}
-
-interface DayGroup {
-  iso: string;
-  items: DayEntry[];
-}
-
-// ── styles factory ────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
+// ── styles ────────────────────────────────────────────────────────────────────
 
 function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
     list:    { flex: 1, backgroundColor: colors.bg },
     content: { paddingBottom: spacingScale["3xl"] },
 
-    // Day group row
-    dayGroup: {
-      flexDirection: "row",
-      paddingHorizontal: spacingScale.base,
-      paddingTop: spacingScale.xl,
-      paddingBottom: spacingScale.sm,
-    },
-
-    // Date column
-    dateCol: {
-      width: DATE_COL_W,
-      alignItems: "center",
-      paddingTop: 2,
-      flexShrink: 0,
-    },
-    dateNum: {
-      fontFamily: fonts.serifBold,
-      fontWeight: "700",
-      ...textScale.dayNum,
-      color: colors.textBright,
-    },
-    dateSub: {
-      fontFamily: fonts.mono,
-      fontSize: 10,
-      fontWeight: "700",
-      letterSpacing: 0.8,
-      color: colors.textTertiary,
-      lineHeight: 15,
-      textTransform: "uppercase" as const,
-    },
-
-    // Vertical rule between date and entries
-    dateRule: {
-      width: 1,
-      alignSelf: "stretch",
-      backgroundColor: colors.border,
-      marginHorizontal: spacingScale.md,
-      marginTop: 4,
-    },
-
-    // Entries column
-    entriesCol: {
-      flex: 1,
-      gap: spacingScale.sm,
-    },
-
-    // Entry card
-    card: {
-      backgroundColor: colors.surface,
-      borderRadius: radiusScale.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: spacingScale.md2,
-      paddingVertical: spacingScale.md,
-      flexDirection: "row",
-      alignItems: "flex-start",
-      gap: spacingScale.sm,
-    },
-    cardPressed: { opacity: 0.65 },
-    cardBody: { flex: 1 },
-    cardTitle: {
-      ...textScale.feedTitle,
-      fontFamily: fonts.serifMedium,
-      color: colors.textPrimary,
-      fontWeight: "500",
-      marginBottom: 3,
-    },
-    cardTrip: {
-      ...textScale.xs,
-      fontFamily: fonts.mono,
-      color: colors.accentSoft,
-      fontWeight: "600",
-      letterSpacing: 0.8,
-      textTransform: "uppercase" as const,
-      marginTop: 2,
-    },
-    cardRating: { ...textScale.xs, color: colors.star, marginTop: 3 },
-
-    // Separator between days
+    // Hairline separator between day groups
     daySeparator: {
-      height: 1,
+      height: StyleSheet.hairlineWidth,
       backgroundColor: colors.borderFaint,
       marginHorizontal: spacingScale.base,
     },
@@ -165,103 +40,60 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       padding: spacingScale["2xl"],
     },
     emptyTitle: {
-      fontSize: 20,
+      ...textScale.xl,
       fontFamily: fonts.serifSemiBold,
       fontWeight: "600",
       color: colors.textPrimary,
+      marginTop: spacingScale.base,
       marginBottom: spacingScale.sm,
     },
     emptyHint:  { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
   });
 }
 
-type Styles = ReturnType<typeof createStyles>;
-
-// ── components ────────────────────────────────────────────────────────────────
-
-function EntryCard({ item, styles, colors }: { item: DayEntry; styles: Styles; colors: ThemeColors }) {
-  const router = useRouter();
-  const { entry, tripTitle } = item;
-  const v = view(entry);
-
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => router.push(`/entry/${entry.id}`)}
-    >
-      <KindIcon
-        kind={entry.kind}
-        subkind={entrySubkind(entry)}
-        size={18}
-        color={colors.textSecondary}
-        accessibilityLabel=""
-      />
-      <View style={styles.cardBody}>
-        <Text style={styles.cardTitle} numberOfLines={2}>
-          {entryTitle(v)}
-        </Text>
-        {tripTitle && (
-          <Text style={styles.cardTrip} numberOfLines={1}>
-            {"◆"} {tripTitle}
-          </Text>
-        )}
-        {v.rating !== undefined && (
-          <StarRating rating={v.rating} color={colors.star} size={11} />
-        )}
-      </View>
-    </Pressable>
-  );
-}
-
-function DayGroupRow({ group, styles, colors }: { group: DayGroup; styles: Styles; colors: ThemeColors }) {
-  const { num, day, month, year } = parseDay(group.iso);
-
-  return (
-    <View style={styles.dayGroup}>
-      {/* Left: date column */}
-      <View style={styles.dateCol}>
-        <Text style={styles.dateNum}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-
-      {/* Centre: vertical rule */}
-      <View style={styles.dateRule} />
-
-      {/* Right: entry cards */}
-      <View style={styles.entriesCol}>
-        {group.items.map((item) => (
-          <EntryCard key={item.entry.id} item={item} styles={styles} colors={colors} />
-        ))}
-      </View>
-    </View>
-  );
-}
-
 // ── screen ───────────────────────────────────────────────────────────────────
 
 export default function ChronicleScreen() {
   const journal = useJournal();
+  const router = useRouter();
   const { colors, fonts } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
-  const groups = useMemo<DayGroup[]>(() => {
+  // Build day groups mirroring web logic (src/routes/index.tsx):
+  //   - Group entries by calendar day (newest first)
+  //   - Attach the trip whose date range contains each day (not just tripId match)
+  //   - Attach the day-level reflection note if one exists
+  const groups = useMemo<DayGroupData[]>(() => {
     const entries = allEntries(journal).sort((a, b) =>
-      b.start.localeCompare(a.start)
+      (a.overrides?.start ?? a.start).localeCompare(b.overrides?.start ?? b.start)
     );
-    const tripMap = new Map(journal.trips.map((t) => [t.id, t.title]));
 
-    const byDay = new Map<string, DayEntry[]>();
+    // Build day → entries map
+    const byDay = new Map<string, Entry[]>();
     for (const e of entries) {
-      const day = e.start.slice(0, 10);
-      if (!byDay.has(day)) byDay.set(day, []);
-      byDay.get(day)!.push({
-        entry: e,
-        tripTitle: e.tripId ? tripMap.get(e.tripId) : undefined,
-      });
+      const d = (e.overrides?.start ?? e.start).slice(0, 10);
+      if (!byDay.has(d)) byDay.set(d, []);
+      byDay.get(d)!.push(e);
     }
-    return [...byDay.entries()].map(([iso, items]) => ({ iso, items }));
+
+    // Build day → note map
+    const noteByDay = new Map<string, Note>();
+    for (const n of journal.notes) {
+      if (n.date && !n.tripId) noteByDay.set(n.date, n);
+    }
+
+    // Resolve trip for each day by date range (mirrors web `tripOf`)
+    const tripOf = (d: string) =>
+      journal.trips.find((t) => d >= t.start && d <= t.end);
+
+    return [...byDay.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))  // newest day first
+      .map(([iso, items]) => ({
+        iso,
+        items,
+        tripTitle: tripOf(iso)?.title,
+        note: noteByDay.get(iso),
+      }));
   }, [journal]);
 
   if (!groups.length) {
@@ -281,9 +113,19 @@ export default function ChronicleScreen() {
       style={styles.list}
       data={groups}
       keyExtractor={(g) => g.iso}
-      renderItem={({ item }) => <DayGroupRow group={item} styles={styles} colors={colors} />}
+      renderItem={({ item: group }) => (
+        <DayGroup
+          group={group}
+          colors={colors}
+          fonts={fonts}
+          onEntryPress={(entry) => router.push(`/entry/${entry.id}`)}
+          // onReflectionPress wired up in WP1.10
+        />
+      )}
       ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
       contentContainerStyle={styles.content}
+      // removeClippedSubviews helps with large feeds
+      removeClippedSubviews
     />
   );
 }
