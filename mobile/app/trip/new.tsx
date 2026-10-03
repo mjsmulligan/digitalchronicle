@@ -15,14 +15,15 @@ import { Stack, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
 import { uid, type Purpose } from "@chronicle/journal/types";
 import { useTheme } from "../../src/components/ThemeProvider";
+import { KindIcon } from "../../src/components/KindIcon";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const PURPOSES: { id: Purpose; label: string; emoji: string }[] = [
-  { id: "leisure", label: "Leisure",  emoji: "🌴" },
-  { id: "work",    label: "Work",     emoji: "💼" },
-  { id: "family",  label: "Family",   emoji: "👨‍👩‍👧" },
-  { id: "other",   label: "Other",    emoji: "📌" },
+const PURPOSES: { id: Purpose; label: string; kind: string }[] = [
+  { id: "leisure", label: "Leisure",  kind: "leisure" },
+  { id: "work",    label: "Work",     kind: "work" },
+  { id: "family",  label: "Family",   kind: "family" },
+  { id: "other",   label: "Other",    kind: "location" },
 ];
 
 /** Returns today as YYYY-MM-DD */
@@ -77,7 +78,7 @@ export default function NewTripScreen() {
       borderColor: colors.border,
     },
     purposeChipActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
-    purposeEmoji: { fontSize: 14 },
+    purposeIconWrap: { marginTop: 1 },
     purposeLabel: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
     purposeLabelActive: { color: colors.accentSubtle },
 
@@ -202,7 +203,14 @@ export default function NewTripScreen() {
             style={[styles.purposeChip, purpose === p.id && styles.purposeChipActive]}
             onPress={() => setPurpose(purpose === p.id ? undefined : p.id)}
           >
-            <Text style={styles.purposeEmoji}>{p.emoji}</Text>
+            <View style={styles.purposeIconWrap}>
+              <KindIcon
+                kind={p.kind}
+                size={14}
+                color={purpose === p.id ? colors.accentSubtle : colors.textSecondary}
+                accessibilityLabel=""
+              />
+            </View>
             <Text style={[styles.purposeLabel, purpose === p.id && styles.purposeLabelActive]}>
               {p.label}
             </Text>

@@ -31,6 +31,7 @@ import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
 import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatus } from "@chronicle/journal/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../src/components/ThemeProvider";
+import { KindIcon } from "../src/components/KindIcon";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -52,14 +53,10 @@ const STATUS_LABEL: Record<StageStatus, string> = {
   "batch-duplicate": "dupe in file",
 };
 
-function entryEmoji(e: StagedRecord["entry"]): string {
-  if (e.kind === "leg") return e.mode === "air" ? "✈️" : e.mode === "rail" ? "🚆" : "🚗";
-  if (e.kind === "stay") return "🏨";
-  if (e.kind === "film") return "🎬";
-  if (e.kind === "episode") return "📺";
-  if (e.kind === "book") return "📖";
-  const cat = (e as Extract<typeof e, { kind: "event" }>).category;
-  return cat === "concert" ? "🎵" : cat === "celebration" ? "🎉" : "📍";
+function entrySubkind(e: StagedRecord["entry"]): string | undefined {
+  if (e.kind === "leg") return e.mode;
+  if (e.kind === "event") return (e as Extract<typeof e, { kind: "event" }>).category;
+  return undefined;
 }
 
 function isSelectable(status: StageStatus): boolean {
@@ -133,8 +130,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     },
     errorBoxText: { ...textScale.smMd, color: colors.errorLight },
 
-    empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacingScale["2xl"] },
-    emptyIcon: { fontSize: 40, marginBottom: spacingScale.md },
+    empty: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: spacingScale["2xl"], gap: spacingScale.md },
     emptyTitle: {
       fontSize: 20,
       fontFamily: fonts.serifSemiBold,
@@ -203,7 +199,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     },
     recordRowDim: { opacity: 0.45 },
     recordSwitch: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
-    recordEmoji: { fontSize: 16, width: 22, textAlign: "center" },
+    recordIconWrap: { width: 22, alignItems: "center" },
     recordBody: { flex: 1 },
     recordTitle: { ...textScale.md, color: colors.textPrimary, fontWeight: "500", marginBottom: 2 },
     recordMeta: { flexDirection: "row", gap: spacingScale.sm, flexWrap: "wrap" },
@@ -258,18 +254,12 @@ function RecordRow({
   record,
   onToggle,
   styles,
-  accentColor,
-  borderColor,
-  textMutedColor,
-  accentSubtleColor,
+  colors,
 }: {
   record: StagedRecord;
   onToggle: (selected: boolean) => void;
   styles: Styles;
-  accentColor: string;
-  borderColor: string;
-  textMutedColor: string;
-  accentSubtleColor: string;
+  colors: ThemeColors;
 }) {
   const v = view(record.entry);
   const selectable = isSelectable(record.status);
@@ -279,11 +269,19 @@ function RecordRow({
         value={record.selected}
         onValueChange={onToggle}
         disabled={!selectable}
-        trackColor={{ true: accentColor, false: borderColor }}
-        thumbColor={record.selected ? accentSubtleColor : textMutedColor}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={record.selected ? colors.accentSubtle : colors.textMuted}
         style={styles.recordSwitch}
       />
-      <Text style={styles.recordEmoji}>{entryEmoji(record.entry)}</Text>
+      <View style={styles.recordIconWrap}>
+        <KindIcon
+          kind={record.entry.kind}
+          subkind={entrySubkind(record.entry)}
+          size={16}
+          color={colors.textSecondary}
+          accessibilityLabel=""
+        />
+      </View>
       <View style={styles.recordBody}>
         <Text style={styles.recordTitle} numberOfLines={1}>
           {entryTitle(v)}
@@ -454,10 +452,7 @@ function BatchReview({
             record={item}
             onToggle={(v) => toggleRecord(index, v)}
             styles={styles}
-            accentColor={colors.accent}
-            borderColor={colors.border}
-            textMutedColor={colors.textMuted}
-            accentSubtleColor={colors.accentSubtle}
+            colors={colors}
           />
         )}
         style={styles.recordList}
@@ -638,7 +633,7 @@ export default function ImportScreen() {
       {/* Empty pending state */}
       {phase === "idle" && !pendingBatches.length && !error && (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>📂</Text>
+          <KindIcon kind="book" size={40} color={colors.textTertiary} accessibilityLabel="" />
           <Text style={styles.emptyTitle}>No pending imports</Text>
           <Text style={styles.emptyHint}>
             Pick a file above, or share one directly to Chronicle from your file
