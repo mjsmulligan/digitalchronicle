@@ -18,6 +18,13 @@ import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { Stack, SplashScreen, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
+import { useFonts } from "expo-font";
+import {
+  Lora_400Regular,
+  Lora_500Medium,
+  Lora_600SemiBold,
+  Lora_700Bold,
+} from "@expo-google-fonts/lora";
 import { SQLiteAdapter } from "../src/lib/storage/SQLiteAdapter";
 import { setAdapter, initJournal, useJournal } from "@chronicle/journal/db";
 import { colors } from "../src/theme";
@@ -46,6 +53,13 @@ function looksLikeImportUri(url: string): boolean {
 const MODAL_SCREENS = new Set(["import", "import-people", "settings"]);
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Lora_400Regular,
+    Lora_500Medium,
+    Lora_600SemiBold,
+    Lora_700Bold,
+  });
+
   const journal = useJournal();
   const router = useRouter();
   const segments = useSegments();
@@ -75,10 +89,10 @@ export default function RootLayout() {
     })();
   }, []);
 
-  // Hide splash once journal data is loaded
+  // Hide splash once journal data is loaded AND fonts are ready
   useEffect(() => {
-    if (journal.ready) SplashScreen.hideAsync();
-  }, [journal.ready]);
+    if (journal.ready && fontsLoaded) SplashScreen.hideAsync();
+  }, [journal.ready, fontsLoaded]);
 
   // Guard: if expo-router restores a stale navigation state that lands
   // directly on a modal screen (common during hot-reload in development),
@@ -104,7 +118,7 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
-  if (!journal.ready) {
+  if (!journal.ready || !fontsLoaded) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator size="large" color={colors.accent} />
