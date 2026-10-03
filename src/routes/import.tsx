@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { SourceIcon } from "@/components/journal/SourceIcon";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Upload, AlertTriangle, Scissors, Merge, Trash2 } from "lucide-react";

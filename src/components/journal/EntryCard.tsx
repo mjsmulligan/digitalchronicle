@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { SourceIcon } from "@/components/journal/SourceIcon";
 import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2, X, Plus, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
