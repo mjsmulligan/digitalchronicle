@@ -151,13 +151,18 @@ export interface DayGroupProps {
   onEntryPress: (entry: Entry) => void;
   /** Called when the user taps the reflection prompt. Wired up in WP1.10. */
   onReflectionPress?: (iso: string) => void;
+  /**
+   * Whether to show the reflection note / "+ reflection for this day" prompt.
+   * Default `true` — Chronicle shows it. Culture, Trips, People pass `false`.
+   */
+  showReflection?: boolean;
 }
 
 /**
  * Renders one day in the journal feed.
  * Designed to be the renderItem of a FlatList where each item is one day.
  */
-export function DayGroup({ group, colors, fonts, onEntryPress, onReflectionPress }: DayGroupProps) {
+export function DayGroup({ group, colors, fonts, onEntryPress, onReflectionPress, showReflection = true }: DayGroupProps) {
   const { num, day, month, year } = parseDay(group.iso);
   const styles = createStyles(colors, fonts);
 
@@ -194,15 +199,18 @@ export function DayGroup({ group, colors, fonts, onEntryPress, onReflectionPress
           </React.Fragment>
         ))}
 
-        {/* Reflection line — show existing note or prompt */}
-        {group.note ? (
-          <Pressable onPress={() => onReflectionPress?.(group.iso)}>
-            <Text style={styles.reflectText}>{group.note.text}</Text>
-          </Pressable>
-        ) : (
-          <Pressable onPress={() => onReflectionPress?.(group.iso)}>
-            <Text style={styles.reflectPrompt}>+ reflection for this day</Text>
-          </Pressable>
+        {/* Reflection: show existing note text, or the "+ reflection" prompt when
+            showReflection is true. Culture / Trips / People pass showReflection=false. */}
+        {showReflection && (
+          group.note ? (
+            <Pressable onPress={() => onReflectionPress?.(group.iso)}>
+              <Text style={styles.reflectText}>{group.note.text}</Text>
+            </Pressable>
+          ) : (
+            <Pressable onPress={() => onReflectionPress?.(group.iso)}>
+              <Text style={styles.reflectPrompt}>+ reflection for this day</Text>
+            </Pressable>
+          )
         )}
       </View>
     </View>

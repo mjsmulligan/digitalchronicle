@@ -3,55 +3,14 @@
  * in the two-column journal layout.
  */
 import { useMemo } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import { entryTitle, view, type Entry, type Person } from "@chronicle/journal/types";
+import { type Entry, type Person } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
-import { KindIcon } from "../../src/components/KindIcon";
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN",
-                      "JUL","AUG","SEP","OCT","NOV","DEC"];
-const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-
-function parseDay(iso: string) {
-  const d = new Date(iso + "T12:00:00");
-  return {
-    num:   d.getDate().toString(),
-    day:   DAYS_SHORT[d.getDay()],
-    month: MONTHS_SHORT[d.getMonth()],
-    year:  d.getFullYear().toString(),
-  };
-}
-
-function entrySubkind(e: Entry): string | undefined {
-  if (e.kind === "leg") return e.mode;
-  if (e.kind === "event") return (e as Extract<Entry, { kind: "event" }>).category;
-  return undefined;
-}
-
-// ── data ──────────────────────────────────────────────────────────────────────
-
-interface DayGroup {
-  iso: string;
-  items: Entry[];
-}
-
-function groupByDay(entries: Entry[]): DayGroup[] {
-  const map = new Map<string, Entry[]>();
-  for (const e of entries) {
-    const day = e.start.slice(0, 10);
-    if (!map.has(day)) map.set(day, []);
-    map.get(day)!.push(e);
-  }
-  return [...map.entries()].map(([iso, items]) => ({ iso, items }));
-}
+import { DayGroup, type DayGroupData } from "../../src/components/DayGroup";
 
 // ── styles factory ────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
 
 function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
@@ -113,60 +72,8 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       marginBottom: 0,
     },
 
-    // Two-column layout
-    dayGroup: {
-      flexDirection: "row",
-      paddingHorizontal: spacingScale.base,
-      paddingTop: spacingScale.xl,
-      paddingBottom: spacingScale.sm,
-    },
-    dateCol: {
-      width: DATE_COL_W,
-      alignItems: "center",
-      paddingTop: 2,
-      flexShrink: 0,
-    },
-    dateNum: {
-      fontFamily: fonts.serifBold,
-      fontWeight: "700",
-      ...textScale.dayNum,
-      color: colors.textBright,
-    },
-    dateSub: {
-      fontFamily: fonts.mono,
-      fontSize: 10,
-      fontWeight: "700",
-      letterSpacing: 0.8,
-      color: colors.textTertiary,
-      lineHeight: 15,
-      textTransform: "uppercase" as const,
-    },
-    dateRule: {
-      width: 1,
-      alignSelf: "stretch",
-      backgroundColor: colors.border,
-      marginHorizontal: spacingScale.md,
-      marginTop: 4,
-    },
-    cardsCol: { flex: 1, gap: spacingScale.sm },
-
-    card: {
-      backgroundColor: colors.surface,
-      borderRadius: radiusScale.lg,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: spacingScale.md2,
-      paddingVertical: spacingScale.md,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacingScale.sm,
-    },
-    cardPressed: { opacity: 0.65 },
-    cardTitle:   { flex: 1, ...textScale.feedTitle, fontFamily: fonts.serifMedium, color: colors.textPrimary, fontWeight: "500" },
-    cardChevron: { fontSize: 20, color: colors.border },
-
     daySeparator: {
-      height: 1,
+      height: StyleSheet.hairlineWidth,
       backgroundColor: colors.borderFaint,
       marginHorizontal: spacingScale.base,
     },
@@ -179,48 +86,12 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   });
 }
 
-type Styles = ReturnType<typeof createStyles>;
-
-// ── components ────────────────────────────────────────────────────────────────
-
-function EntryCard({ entry, styles, colors }: { entry: Entry; styles: Styles; colors: ThemeColors }) {
-  const router = useRouter();
-  const v = view(entry);
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => router.push(`/entry/${entry.id}`)}
-    >
-      <KindIcon kind={entry.kind} subkind={entrySubkind(entry)} size={18} color={colors.textSecondary} accessibilityLabel="" />
-      <Text style={styles.cardTitle} numberOfLines={2}>{entryTitle(v)}</Text>
-      <Text style={styles.cardChevron}>{"›"}</Text>
-    </Pressable>
-  );
-}
-
-function DayGroupRow({ group, styles, colors }: { group: DayGroup; styles: Styles; colors: ThemeColors }) {
-  const { num, day, month, year } = parseDay(group.iso);
-  return (
-    <View style={styles.dayGroup}>
-      <View style={styles.dateCol}>
-        <Text style={styles.dateNum}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-      <View style={styles.dateRule} />
-      <View style={styles.cardsCol}>
-        {group.items.map((e) => <EntryCard key={e.id} entry={e} styles={styles} colors={colors} />)}
-      </View>
-    </View>
-  );
-}
-
 // ── screen ────────────────────────────────────────────────────────────────────
 
 export default function PersonDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const journal = useJournal();
+  const router = useRouter();
   const { colors, fonts, common } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
@@ -229,12 +100,18 @@ export default function PersonDetailScreen() {
     [journal, id]
   );
 
-  const groups = useMemo<DayGroup[]>(() => {
+  const groups = useMemo<DayGroupData[]>(() => {
     if (!person) return [];
     const matched = allEntries(journal)
       .filter((e) => e.participants?.includes(person.id))
       .sort((a, b) => b.start.localeCompare(a.start));
-    return groupByDay(matched);
+    const map = new Map<string, Entry[]>();
+    for (const e of matched) {
+      const day = e.start.slice(0, 10);
+      if (!map.has(day)) map.set(day, []);
+      map.get(day)!.push(e);
+    }
+    return [...map.entries()].map(([iso, items]) => ({ iso, items }));
   }, [journal, person]);
 
   if (!person) {
@@ -256,7 +133,15 @@ export default function PersonDetailScreen() {
       style={styles.list}
       data={groups}
       keyExtractor={(g) => g.iso}
-      renderItem={({ item }) => <DayGroupRow group={item} styles={styles} colors={colors} />}
+      renderItem={({ item: group }) => (
+          <DayGroup
+            group={group}
+            colors={colors}
+            fonts={fonts}
+            onEntryPress={(entry) => router.push(`/entry/${entry.id}`)}
+            showReflection={false}
+          />
+        )}
       ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
       ListHeaderComponent={
         <>
