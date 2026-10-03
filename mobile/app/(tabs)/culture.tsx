@@ -181,6 +181,8 @@ type ListItem =
       collapsed: boolean;
       /** Key passed to toggleSeries — only present when collapsible: true */
       seriesKey?: string;
+      /** Kind icon to show on the left — only present when collapsible: true */
+      kind?: CultureKind;
     }
   | { type: "entry";      id: string; entry: CultureEntry }
   | { type: "separator";  id: string }
@@ -230,7 +232,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       color: colors.textTertiary,
     },
 
-    // Group header (series name / show title / year) — non-collapsible
+    // Group header (series name / show title / year)
     groupHeader: {
       paddingHorizontal: spacingScale.base,
       paddingTop: spacingScale.md,
@@ -239,14 +241,29 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       alignItems: "center",
       gap: spacingScale.sm,
     },
-    // Collapsible group header — slightly more padding for tap target
+    // Collapsible group header — slightly more vertical padding for tap target
     groupHeaderCollapsible: {
       paddingVertical: spacingScale.md,
     },
-    groupHeaderPressed:    { opacity: 0.55 },
+    groupHeaderPressed: { opacity: 0.55 },
+    // Icon placeholder matching EntryRow's markWrap
+    groupHeaderMark: {
+      width: 20,
+      height: 20,
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+    },
     groupHeaderTitle:      { ...textScale.feedTitle, fontFamily: fonts.serifMedium, fontWeight: "500", color: colors.textPrimary, flex: 1 },
     groupHeaderTitleFixed: { flex: undefined },
-    groupHeaderSubtitle:   { fontSize: 10, fontFamily: fonts.mono, color: colors.textTertiary },
+    // Trailing: count label + chevron
+    groupHeaderTrailing: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.xs,
+      flexShrink: 0,
+    },
+    groupHeaderSubtitle: { fontSize: 10, fontFamily: fonts.mono, color: colors.textTertiary },
 
     // Entry row padding
     entryWrap: { paddingHorizontal: spacingScale.base },
@@ -415,6 +432,7 @@ export default function CultureScreen() {
       >,
       getEntries: (g: G) => E[],
       countLabel: (n: number) => string,
+      kind: CultureKind,
     ) {
       sections.forEach((sec, si) => {
         if (si > 0) {
@@ -440,6 +458,7 @@ export default function CultureScreen() {
             collapsible: true,
             collapsed,
             seriesKey: key,
+            kind,
           });
           if (!collapsed) pushEntries(entries);
         } else {
@@ -480,6 +499,7 @@ export default function CultureScreen() {
         filmSections,
         (g: FilmSeriesGroup) => g.films,
         (n) => `${n} films`,
+        "film",
       );
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-films" });
     }
@@ -505,6 +525,7 @@ export default function CultureScreen() {
           collapsible: true,
           collapsed,
           seriesKey: key,
+          kind: "episode" as const,
         });
         if (!collapsed) pushEntries(eps);
       });
@@ -520,6 +541,7 @@ export default function CultureScreen() {
         bookSections,
         (g: BookSeriesGroup) => g.books,
         (n) => `${n} ${n === 1 ? "book" : "books"} read`,
+        "book",
       );
     }
 
@@ -587,16 +609,28 @@ export default function CultureScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={`${item.collapsed ? "Expand" : "Collapse"} ${item.title}`}
                     >
-                      <Ionicons
-                        name={item.collapsed ? "chevron-forward" : "chevron-down"}
-                        size={13}
-                        color={colors.textTertiary}
-                      />
+                      {/* Leading icon — mirrors EntryRow's markWrap position */}
+                      <View style={styles.groupHeaderMark}>
+                        <KindIcon
+                          kind={item.kind === "episode" ? "episode" : item.kind === "book" ? "book" : "film"}
+                          size={18}
+                          color={colors.textTertiary}
+                          accessibilityLabel=""
+                        />
+                      </View>
                       <Text style={styles.groupHeaderTitle}>{item.title}</Text>
-                      <Text style={styles.groupHeaderSubtitle}>{item.subtitle}</Text>
-                      {item.avg != null && (
-                        <StarRating rating={Math.round(item.avg * 2) / 2} color={colors.star} size={11} />
-                      )}
+                      {/* Trailing: avg stars + count + chevron */}
+                      <View style={styles.groupHeaderTrailing}>
+                        {item.avg != null && (
+                          <StarRating rating={Math.round(item.avg * 2) / 2} color={colors.star} size={11} />
+                        )}
+                        <Text style={styles.groupHeaderSubtitle}>{item.subtitle}</Text>
+                        <Ionicons
+                          name={item.collapsed ? "chevron-forward" : "chevron-down"}
+                          size={13}
+                          color={colors.textTertiary}
+                        />
+                      </View>
                     </Pressable>
                   );
                 }
