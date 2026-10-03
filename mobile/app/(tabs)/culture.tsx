@@ -7,17 +7,22 @@
  *   · TV       — grouped by Series container (seriesId → journal.series), fallback to showTitle
  *   · Books    — grouped by series field, standalone interleaved by date
  *
+ * Series/show groups are collapsible (collapsed by default) for easy scanning.
  * Filter pills narrow to a single category; all sections show when "All" is active.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   FlatList,
+  LayoutAnimation,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  UIManager,
   View,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import {
@@ -37,6 +42,11 @@ import {
 } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // ── types & helpers ───────────────────────────────────────────────────────────
 
@@ -100,16 +110,7 @@ interface FilmSeriesGroup {
   films: Film[];
 }
 
-/**
- * Groups films by the text before the first ":" in the title (e.g. "Mission Impossible:
- * Fallout" → series "Mission Impossible"). Films without a colon are standalone.
- * Series entries are sorted by most-recent watch date; within a series, by watch date desc.
- * The final list interleaves series and standalone by most-recent entry date.
- */
-function groupFilmsBySeries(films: Film[]): {
-  standalone: Film[];
-  series: FilmSeriesGroup[];
-} {
+function groupFilmsBySeries(films: Film[]): { standalone: Film[]; series: FilmSeriesGroup[] } {
   const seriesMap = new Map<string, Film[]>();
   const standalone: Film[] = [];
   for (const f of films) {
@@ -123,7 +124,6 @@ function groupFilmsBySeries(films: Film[]): {
       standalone.push(f);
     }
   }
-  // Single-entry "series" are demoted to standalone
   const series: FilmSeriesGroup[] = [];
   for (const [name, fs] of seriesMap.entries()) {
     if (fs.length === 1) {
@@ -142,15 +142,11 @@ function groupFilmsBySeries(films: Film[]): {
 // ── TV / Episodes ─────────────────────────────────────────────────────────────
 
 interface ShowGroup {
-  title: string;      // canonical title from Series container, or showTitle fallback
+  title: string;
   episodes: Episode[];
   latestDate: string;
 }
 
-/**
- * Groups episodes by their Series container title (via seriesId → journal.series).
- * Episodes without a matching series fall back to their showTitle.
- */
 function groupEpisodesBySeries(episodes: Episode[], seriesContainers: Series[]): ShowGroup[] {
   const seriesById = new Map<string, Series>(seriesContainers.map((s) => [s.id, s]));
   const map = new Map<string, Episode[]>();
@@ -170,15 +166,26 @@ function groupEpisodesBySeries(episodes: Episode[], seriesContainers: Series[]):
     .sort((a, b) => b.latestDate.localeCompare(a.latestDate));
 }
 
-// ── flattened list item types ─────────────────────────────────────────────────
+// ── flat list item types ─────────────────────────────────────────────────────
 
 type ListItem =
   | { type: "sectionHeader"; id: string; title: string }
-  | { type: "groupHeader";   id: string; title: string; subtitle: string; avg?: number | null }
-  | { type: "entry";         id: string; entry: CultureEntry }
-  | { type: "separator";     id: string }
-  | { type: "sectionGap";    id: string }
-  | { type: "groupGap";      id: string };
+  | {
+      type: "groupHeader";
+      id: string;
+      title: string;
+      subtitle: string;
+      avg?: number | null;
+      /** When true, this group can be tapped to expand/collapse */
+      collapsible: boolean;
+      collapsed: boolean;
+      /** Key passed to toggleSeries — only present when collapsible: true */
+      seriesKey?: string;
+    }
+  | { type: "entry";      id: string; entry: CultureEntry }
+  | { type: "separator";  id: string }
+  | { type: "sectionGap"; id: string }
+  | { type: "groupGap";   id: string };
 
 // ── styles factory ────────────────────────────────────────────────────────────
 
@@ -223,7 +230,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       color: colors.textTertiary,
     },
 
-    // Group header (series name / show title / year)
+    // Group header (series name / show title / year) — non-collapsible
     groupHeader: {
       paddingHorizontal: spacingScale.base,
       paddingTop: spacingScale.md,
@@ -232,8 +239,14 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       alignItems: "center",
       gap: spacingScale.sm,
     },
-    groupHeaderTitle:    { ...textScale.smMd, fontFamily: fonts.serifMedium, fontWeight: "500", color: colors.textPrimary },
-    groupHeaderSubtitle: { fontSize: 10, fontFamily: fonts.mono, color: colors.textTertiary },
+    // Collapsible group header — slightly more padding for tap target
+    groupHeaderCollapsible: {
+      paddingVertical: spacingScale.md,
+    },
+    groupHeaderPressed:    { opacity: 0.55 },
+    groupHeaderTitle:      { ...textScale.smMd, fontFamily: fonts.serifMedium, fontWeight: "500", color: colors.textPrimary, flex: 1 },
+    groupHeaderTitleFixed: { flex: undefined },
+    groupHeaderSubtitle:   { fontSize: 10, fontFamily: fonts.mono, color: colors.textTertiary },
 
     // Entry row padding
     entryWrap: { paddingHorizontal: spacingScale.base },
@@ -302,6 +315,19 @@ export default function CultureScreen() {
   const { colors, fonts } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
+  // Track which series are expanded (default: all collapsed)
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+
+  const toggleSeries = useCallback((key: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   // ── base entry sets ───────────────────────────────────────────────────────
 
   const allConcerts = useMemo(
@@ -335,20 +361,18 @@ export default function CultureScreen() {
       }));
   }, [allConcerts]);
 
-  // Films: interleaved series + standalone, sorted by most-recent date
   const filmSections = useMemo(() => {
     const { standalone, series } = groupFilmsBySeries(journal.films);
     type Section =
       | { type: "series";     data: FilmSeriesGroup; date: string }
       | { type: "standalone"; data: Film;            date: string };
     const all: Section[] = [
-      ...series.map((sg) => ({ type: "series"     as const, data: sg,    date: sortDate(sg.films[0]) })),
-      ...standalone.map((f) => ({ type: "standalone" as const, data: f,  date: sortDate(f) })),
+      ...series.map((sg) => ({ type: "series"     as const, data: sg, date: sortDate(sg.films[0]) })),
+      ...standalone.map((f) => ({ type: "standalone" as const, data: f, date: sortDate(f) })),
     ];
     return all.sort((a, b) => b.date.localeCompare(a.date));
   }, [journal.films]);
 
-  // TV: grouped by Series container title (or showTitle fallback)
   const showGroups = useMemo(
     () => groupEpisodesBySeries(journal.episodes, journal.series),
     [journal.episodes, journal.series],
@@ -360,8 +384,8 @@ export default function CultureScreen() {
       | { type: "series";     data: BookSeriesGroup; date: string }
       | { type: "standalone"; data: Book;            date: string };
     const all: Section[] = [
-      ...series.map((sg) => ({ type: "series"     as const, data: sg,    date: sortDate(sg.books[0]) })),
-      ...standalone.map((b) => ({ type: "standalone" as const, data: b,  date: sortDate(b) })),
+      ...series.map((sg) => ({ type: "series"     as const, data: sg, date: sortDate(sg.books[0]) })),
+      ...standalone.map((b) => ({ type: "standalone" as const, data: b, date: sortDate(b) })),
     ];
     return all.sort((a, b) => b.date.localeCompare(a.date));
   }, [journal.books]);
@@ -372,7 +396,7 @@ export default function CultureScreen() {
     const items: ListItem[] = [];
     const showHeaders = filter === "all";
 
-    // Helper: push entries with hairlines between them
+    // Push entries with hairlines between them
     function pushEntries(entries: CultureEntry[]) {
       entries.forEach((e, i) => {
         if (i > 0) items.push({ type: "separator", id: `sep-${e.id}` });
@@ -380,7 +404,7 @@ export default function CultureScreen() {
       });
     }
 
-    // Helper: push a section (series/standalone interleaved) like Books or Films
+    // Push a series section (films or books): series groups (collapsible) interleaved with standalone
     function pushSeriesSection<
       G extends { name: string },
       E extends CultureEntry,
@@ -402,17 +426,22 @@ export default function CultureScreen() {
           }
         }
         if (sec.type === "series") {
-          const g = sec.data as G;
+          const g      = sec.data as G;
           const entries = getEntries(g);
+          const key    = `series:${g.name}`;
+          const collapsed = !expandedKeys.has(key);
           const seriesAvg = avgRating(entries);
           items.push({
             type: "groupHeader",
-            id: `gh-${g.name}`,
+            id: `gh-${key}`,
             title: g.name,
             subtitle: countLabel(entries.length),
             avg: seriesAvg,
+            collapsible: true,
+            collapsed,
+            seriesKey: key,
           });
-          pushEntries(entries);
+          if (!collapsed) pushEntries(entries);
         } else {
           const e = sec.data as E;
           items.push({ type: "entry", id: e.id, entry: e });
@@ -428,7 +457,14 @@ export default function CultureScreen() {
       concertsByYear.forEach(({ year, list }, yi) => {
         if (yi > 0) items.push({ type: "groupGap", id: `gap-c-${year}` });
         if (concertsByYear.length > 1 || !showHeaders) {
-          items.push({ type: "groupHeader", id: `gh-c-${year}`, title: year, subtitle: String(list.length) });
+          items.push({
+            type: "groupHeader",
+            id: `gh-c-${year}`,
+            title: year,
+            subtitle: String(list.length),
+            collapsible: false,
+            collapsed: false,
+          });
         }
         pushEntries(list);
       });
@@ -459,13 +495,18 @@ export default function CultureScreen() {
       }
       showGroups.forEach(({ title, episodes: eps }, si) => {
         if (si > 0) items.push({ type: "groupGap", id: `gap-s-${si}` });
+        const key = `show:${title}`;
+        const collapsed = !expandedKeys.has(key);
         items.push({
           type: "groupHeader",
           id: `gh-s-${title}`,
           title,
           subtitle: `${eps.length} ep`,
+          collapsible: true,
+          collapsed,
+          seriesKey: key,
         });
-        pushEntries(eps);
+        if (!collapsed) pushEntries(eps);
       });
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-tv" });
     }
@@ -483,7 +524,7 @@ export default function CultureScreen() {
     }
 
     return items;
-  }, [filter, allConcerts, concertsByYear, filmSections, showGroups, bookSections, journal]);
+  }, [filter, allConcerts, concertsByYear, filmSections, showGroups, bookSections, journal, expandedKeys]);
 
   const isEmpty = counts.all === 0;
 
@@ -525,22 +566,47 @@ export default function CultureScreen() {
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => {
             switch (item.type) {
+
               case "sectionHeader":
                 return (
                   <View style={styles.sectionHeader}>
                     <Text style={styles.sectionHeaderText}>{item.title}</Text>
                   </View>
                 );
+
               case "groupHeader":
+                if (item.collapsible) {
+                  return (
+                    <Pressable
+                      onPress={() => toggleSeries(item.seriesKey!)}
+                      style={({ pressed }) => [
+                        styles.groupHeader,
+                        styles.groupHeaderCollapsible,
+                        pressed && styles.groupHeaderPressed,
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${item.collapsed ? "Expand" : "Collapse"} ${item.title}`}
+                    >
+                      <Ionicons
+                        name={item.collapsed ? "chevron-forward" : "chevron-down"}
+                        size={13}
+                        color={colors.textTertiary}
+                      />
+                      <Text style={styles.groupHeaderTitle}>{item.title}</Text>
+                      <Text style={styles.groupHeaderSubtitle}>{item.subtitle}</Text>
+                      {item.avg != null && (
+                        <StarRating rating={Math.round(item.avg * 2) / 2} color={colors.star} size={11} />
+                      )}
+                    </Pressable>
+                  );
+                }
                 return (
                   <View style={styles.groupHeader}>
-                    <Text style={styles.groupHeaderTitle}>{item.title}</Text>
+                    <Text style={[styles.groupHeaderTitle, styles.groupHeaderTitleFixed]}>{item.title}</Text>
                     <Text style={styles.groupHeaderSubtitle}>{item.subtitle}</Text>
-                    {item.avg != null && (
-                      <StarRating rating={Math.round(item.avg * 2) / 2} color={colors.star} size={11} />
-                    )}
                   </View>
                 );
+
               case "entry":
                 return (
                   <View style={styles.entryWrap}>
@@ -552,12 +618,16 @@ export default function CultureScreen() {
                     />
                   </View>
                 );
+
               case "separator":
                 return <View style={styles.separator} />;
+
               case "groupGap":
                 return <View style={styles.groupGap} />;
+
               case "sectionGap":
                 return <View style={styles.sectionGap} />;
+
               default:
                 return null;
             }
