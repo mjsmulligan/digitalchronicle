@@ -3,7 +3,6 @@
  */
 import { useState } from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,10 +10,11 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
 import { uid, type Purpose } from "@chronicle/journal/types";
-import { colors, text, spacing, radius } from "../../src/theme";
+import { colors, text, spacing, radius, common } from "../../src/theme";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -46,6 +46,7 @@ export default function NewTripScreen() {
   const [purpose, setPurpose] = useState<Purpose | undefined>(undefined);
   const [notes, setNotes]     = useState("");
   const [saving, setSaving]   = useState(false);
+  const dialog = useDialog();
 
   const canSave = title.trim().length > 0 && isValidDate(start) && isValidDate(end) && start <= end;
 
@@ -66,12 +67,13 @@ export default function NewTripScreen() {
       await putMany("trips", [trip]);
       router.replace(`/trip/${trip.id}`);
     } catch (err) {
-      Alert.alert("Failed to save", String(err));
+      dialog.alert("Failed to save", String(err));
       setSaving(false);
     }
   };
 
   return (
+    <>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -80,9 +82,7 @@ export default function NewTripScreen() {
       <Stack.Screen
         options={{
           title: "New Trip",
-          headerStyle: { backgroundColor: "#1e293b" },
-          headerTintColor: "#f8fafc",
-          headerShadowVisible: false,
+          ...common.header,
           headerRight: () => (
             <Pressable
               onPress={handleSave}
@@ -177,6 +177,8 @@ export default function NewTripScreen() {
         <Text style={styles.saveButtonText}>{saving ? "Saving…" : "Create trip"}</Text>
       </Pressable>
     </ScrollView>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
 

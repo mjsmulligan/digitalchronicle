@@ -1,15 +1,37 @@
 /**
- * Trips tab — all trips, sorted newest-first.
- * Each card shows date range, title, purpose, and a leg/stay/event count.
+ * Trips tab — all trips, sorted newest-first, in the two-column journal layout.
+ *
+ * The date column shows the trip's start date (big serif number) so the tab
+ * reads chronologically like the Chronicle and Culture tabs.
  */
 import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
+import { fonts } from "../../src/theme";
 import type { Trip } from "@chronicle/journal/types";
 import { colors, text, spacing, radius } from "../../src/theme";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
+
+const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN",
+                      "JUL","AUG","SEP","OCT","NOV","DEC"];
+const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+
+function parseDay(iso: string) {
+  const d = new Date(iso + "T12:00:00");
+  return {
+    num:   d.getDate().toString(),
+    day:   DAYS_SHORT[d.getDay()],
+    month: MONTHS_SHORT[d.getMonth()],
+    year:  d.getFullYear().toString(),
+  };
+}
+
+function fmtEnd(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+}
 
 function nights(trip: Trip): number {
   return Math.max(
@@ -25,37 +47,62 @@ const PURPOSE_ICON: Record<string, string> = {
   other: "📌",
 };
 
-// ── component ─────────────────────────────────────────────────────────────────
+// ── components ────────────────────────────────────────────────────────────────
 
-function TripCard({ trip, entryCount }: { trip: Trip; entryCount: number }) {
+interface TripItem {
+  trip: Trip;
+  entryCount: number;
+}
+
+function TripRow({ item }: { item: TripItem }) {
+  const { trip, entryCount } = item;
+  const { num, day, month, year } = parseDay(trip.start);
   const n = nights(trip);
   const router = useRouter();
+
   return (
-    <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => router.push(`/trip/${trip.id}`)}
-    >
-      <View style={styles.cardHeader}>
-        <Text style={styles.dateRange}>
-          {trip.start} → {trip.end}
-        </Text>
-        {trip.purpose && (
-          <Text style={styles.purposeIcon}>
-            {PURPOSE_ICON[trip.purpose] ?? "📌"}
-          </Text>
-        )}
+    <View style={styles.row}>
+      {/* Left: start date */}
+      <View style={styles.dateCol}>
+        <Text style={styles.dateNum}>{num}</Text>
+        <Text style={styles.dateSub}>{day}</Text>
+        <Text style={styles.dateSub}>{month}</Text>
+        <Text style={styles.dateSub}>{year}</Text>
       </View>
-      <Text style={styles.tripTitle}>{trip.title}</Text>
-      <View style={styles.meta}>
-        <Text style={styles.metaText}>
-          {n} {n === 1 ? "night" : "nights"}
-        </Text>
-        <Text style={styles.metaDot}>·</Text>
-        <Text style={styles.metaText}>
-          {entryCount} {entryCount === 1 ? "entry" : "entries"}
-        </Text>
+
+      {/* Centre: vertical rule */}
+      <View style={styles.dateRule} />
+
+      {/* Right: trip card */}
+      <View style={styles.cardCol}>
+        <Pressable
+          style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+          onPress={() => router.push(`/trip/${trip.id}`)}
+        >
+          <View style={styles.cardTop}>
+            <Text style={styles.tripTitle} numberOfLines={2}>
+              {trip.title}
+            </Text>
+            {trip.purpose && (
+              <Text style={styles.purposeIcon}>
+                {PURPOSE_ICON[trip.purpose] ?? "📌"}
+              </Text>
+            )}
+          </View>
+          <View style={styles.cardMeta}>
+            <Text style={styles.metaText}>→ {fmtEnd(trip.end)}</Text>
+            <Text style={styles.metaDot}>·</Text>
+            <Text style={styles.metaText}>
+              {n} {n === 1 ? "night" : "nights"}
+            </Text>
+            <Text style={styles.metaDot}>·</Text>
+            <Text style={styles.metaText}>
+              {entryCount} {entryCount === 1 ? "entry" : "entries"}
+            </Text>
+          </View>
+        </Pressable>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -64,7 +111,7 @@ function TripCard({ trip, entryCount }: { trip: Trip; entryCount: number }) {
 export default function TripsScreen() {
   const journal = useJournal();
 
-  const trips = useMemo(() => {
+  const trips = useMemo<TripItem[]>(() => {
     const entries = allEntries(journal);
     const countById = new Map<string, number>();
     for (const e of entries) {
@@ -90,43 +137,101 @@ export default function TripsScreen() {
   return (
     <FlatList
       style={styles.list}
-      contentContainerStyle={styles.listContent}
       data={trips}
       keyExtractor={({ trip }) => trip.id}
-      renderItem={({ item: { trip, entryCount } }) => (
-        <TripCard trip={trip} entryCount={entryCount} />
-      )}
+      renderItem={({ item }) => <TripRow item={item} />}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
+      contentContainerStyle={styles.listContent}
     />
   );
 }
 
 // ── styles ────────────────────────────────────────────────────────────────────
 
+const DATE_COL_W = 52;
+
 const styles = StyleSheet.create({
   list: { flex: 1, backgroundColor: colors.bg },
-  listContent: { padding: spacing.base },
+  listContent: { paddingBottom: spacing["3xl"] },
+
+  // Two-column row
+  row: {
+    flexDirection: "row",
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.sm,
+  },
+
+  // Date column
+  dateCol: {
+    width: DATE_COL_W,
+    alignItems: "center",
+    paddingTop: 2,
+    flexShrink: 0,
+  },
+  dateNum: {
+    fontFamily: fonts.serifBold,
+    fontWeight: "700",
+    fontSize: 34,
+    lineHeight: 38,
+    color: colors.textBright,
+  },
+  dateSub: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    color: colors.textTertiary,
+    lineHeight: 15,
+  },
+
+  // Vertical rule
+  dateRule: {
+    width: 1,
+    alignSelf: "stretch",
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md,
+    marginTop: 4,
+  },
+
+  // Card column
+  cardCol: { flex: 1 },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radius.xl,
-    padding: spacing.base,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.border,
+    paddingHorizontal: spacing.md2,
+    paddingVertical: spacing.md,
   },
-  cardPressed: { opacity: 0.7 },
-  cardHeader: {
+  cardPressed: { opacity: 0.65 },
+
+  cardTop: {
     flexDirection: "row",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
   },
-  dateRange: { ...text.sm, color: colors.textTertiary, fontFamily: "monospace" },
-  purposeIcon: { fontSize: 16 },
-  tripTitle: { fontSize: 20, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm },
-  meta: { flexDirection: "row", gap: spacing.sm2 },
-  metaText: { ...text.smMd, color: colors.textSecondary },
-  metaDot: { ...text.smMd, color: colors.textMuted },
-  separator: { height: spacing.md },
+  tripTitle: {
+    flex: 1,
+    fontFamily: fonts.serifBold,
+    fontWeight: "700",
+    fontSize: 17,
+    lineHeight: 23,
+    color: colors.textPrimary,
+  },
+  purposeIcon: { fontSize: 18, lineHeight: 24 },
+
+  cardMeta: { flexDirection: "row", gap: spacing.sm2, flexWrap: "wrap" },
+  metaText: { ...text.sm, color: colors.textSecondary },
+  metaDot: { ...text.sm, color: colors.textMuted },
+
+  separator: {
+    height: 1,
+    backgroundColor: colors.borderFaint,
+    marginHorizontal: spacing.base,
+  },
+
   empty: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -134,7 +239,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: spacing["2xl"],
   },
-  emptyIcon: { fontSize: 48, marginBottom: spacing.base },
-  emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacing.sm },
+  emptyIcon:  { fontSize: 48, marginBottom: spacing.base },
+  emptyTitle: {
+    fontSize: 18,
+    fontFamily: fonts.serifSemiBold,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+  },
   emptyHint: { ...text.md, color: colors.textTertiary, textAlign: "center" },
 });

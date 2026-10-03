@@ -107,10 +107,11 @@ digitalchronicle/          ← existing web root (TanStack Start)
 
 ### Phase 2 — Native shell
 
-- [ ] **Expo Router navigation** — Tab bar: Chronicle · Trips · Culture · Moments · People.
+- [x] **Expo Router navigation** — Tab bar: Chronicle · Trips · Culture · People. (Moments deferred — see below.)
 - [ ] **Share Sheet intent handler** — accept `.csv`, `.ics`, `.vcf`, `.json` from iOS/Android Share → deposit into Staging Hub.
 - [ ] **`expo-calendar` integration** — pull system Calendar events on permission grant; feed into iCalendar connector.
 - [ ] **Offline-first sync indicator** — badge on import tab showing unreviewed Staging records.
+- [ ] **Moments tab** — gatherings, celebrations, milestones, memories, activities (`JEvent` kinds excluding `concert`). Deferred until at least one import connector surfaces these entry types automatically (e.g. Foursquare/Swarm for check-ins, Strava for activities, or a manual quick-add flow). The `JEvent` data model and `EventCategory` type are already in place. See also: Importers section.
 
 ### Phase 3 — Rich media & search
 

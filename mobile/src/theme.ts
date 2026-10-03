@@ -6,68 +6,88 @@
  * Mirrors the character of the web version's warm parchment theme in dark mode.
  */
 
+// ─── Fonts ────────────────────────────────────────────────────────────────────
+//
+// Serif: Lora via @expo-google-fonts/lora — bundled so it renders identically
+// on Android (no more "serif" wildcard variation across Samsung/Pixel/Xiaomi)
+// and on iOS. Loaded in _layout.tsx via useFonts before the splash screen hides.
+//
+// Sans: undefined here = system default (Roboto on Android, SF Pro on iOS).
+// To upgrade to Inter, swap undefined with the Inter_* variant strings.
+
+export const fonts = {
+  /** Bold serif — trip titles, screen hero text, empty-state headings */
+  serifBold:     "Lora_700Bold",
+  /** Semi-bold serif — modal titles, card headings */
+  serifSemiBold: "Lora_600SemiBold",
+  /** Medium serif — subtitles, longform pull-quotes */
+  serifMedium:   "Lora_500Medium",
+  /** Regular serif — body in detail views */
+  serifRegular:  "Lora_400Regular",
+} as const;
+
 // ─── Colours ─────────────────────────────────────────────────────────────────
 
 export const colors = {
   // ── Backgrounds ──────────────────────────────────────────────────────────
-  /** Page / screen background — dark warm brown */
-  bg: "#1E1610",
-  /** Card, input, surface — medium-dark warm brown */
-  surface: "#2A1E14",
+  /** Page / screen background — warm cream */
+  bg: "#F3ECE4",
+  /** Card, input, surface — warm off-white */
+  surface: "#F9F5ED",
   /** Pressed list-row highlight */
-  surfacePressed: "#342618",
-  /** Active filter / avatar self — dark rust tint */
-  surfaceAccent: "#3E200E",
-  /** Badge bg — deep rust */
-  surfaceAccentDeep: "#2C1208",
+  surfacePressed: "#EFE8E0",
+  /** Active filter / avatar self — light rust tint */
+  surfaceAccent: "#F5E8E0",
+  /** Badge bg — very light rust */
+  surfaceAccentDeep: "#F9F0EB",
 
   // ── Borders ───────────────────────────────────────────────────────────────
-  /** Standard card / input border — warm mid-brown */
-  border: "#4A3018",
-  /** Subtle hairline divider — same as surface */
-  borderFaint: "#2A1E14",
+  /** Standard card / input border — warm tan */
+  border: "#E8DDD2",
+  /** Subtle hairline divider — very light */
+  borderFaint: "#F3EDEA",
 
   // ── Text ─────────────────────────────────────────────────────────────────
-  /** Brightest headings — warm cream */
-  textBright: "#F5EDE0",
-  /** Primary body text — parchment */
-  textPrimary: "#EDE0CC",
-  /** Slightly dimmed — warm tan (avatar initials, chip labels) */
-  textDim: "#D4C4A8",
-  /** Secondary labels — muted tan */
-  textSecondary: "#A08060",
+  /** Brightest headings — dark charcoal */
+  textBright: "#1A1410",
+  /** Primary body text — dark brown */
+  textPrimary: "#2B2218",
+  /** Slightly dimmed — mid-brown */
+  textDim: "#5A5047",
+  /** Secondary labels — warm tan */
+  textSecondary: "#8B7D6B",
   /** Tertiary — dates, hints, captions */
-  textTertiary: "#7A6045",
+  textTertiary: "#A89582",
   /** Muted / placeholders */
-  textMuted: "#5E4830",
+  textMuted: "#BFB3A0",
 
-  // ── Accent — Deep Rust / Russet (matches web button colour) ──────────────
+  // ── Accent — Warm Rust / Terracotta (matches web button colour) ──────────
   /** Primary accent border / icon */
-  accent: "#9A3E26",
+  accent: "#A0522D",
   /** Bold accent — primary buttons */
-  accentBold: "#7E3020",
+  accentBold: "#8B4513",
   /** Soft accent — tab active, secondary icon */
-  accentSoft: "#C05A38",
-  /** Pale rust text (on dark rust surface) */
-  accentSubtle: "#F0CCBA",
-  /** Badge text — light rust */
-  accentBadge: "#E0A888",
+  accentSoft: "#B85C3C",
+  /** Pale rust text (on light rust surface) */
+  accentSubtle: "#704020",
+  /** Badge text — warm rust */
+  accentBadge: "#A0522D",
 
   // ── Semantic ──────────────────────────────────────────────────────────────
   /** Star / rating — warm amber */
   star: "#D97706",
   /** Success — muted warm green */
   success: "#4E9A5A",
-  /** Info / pending — warm blue */
-  info: "#4878B0",
+  /** Info / pending — teal blue */
+  info: "#0EA5E9",
   /** Error text — warm red */
   error: "#C0321E",
   /** Error light text */
   errorLight: "#E89878",
   /** Danger background */
-  errorBg: "#280A06",
+  errorBg: "#FFE8E3",
   /** Delete button background */
-  deleteBg: "#3C0E08",
+  deleteBg: "#FFF0ED",
 
   // ── Utility ───────────────────────────────────────────────────────────────
   white: "#ffffff",
@@ -194,10 +214,19 @@ export const common = {
     alignItems: "center" as const,
   },
 
-  /** Standard dark header options */
+  /** Standard dark header options — spread into Stack.Screen options.
+   *  Includes headerShown: true so screens override the root layout's
+   *  global headerShown: false default. */
   header: {
+    headerShown: true,
     headerStyle: { backgroundColor: colors.surface },
     headerTintColor: colors.textBright,
     headerShadowVisible: false,
+    headerTitleStyle: {
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600" as const,
+      fontSize: 18,
+      color: colors.textBright,
+    },
   },
 } as const;
