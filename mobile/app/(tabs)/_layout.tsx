@@ -33,7 +33,9 @@ export default function TabLayout() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, flexDirection: "column" }}>
+      {/* Tabs fills available space; FloatingNavBar docks below it */}
+      <View style={{ flex: 1 }}>
       <Tabs
         screenOptions={{
           headerStyle: { backgroundColor: colors.bg },
@@ -45,10 +47,7 @@ export default function TabLayout() {
             fontSize: 18,
             color: colors.textBright,
           },
-          tabBarStyle: { display: "none" }, // Hide default tab bar
-          tabBarActiveTintColor: colors.accentSoft,
-          tabBarInactiveTintColor: colors.textMuted,
-          tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
+          tabBarStyle: { display: "none" },
         }}
       >
       <Tabs.Screen
@@ -111,8 +110,9 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+      </View>
 
-      {/* Floating navbar overlay at screen level */}
+      {/* Docked tab bar */}
       <FloatingNavBar
         items={[
           {

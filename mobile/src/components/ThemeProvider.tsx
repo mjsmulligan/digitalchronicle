@@ -34,6 +34,8 @@ export interface ThemeColors {
   // Borders
   border: string;
   borderFaint: string;
+  /** Slightly dimmed surface — used for tab bar, top bar, chips. */
+  surfaceMuted: string;
   // Text
   textBright: string;
   textPrimary: string;
@@ -103,6 +105,7 @@ const leather: ThemeDefinition = {
     surfaceAccentDeep: "#F9F0EB",
     border:            "#E8DDD2",
     borderFaint:       "#F3EDEA",
+    surfaceMuted:      "#EFE8E0",
     textBright:        "#1A1410",
     textPrimary:       "#2B2218",
     textDim:           "#5A5047",
@@ -145,6 +148,7 @@ const paper: ThemeDefinition = {
     surfaceAccentDeep: "#F4EDE0",
     border:            "#DAD0BF",
     borderFaint:       "#EDE6DA",
+    surfaceMuted:      "#EEE7D9",
     textBright:        "#291C14",
     textPrimary:       "#291C14",
     textDim:           "#706052",
@@ -191,6 +195,7 @@ const ink: ThemeDefinition = {
     surfaceAccentDeep: "#281C0D",
     border:            "#3D2E1A",
     borderFaint:       "#2C2114",
+    surfaceMuted:      "#2A2010",
     textBright:        "#FDF5E8",
     textPrimary:       "#F0E4CA",
     textDim:           "#C9B89A",

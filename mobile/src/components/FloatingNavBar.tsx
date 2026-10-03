@@ -1,5 +1,18 @@
+/**
+ * TabBar — the app's bottom navigation bar.
+ *
+ * Design (spec 6.1):
+ *   - Docked to the bottom; `surfaceMuted` background; hairline top border.
+ *   - Active item: filled `surfaceAccent` pill behind the icon; icon + label
+ *     in `accentSoft`. Inactive: `textSecondary`.
+ *   - 24dp icons, 11sp sans labels, 80dp total height + safe area inset.
+ *   - No floating shadow — integrates with the screen rather than hovering over it.
+ *
+ * The component is still exported as `FloatingNavBar` so all existing import
+ * sites stay unchanged. The props contract is identical.
+ */
 import React, { useMemo } from 'react';
-import { View, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../components/ThemeProvider';
@@ -20,76 +33,66 @@ interface FloatingNavBarProps {
 
 export const FloatingNavBar: React.FC<FloatingNavBarProps> = ({ items }) => {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const { colors, fonts } = useTheme();
 
   const styles = useMemo(() => StyleSheet.create({
-    container: {
-      position: 'absolute',
-      bottom: 16,
-      left: 16,
-      right: 16,
-      zIndex: 1000,
-    },
-    navBar: {
+    bar: {
       flexDirection: 'row',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      height: 56,
-      borderRadius: 12,
-      backgroundColor: colors.surface,
-      ...Platform.select({
-        ios: {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
-          shadowRadius: 8,
-        },
-        android: {
-          elevation: 8,
-        },
-      }),
+      backgroundColor: colors.surfaceMuted,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      paddingBottom: insets.bottom,
+      height: 56 + insets.bottom,
     },
-    navItem: {
+    item: {
       flex: 1,
-      justifyContent: 'center',
       alignItems: 'center',
-      padding: 8,
+      justifyContent: 'center',
+      paddingTop: 8,
+      paddingBottom: 4,
+      gap: 2,
     },
-    pressed: {
-      opacity: 0.7,
+    pill: {
+      width: 64,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.surfaceAccent,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-  }), [colors]);
+    label: {
+      fontSize: 11,
+      fontFamily: fonts.sans,
+      fontWeight: '600',
+      lineHeight: 14,
+    },
+    labelActive:   { color: colors.accentSoft },
+    labelInactive: { color: colors.textSecondary },
+  }), [colors, fonts, insets.bottom]);
 
   return (
-    <View
-      style={[
-        styles.container,
-        {
-          paddingBottom: Math.max(insets.bottom, 16),
-        },
-      ]}
-    >
-      <View style={styles.navBar}>
-        {items.map((item, index) => (
-          <Pressable
-            key={index}
-            onPress={item.onPress}
-            style={({ pressed }) => [
-              styles.navItem,
-              pressed && styles.pressed,
-            ]}
-            accessibilityLabel={item.label}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: item.active }}
-          >
-            <Ionicons
-              name={item.active ? item.activeIcon : item.icon}
-              size={24}
-              color={item.active ? colors.accentSoft : colors.textMuted}
-            />
-          </Pressable>
-        ))}
-      </View>
+    <View style={styles.bar}>
+      {items.map((item, index) => (
+        <Pressable
+          key={index}
+          onPress={item.onPress}
+          style={({ pressed }) => [styles.item, pressed && { opacity: 0.7 }]}
+          accessibilityLabel={item.label}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: item.active }}
+        >
+          {item.active ? (
+            <View style={styles.pill}>
+              <Ionicons name={item.activeIcon} size={24} color={colors.accentSoft} />
+            </View>
+          ) : (
+            <Ionicons name={item.icon} size={24} color={colors.textSecondary} />
+          )}
+          <Text style={[styles.label, item.active ? styles.labelActive : styles.labelInactive]}>
+            {item.label}
+          </Text>
+        </Pressable>
+      ))}
     </View>
   );
 };
