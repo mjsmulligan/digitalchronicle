@@ -134,13 +134,14 @@ export interface EntryRowProps {
   colors: ThemeColors;
   fonts: ThemeFonts;
   onPress: () => void;
+  onLongPress?: () => void;
 }
 
 /**
  * Renders a single entry as a hairline-separated row (no border, no card).
  * Use inside a DayGroup or any list that provides its own separators.
  */
-export function EntryRow({ entry, colors, fonts, onPress }: EntryRowProps) {
+export function EntryRow({ entry, colors, fonts, onPress, onLongPress }: EntryRowProps) {
   const v = view(entry);
   const styles = createStyles(colors, fonts);
   const title = entryTitle(v);
@@ -159,6 +160,7 @@ export function EntryRow({ entry, colors, fonts, onPress }: EntryRowProps) {
     <Pressable
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={onPress}
+      onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={title}
     >

@@ -1,5 +1,6 @@
 /**
- * New trip screen — create a trip with title, dates, purpose, and optional notes.
+ * Edit trip screen — pre-populate from an existing trip and save changes.
+ * Reuses the same form layout as new.tsx.
  */
 import { useMemo, useState } from "react";
 import {
@@ -10,13 +11,13 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useDialog, Dialog } from "../../src/components/Dialog";
-import { DateField } from "../../src/components/DateField";
-import { Stack, useRouter } from "expo-router";
-import { putMany } from "@chronicle/journal/db";
-import { uid, type Purpose } from "@chronicle/journal/types";
-import { useTheme } from "../../src/components/ThemeProvider";
-import { KindIcon } from "../../src/components/KindIcon";
+import { useDialog, Dialog } from "../../../src/components/Dialog";
+import { DateField } from "../../../src/components/DateField";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useJournal, putMany } from "@chronicle/journal/db";
+import { type Purpose } from "@chronicle/journal/types";
+import { useTheme } from "../../../src/components/ThemeProvider";
+import { KindIcon } from "../../../src/components/KindIcon";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -27,11 +28,6 @@ const PURPOSES: { id: Purpose; label: string; kind: string }[] = [
   { id: "other",   label: "Other",    kind: "location" },
 ];
 
-/** Returns today as YYYY-MM-DD */
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 /** Basic YYYY-MM-DD validation */
 function isValidDate(s: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(s));
@@ -39,8 +35,10 @@ function isValidDate(s: string): boolean {
 
 // ── screen ────────────────────────────────────────────────────────────────────
 
-export default function NewTripScreen() {
-  const router = useRouter();
+export default function EditTripScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router  = useRouter();
+  const journal = useJournal();
   const { colors, fonts, text, spacing, radius, common } = useTheme();
 
   const styles = useMemo(() => StyleSheet.create({
@@ -95,15 +93,32 @@ export default function NewTripScreen() {
     },
     saveButtonDisabled: { opacity: 0.4 },
     saveButtonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
+
+    notFound: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
+    notFoundText: { ...text.lg, color: colors.textTertiary },
   }), [colors, fonts]);
 
-  const [title, setTitle]     = useState("");
-  const [start, setStart]     = useState(today());
-  const [end, setEnd]         = useState(today());
-  const [purpose, setPurpose] = useState<Purpose | undefined>(undefined);
-  const [notes, setNotes]     = useState("");
+  const trip = useMemo(
+    () => journal.trips.find((t) => t.id === id),
+    [journal, id]
+  );
+
+  const [title, setTitle]     = useState(trip?.title     ?? "");
+  const [start, setStart]     = useState(trip?.start     ?? "");
+  const [end, setEnd]         = useState(trip?.end       ?? "");
+  const [purpose, setPurpose] = useState<Purpose | undefined>(trip?.purpose);
+  const [notes, setNotes]     = useState(trip?.notes     ?? "");
   const [saving, setSaving]   = useState(false);
   const dialog = useDialog();
+
+  if (!trip) {
+    return (
+      <View style={styles.notFound}>
+        <Stack.Screen options={{ title: "Edit Trip", ...common.header }} />
+        <Text style={styles.notFoundText}>Trip not found</Text>
+      </View>
+    );
+  }
 
   const canSave = title.trim().length > 0 && isValidDate(start) && isValidDate(end) && start <= end;
 
@@ -111,18 +126,18 @@ export default function NewTripScreen() {
     if (!canSave) return;
     setSaving(true);
     try {
-      const trip = {
-        id: uid(),
+      const updated = {
+        ...trip,
         title: title.trim(),
         start,
         end,
         notes: notes.trim(),
-        cover: "",
-        createdAt: new Date().toISOString(),
-        ...(purpose ? { purpose } : {}),
+        purpose: purpose ?? undefined,
       };
-      await putMany("trips", [trip]);
-      router.replace(`/trip/${trip.id}`);
+      // Remove purpose key entirely if unset (keeps data model clean)
+      if (!updated.purpose) delete updated.purpose;
+      await putMany("trips", [updated]);
+      router.back();
     } catch (err) {
       dialog.alert("Failed to save", String(err));
       setSaving(false);
@@ -138,7 +153,7 @@ export default function NewTripScreen() {
     >
       <Stack.Screen
         options={{
-          title: "New Trip",
+          title: "Edit Trip",
           ...common.header,
           headerRight: () => (
             <Pressable
@@ -162,7 +177,6 @@ export default function NewTripScreen() {
         onChangeText={setTitle}
         placeholder="e.g. Tokyo 2026"
         placeholderTextColor="#475569"
-        autoFocus
         returnKeyType="next"
       />
 
@@ -225,7 +239,7 @@ export default function NewTripScreen() {
         onPress={handleSave}
         disabled={!canSave || saving}
       >
-        <Text style={styles.saveButtonText}>{saving ? "Saving…" : "Create trip"}</Text>
+        <Text style={styles.saveButtonText}>{saving ? "Saving…" : "Save changes"}</Text>
       </Pressable>
     </ScrollView>
     <Dialog {...dialog.props} onDismiss={dialog.dismiss} />

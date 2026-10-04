@@ -7,11 +7,12 @@ import React, { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, removeMany, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
+import { Ionicons } from "@expo/vector-icons";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -96,10 +97,30 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       color: colors.textPrimary,
       marginBottom: spacingScale.sm,
     },
-    tripMeta: { flexDirection: "row", gap: spacingScale.sm2 },
+    tripMeta: { flexDirection: "row", gap: spacingScale.sm2, flexWrap: "wrap" },
     tripMetaText: { ...textScale.smMd, color: colors.textSecondary },
     tripMetaDot:  { ...textScale.smMd, color: colors.textMuted },
+    tripMetaSuggested: { ...textScale.smMd, color: colors.accentSoft, fontWeight: "600" },
     tripNotes: { ...textScale.md, color: colors.textSecondary, marginTop: 10 },
+
+    // Per-type entry breakdown
+    statRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacingScale.md2,
+      marginTop: spacingScale.sm,
+    },
+    statItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+    },
+    statNum: {
+      fontFamily: fonts.mono,
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
 
     // Two-column day group
     dayGroup: {
@@ -258,7 +279,7 @@ function SuggestionCard({
 }
 
 /** Two-column date row for linked entries — uses shared EntryRow */
-function EntryDayGroup({ group, styles, colors, fonts, router }: { group: DayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter> }) {
+function EntryDayGroup({ group, styles, colors, fonts, router, onRemove }: { group: DayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter>; onRemove?: (entry: Entry) => void }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
@@ -278,6 +299,7 @@ function EntryDayGroup({ group, styles, colors, fonts, router }: { group: DayGro
               colors={colors}
               fonts={fonts}
               onPress={() => router.push(`/entry/${e.id}`)}
+              onLongPress={onRemove ? () => onRemove(e) : undefined}
             />
           </React.Fragment>
         ))}
@@ -371,6 +393,48 @@ export default function TripDetailScreen() {
 
   const n = nights(trip);
 
+  const handleRemove = (entry: Entry) => {
+    dialog.confirm(
+      "Remove from trip?",
+      `"${entryTitle(view(entry))}" will stay in your journal but won't be linked to this trip.`,
+      "Remove",
+      async () => {
+        try {
+          await putMany(storeFor(entry), [{ ...entry, tripId: undefined }]);
+        } catch (err) {
+          dialog.alert("Failed to remove entry", String(err));
+        }
+      }
+    );
+  };
+
+  const dissolveTrip = async () => {
+    dialog.confirm(
+      "Dissolve trip?",
+      `"${trip.title}" will be removed. All linked entries stay in your journal.`,
+      "Dissolve",
+      async () => {
+        try {
+          // Unlink every entry that belongs to this trip
+          const linked = allEntries(journal).filter((e) => e.tripId === trip.id);
+          const byStore = new Map<string, Entry[]>();
+          for (const e of linked) {
+            const s = storeFor(e);
+            if (!byStore.has(s)) byStore.set(s, []);
+            byStore.get(s)!.push(e);
+          }
+          for (const [store, items] of byStore) {
+            await putMany(store, items.map((e) => ({ ...e, tripId: undefined })));
+          }
+          await removeMany("trips", [trip.id]);
+          router.replace("/(tabs)/trips");
+        } catch (err) {
+          dialog.alert("Failed to dissolve trip", String(err));
+        }
+      }
+    );
+  };
+
   const addEntry = async (entry: Entry) => {
     setAddingId(entry.id);
     try {
@@ -423,7 +487,7 @@ export default function TripDetailScreen() {
       }
       renderItem={({ item }) => {
         if (item.kind === "entryDay") {
-          return <EntryDayGroup group={item.group} styles={styles} colors={colors} fonts={fonts} router={router} />;
+          return <EntryDayGroup group={item.group} styles={styles} colors={colors} fonts={fonts} router={router} onRemove={handleRemove} />;
         }
         if (item.kind === "suggestHeader") {
           return (
@@ -461,38 +525,95 @@ export default function TripDetailScreen() {
       }}
       ListHeaderComponent={
         <>
-          <Stack.Screen options={{ title: "", ...common.header }} />
-          {/* Trip summary card */}
-          <View style={styles.headerCard}>
-            <View style={styles.headerTop}>
-              <Text style={styles.tripDateRange}>
-                {fmt(trip.start)} {"→"} {fmt(trip.end)}
-              </Text>
-              {trip.purpose && (
-                <View style={styles.purposeIconWrap}>
-                  <KindIcon
-                    kind={PURPOSE_KIND[trip.purpose] ?? "location"}
-                    size={18}
-                    color={colors.textSecondary}
-                    accessibilityLabel=""
-                  />
+          <Stack.Screen
+            options={{
+              title: "",
+              ...common.header,
+              headerRight: () => (
+                <View style={{ flexDirection: "row", gap: 4, marginRight: 4 }}>
+                  <Pressable
+                    onPress={dissolveTrip}
+                    style={{ padding: 8 }}
+                    accessibilityLabel="Dissolve trip"
+                  >
+                    <Ionicons name="trash-outline" size={22} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.push(`/trip/edit/${trip.id}`)}
+                    style={{ padding: 8 }}
+                    accessibilityLabel="Edit trip"
+                  >
+                    <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
+                  </Pressable>
                 </View>
-              )}
-            </View>
-            <Text style={styles.tripTitle}>{trip.title}</Text>
-            <View style={styles.tripMeta}>
-              <Text style={styles.tripMetaText}>
-                {n} {n === 1 ? "night" : "nights"}
-              </Text>
-              <Text style={styles.tripMetaDot}>{"·"}</Text>
-              <Text style={styles.tripMetaText}>
-                {entries.length} {entries.length === 1 ? "entry" : "entries"}
-              </Text>
-            </View>
-            {trip.notes
-              ? <Text style={styles.tripNotes}>{trip.notes}</Text>
-              : null}
-          </View>
+              ),
+            }}
+          />
+          {/* Trip summary card */}
+          {(() => {
+            const headerStats: { kind: string; subkind?: string; count: number }[] = [
+              { kind: "leg",   subkind: "air",  count: entries.filter((e) => e.kind === "leg"   && (e as any).mode === "air").length  },
+              { kind: "leg",   subkind: "rail", count: entries.filter((e) => e.kind === "leg"   && (e as any).mode === "rail").length },
+              { kind: "stay",                   count: entries.filter((e) => e.kind === "stay").length  },
+              { kind: "event",                  count: entries.filter((e) => e.kind === "event").length },
+            ].filter((s) => s.count > 0);
+            return (
+              <View style={styles.headerCard}>
+                <View style={styles.headerTop}>
+                  <Text style={styles.tripDateRange}>
+                    {fmt(trip.start)} {"→"} {fmt(trip.end)}
+                  </Text>
+                  {trip.purpose && (
+                    <View style={styles.purposeIconWrap}>
+                      <KindIcon
+                        kind={PURPOSE_KIND[trip.purpose] ?? "location"}
+                        size={18}
+                        color={colors.textSecondary}
+                        accessibilityLabel=""
+                      />
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.tripTitle}>{trip.title}</Text>
+                <View style={styles.tripMeta}>
+                  <Text style={styles.tripMetaText}>
+                    {n} {n === 1 ? "night" : "nights"}
+                  </Text>
+                  <Text style={styles.tripMetaDot}>{"·"}</Text>
+                  <Text style={styles.tripMetaText}>
+                    {entries.length} {entries.length === 1 ? "entry" : "entries"}
+                  </Text>
+                  {suggestions.length > 0 && (
+                    <>
+                      <Text style={styles.tripMetaDot}>{"·"}</Text>
+                      <Text style={styles.tripMetaSuggested}>
+                        {suggestions.length} suggested
+                      </Text>
+                    </>
+                  )}
+                </View>
+                {headerStats.length > 0 && (
+                  <View style={styles.statRow}>
+                    {headerStats.map((s) => (
+                      <View key={`${s.kind}-${s.subkind ?? ""}`} style={styles.statItem}>
+                        <KindIcon
+                          kind={s.kind}
+                          subkind={s.subkind}
+                          size={13}
+                          color={colors.textSecondary}
+                          accessibilityLabel=""
+                        />
+                        <Text style={styles.statNum}>{s.count}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {trip.notes
+                  ? <Text style={styles.tripNotes}>{trip.notes}</Text>
+                  : null}
+              </View>
+            );
+          })()}
         </>
       }
       ListEmptyComponent={
