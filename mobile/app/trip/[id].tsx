@@ -259,7 +259,7 @@ function SuggestionCard({
 }
 
 /** Two-column date row for linked entries — uses shared EntryRow */
-function EntryDayGroup({ group, styles, colors, fonts, router }: { group: DayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter> }) {
+function EntryDayGroup({ group, styles, colors, fonts, router, onRemove }: { group: DayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter>; onRemove?: (entry: Entry) => void }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
@@ -279,6 +279,7 @@ function EntryDayGroup({ group, styles, colors, fonts, router }: { group: DayGro
               colors={colors}
               fonts={fonts}
               onPress={() => router.push(`/entry/${e.id}`)}
+              onLongPress={onRemove ? () => onRemove(e) : undefined}
             />
           </React.Fragment>
         ))}
@@ -372,6 +373,21 @@ export default function TripDetailScreen() {
 
   const n = nights(trip);
 
+  const handleRemove = (entry: Entry) => {
+    dialog.confirm(
+      "Remove from trip?",
+      `"${entryTitle(view(entry))}" will stay in your journal but won't be linked to this trip.`,
+      "Remove",
+      async () => {
+        try {
+          await putMany(storeFor(entry), [{ ...entry, tripId: undefined }]);
+        } catch (err) {
+          dialog.alert("Failed to remove entry", String(err));
+        }
+      }
+    );
+  };
+
   const dissolveTrip = async () => {
     dialog.confirm(
       "Dissolve trip?",
@@ -451,7 +467,7 @@ export default function TripDetailScreen() {
       }
       renderItem={({ item }) => {
         if (item.kind === "entryDay") {
-          return <EntryDayGroup group={item.group} styles={styles} colors={colors} fonts={fonts} router={router} />;
+          return <EntryDayGroup group={item.group} styles={styles} colors={colors} fonts={fonts} router={router} onRemove={handleRemove} />;
         }
         if (item.kind === "suggestHeader") {
           return (
