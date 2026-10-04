@@ -32,6 +32,8 @@ import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatu
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../src/components/ThemeProvider";
 import { KindIcon } from "../src/components/KindIcon";
+import { Linking } from "react-native";
+import { readDeviceCalendar } from "../src/lib/deviceCalendar";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -521,6 +523,44 @@ export default function ImportScreen() {
     }
   };
 
+  const importFromCalendar = async () => {
+    setPhase("parsing");
+    setError(null);
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    try {
+      const res = await readDeviceCalendar();
+      if (res.status === "unavailable") {
+        setPhase("idle");
+        dialog.alert("Calendar unavailable", "This device doesn't expose a calendar.");
+        return;
+      }
+      if (res.status === "denied") {
+        setPhase("idle");
+        if (!res.canAskAgain) {
+          dialog.confirm(
+            "Calendar access needed",
+            "Allow calendar access in Settings to import events. Nothing leaves your phone.",
+            () => void Linking.openSettings(),
+          );
+        } else {
+          dialog.alert("Calendar access needed", "Chronicle needs permission to read your calendar.");
+        }
+        return;
+      }
+      if (!res.count) {
+        setPhase("idle");
+        dialog.alert("No events found", "No one-off events in the past year or next 30 days.");
+        return;
+      }
+      const batch = await stageFile("device-calendar.ics", res.ics, "icalendar");
+      setFreshBatch(batch);
+      setPhase("review");
+    } catch (err) {
+      setError(String(err));
+      setPhase("idle");
+    }
+  };
+
   const pickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -585,6 +625,16 @@ export default function ImportScreen() {
           <Ionicons name="close" size={18} color={colors.textSecondary} />
         </Pressable>
       </View>
+
+      {/* Device calendar */}
+      <Pressable
+        style={[styles.pickBtn, { marginBottom: spacing.sm }, phase === "parsing" && styles.pickBtnDisabled]}
+        onPress={importFromCalendar}
+        disabled={phase === "parsing"}
+      >
+        <Ionicons name="calendar-outline" size={22} color={colors.accentSoft} />
+        <Text style={styles.pickBtnText}>Import from phone calendar</Text>
+      </Pressable>
 
       {/* Pick file button */}
       <Pressable
