@@ -7,7 +7,7 @@ import React, { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, removeMany, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
@@ -372,6 +372,33 @@ export default function TripDetailScreen() {
 
   const n = nights(trip);
 
+  const dissolveTrip = async () => {
+    dialog.confirm(
+      "Dissolve trip?",
+      `"${trip.title}" will be removed. All linked entries stay in your journal.`,
+      "Dissolve",
+      async () => {
+        try {
+          // Unlink every entry that belongs to this trip
+          const linked = allEntries(journal).filter((e) => e.tripId === trip.id);
+          const byStore = new Map<string, Entry[]>();
+          for (const e of linked) {
+            const s = storeFor(e);
+            if (!byStore.has(s)) byStore.set(s, []);
+            byStore.get(s)!.push(e);
+          }
+          for (const [store, items] of byStore) {
+            await putMany(store, items.map((e) => ({ ...e, tripId: undefined })));
+          }
+          await removeMany("trips", [trip.id]);
+          router.replace("/(tabs)/trips");
+        } catch (err) {
+          dialog.alert("Failed to dissolve trip", String(err));
+        }
+      }
+    );
+  };
+
   const addEntry = async (entry: Entry) => {
     setAddingId(entry.id);
     try {
@@ -467,13 +494,22 @@ export default function TripDetailScreen() {
               title: "",
               ...common.header,
               headerRight: () => (
-                <Pressable
-                  onPress={() => router.push(`/trip/edit/${trip.id}`)}
-                  style={{ padding: 8, marginRight: 4 }}
-                  accessibilityLabel="Edit trip"
-                >
-                  <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
-                </Pressable>
+                <View style={{ flexDirection: "row", gap: 4, marginRight: 4 }}>
+                  <Pressable
+                    onPress={dissolveTrip}
+                    style={{ padding: 8 }}
+                    accessibilityLabel="Dissolve trip"
+                  >
+                    <Ionicons name="trash-outline" size={22} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.push(`/trip/edit/${trip.id}`)}
+                    style={{ padding: 8 }}
+                    accessibilityLabel="Edit trip"
+                  >
+                    <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
+                  </Pressable>
+                </View>
               ),
             }}
           />
