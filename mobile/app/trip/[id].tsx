@@ -12,6 +12,7 @@ import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/type
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
+import { Ionicons } from "@expo/vector-icons";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -461,7 +462,21 @@ export default function TripDetailScreen() {
       }}
       ListHeaderComponent={
         <>
-          <Stack.Screen options={{ title: "", ...common.header }} />
+          <Stack.Screen
+            options={{
+              title: "",
+              ...common.header,
+              headerRight: () => (
+                <Pressable
+                  onPress={() => router.push(`/trip/edit/${trip.id}`)}
+                  style={{ padding: 8, marginRight: 4 }}
+                  accessibilityLabel="Edit trip"
+                >
+                  <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
+                </Pressable>
+              ),
+            }}
+          />
           {/* Trip summary card */}
           <View style={styles.headerCard}>
             <View style={styles.headerTop}>
