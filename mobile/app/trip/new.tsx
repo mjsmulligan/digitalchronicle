@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useDialog, Dialog } from "../../src/components/Dialog";
+import { DateField } from "../../src/components/DateField";
 import { Stack, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
 import { uid, type Purpose } from "@chronicle/journal/types";
@@ -166,30 +167,17 @@ export default function NewTripScreen() {
       />
 
       {/* Dates */}
-      <View style={styles.dateRow}>
-        <View style={styles.dateField}>
-          <Text style={styles.label}>Start</Text>
-          <TextInput
-            style={styles.input}
-            value={start}
-            onChangeText={setStart}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#475569"
-            keyboardType="numbers-and-punctuation"
-          />
-        </View>
-        <View style={styles.dateField}>
-          <Text style={styles.label}>End</Text>
-          <TextInput
-            style={styles.input}
-            value={end}
-            onChangeText={setEnd}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="#475569"
-            keyboardType="numbers-and-punctuation"
-          />
-        </View>
-      </View>
+      <DateField
+        label="Start"
+        value={start}
+        onChange={setStart}
+      />
+      <DateField
+        label="End"
+        value={end}
+        onChange={setEnd}
+        minimumDate={isValidDate(start) ? new Date(start + "T12:00:00") : undefined}
+      />
       {start > end && isValidDate(start) && isValidDate(end) && (
         <Text style={styles.validationError}>End date must be on or after start date</Text>
       )}
