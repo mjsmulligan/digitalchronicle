@@ -163,13 +163,17 @@ export function DateField({ label, value, onChange, minimumDate, maximumDate }: 
         <Text style={styles.fieldText}>{formatDisplay(value)}</Text>
       </Pressable>
 
-      {/* Android: inline (renders as a dialog automatically) */}
+      {/* Android: native dialog */}
       {Platform.OS === "android" && showPicker && (
         <DateTimePicker
           value={currentDate}
           mode="date"
           display="default"
-          onChange={handleChange}
+          onValueChange={(date) => {
+            setShowPicker(false);
+            if (date) onChange(toISO(date));
+          }}
+          onDismiss={() => setShowPicker(false)}
           minimumDate={minimumDate}
           maximumDate={maximumDate}
         />
