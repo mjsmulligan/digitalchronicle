@@ -108,6 +108,7 @@ digitalchronicle/          ← existing web root (TanStack Start)
 ### Phase 2 — Native shell
 
 - [x] **Expo Router navigation** — Tab bar: Chronicle · Trips · Culture · People. (Moments deferred — see below.)
+- [x] **Device contacts import** — `expo-contacts` read-only bridge on the Import People screen; reuses duplicate review before adding people.
 - [ ] **Share Sheet intent handler** — accept `.csv`, `.ics`, `.vcf`, `.json` from iOS/Android Share → deposit into Staging Hub.
 - [ ] **`expo-calendar` integration** — pull system Calendar events on permission grant; feed into iCalendar connector.
 - [ ] **Offline-first sync indicator** — badge on import tab showing unreviewed Staging records.
