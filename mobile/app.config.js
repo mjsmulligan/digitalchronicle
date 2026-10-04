@@ -48,4 +48,9 @@ const withJvmArgs = (cfg) =>
     return { modResults, ...rest };
   });
 
-module.exports = withJvmArgs(withCorrectNamespace(config));
+const withDateTimePicker = (cfg) => {
+  cfg.plugins = [...(cfg.plugins ?? []), "@react-native-community/datetimepicker"];
+  return cfg;
+};
+
+module.exports = withDateTimePicker(withJvmArgs(withCorrectNamespace(config)));
