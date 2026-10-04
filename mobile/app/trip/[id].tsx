@@ -97,10 +97,30 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       color: colors.textPrimary,
       marginBottom: spacingScale.sm,
     },
-    tripMeta: { flexDirection: "row", gap: spacingScale.sm2 },
+    tripMeta: { flexDirection: "row", gap: spacingScale.sm2, flexWrap: "wrap" },
     tripMetaText: { ...textScale.smMd, color: colors.textSecondary },
     tripMetaDot:  { ...textScale.smMd, color: colors.textMuted },
+    tripMetaSuggested: { ...textScale.smMd, color: colors.accentSoft, fontWeight: "600" },
     tripNotes: { ...textScale.md, color: colors.textSecondary, marginTop: 10 },
+
+    // Per-type entry breakdown
+    statRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacingScale.md2,
+      marginTop: spacingScale.sm,
+    },
+    statItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+    },
+    statNum: {
+      fontFamily: fonts.mono,
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
 
     // Two-column day group
     dayGroup: {
@@ -530,36 +550,70 @@ export default function TripDetailScreen() {
             }}
           />
           {/* Trip summary card */}
-          <View style={styles.headerCard}>
-            <View style={styles.headerTop}>
-              <Text style={styles.tripDateRange}>
-                {fmt(trip.start)} {"→"} {fmt(trip.end)}
-              </Text>
-              {trip.purpose && (
-                <View style={styles.purposeIconWrap}>
-                  <KindIcon
-                    kind={PURPOSE_KIND[trip.purpose] ?? "location"}
-                    size={18}
-                    color={colors.textSecondary}
-                    accessibilityLabel=""
-                  />
+          {(() => {
+            const headerStats: { kind: string; subkind?: string; count: number }[] = [
+              { kind: "leg",   subkind: "air",  count: entries.filter((e) => e.kind === "leg"   && (e as any).mode === "air").length  },
+              { kind: "leg",   subkind: "rail", count: entries.filter((e) => e.kind === "leg"   && (e as any).mode === "rail").length },
+              { kind: "stay",                   count: entries.filter((e) => e.kind === "stay").length  },
+              { kind: "event",                  count: entries.filter((e) => e.kind === "event").length },
+            ].filter((s) => s.count > 0);
+            return (
+              <View style={styles.headerCard}>
+                <View style={styles.headerTop}>
+                  <Text style={styles.tripDateRange}>
+                    {fmt(trip.start)} {"→"} {fmt(trip.end)}
+                  </Text>
+                  {trip.purpose && (
+                    <View style={styles.purposeIconWrap}>
+                      <KindIcon
+                        kind={PURPOSE_KIND[trip.purpose] ?? "location"}
+                        size={18}
+                        color={colors.textSecondary}
+                        accessibilityLabel=""
+                      />
+                    </View>
+                  )}
                 </View>
-              )}
-            </View>
-            <Text style={styles.tripTitle}>{trip.title}</Text>
-            <View style={styles.tripMeta}>
-              <Text style={styles.tripMetaText}>
-                {n} {n === 1 ? "night" : "nights"}
-              </Text>
-              <Text style={styles.tripMetaDot}>{"·"}</Text>
-              <Text style={styles.tripMetaText}>
-                {entries.length} {entries.length === 1 ? "entry" : "entries"}
-              </Text>
-            </View>
-            {trip.notes
-              ? <Text style={styles.tripNotes}>{trip.notes}</Text>
-              : null}
-          </View>
+                <Text style={styles.tripTitle}>{trip.title}</Text>
+                <View style={styles.tripMeta}>
+                  <Text style={styles.tripMetaText}>
+                    {n} {n === 1 ? "night" : "nights"}
+                  </Text>
+                  <Text style={styles.tripMetaDot}>{"·"}</Text>
+                  <Text style={styles.tripMetaText}>
+                    {entries.length} {entries.length === 1 ? "entry" : "entries"}
+                  </Text>
+                  {suggestions.length > 0 && (
+                    <>
+                      <Text style={styles.tripMetaDot}>{"·"}</Text>
+                      <Text style={styles.tripMetaSuggested}>
+                        {suggestions.length} suggested
+                      </Text>
+                    </>
+                  )}
+                </View>
+                {headerStats.length > 0 && (
+                  <View style={styles.statRow}>
+                    {headerStats.map((s) => (
+                      <View key={`${s.kind}-${s.subkind ?? ""}`} style={styles.statItem}>
+                        <KindIcon
+                          kind={s.kind}
+                          subkind={s.subkind}
+                          size={13}
+                          color={colors.textSecondary}
+                          accessibilityLabel=""
+                        />
+                        <Text style={styles.statNum}>{s.count}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {trip.notes
+                  ? <Text style={styles.tripNotes}>{trip.notes}</Text>
+                  : null}
+              </View>
+            );
+          })()}
         </>
       }
       ListEmptyComponent={

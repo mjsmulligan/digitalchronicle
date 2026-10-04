@@ -148,6 +148,32 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       marginHorizontal: spacingScale.base,
     },
 
+    // Per-type entry breakdown (WP-T6)
+    statRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacingScale.md2,
+      marginTop: spacingScale.sm,
+    },
+    statItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 3,
+    },
+    statNum: {
+      fontFamily: fonts.mono,
+      fontSize: 11,
+      fontWeight: "700",
+      color: colors.textSecondary,
+    },
+
+    // Suggested count badge (WP-T7)
+    suggestedBadge: {
+      ...textScale.sm,
+      color: colors.accentSoft,
+      fontWeight: "600",
+    },
+
     empty: {
       flex: 1,
       backgroundColor: colors.bg,
@@ -184,13 +210,25 @@ type Styles = ReturnType<typeof createStyles>;
 interface TripItem {
   trip: Trip;
   entryCount: number;
+  flights: number;
+  trains: number;
+  stays: number;
+  events: number;
+  suggested: number;
 }
 
 function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; colors: ThemeColors }) {
-  const { trip, entryCount } = item;
+  const { trip, entryCount, flights, trains, stays, events, suggested } = item;
   const { num, day, month, year } = parseDay(trip.start);
   const n = nights(trip);
   const router = useRouter();
+
+  // Build stat items — only non-zero
+  const stats: { kind: string; subkind?: string; count: number }[] = [];
+  if (flights > 0) stats.push({ kind: "leg", subkind: "air",  count: flights });
+  if (trains  > 0) stats.push({ kind: "leg", subkind: "rail", count: trains  });
+  if (stays   > 0) stats.push({ kind: "stay",                 count: stays   });
+  if (events  > 0) stats.push({ kind: "event",                count: events  });
 
   return (
     <View style={styles.row}>
@@ -234,7 +272,33 @@ function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; col
             <Text style={styles.metaText}>
               {entryCount} {entryCount === 1 ? "entry" : "entries"}
             </Text>
+            {suggested > 0 && (
+              <>
+                <Text style={styles.metaDot}>{"·"}</Text>
+                <Text style={styles.suggestedBadge}>
+                  {suggested} suggested
+                </Text>
+              </>
+            )}
           </View>
+
+          {/* Per-type breakdown — only shown when there are categorisable entries */}
+          {stats.length > 0 && (
+            <View style={styles.statRow}>
+              {stats.map((s) => (
+                <View key={`${s.kind}-${s.subkind ?? ""}`} style={styles.statItem}>
+                  <KindIcon
+                    kind={s.kind}
+                    subkind={s.subkind}
+                    size={13}
+                    color={colors.textSecondary}
+                    accessibilityLabel=""
+                  />
+                  <Text style={styles.statNum}>{s.count}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </Pressable>
       </View>
     </View>
@@ -250,13 +314,37 @@ export default function TripsScreen() {
 
   const trips = useMemo<TripItem[]>(() => {
     const entries = allEntries(journal);
-    const countById = new Map<string, number>();
+
+    // Per-trip linked entry stats
+    const statMap = new Map<string, { count: number; flights: number; trains: number; stays: number; events: number }>();
     for (const e of entries) {
-      if (e.tripId) countById.set(e.tripId, (countById.get(e.tripId) ?? 0) + 1);
+      if (!e.tripId) continue;
+      if (!statMap.has(e.tripId)) statMap.set(e.tripId, { count: 0, flights: 0, trains: 0, stays: 0, events: 0 });
+      const s = statMap.get(e.tripId)!;
+      s.count++;
+      if (e.kind === "leg" && (e as any).mode === "air")  s.flights++;
+      else if (e.kind === "leg" && (e as any).mode === "rail") s.trains++;
+      else if (e.kind === "stay")  s.stays++;
+      else if (e.kind === "event") s.events++;
     }
+
     return [...journal.trips]
       .sort((a, b) => b.start.localeCompare(a.start))
-      .map((t) => ({ trip: t, entryCount: countById.get(t.id) ?? 0 }));
+      .map((t) => {
+        const s = statMap.get(t.id);
+        const suggested = entries.filter(
+          (e) => !e.tripId && e.start.slice(0, 10) >= t.start && e.start.slice(0, 10) <= t.end
+        ).length;
+        return {
+          trip: t,
+          entryCount: s?.count ?? 0,
+          flights:    s?.flights ?? 0,
+          trains:     s?.trains  ?? 0,
+          stays:      s?.stays   ?? 0,
+          events:     s?.events  ?? 0,
+          suggested,
+        };
+      });
   }, [journal]);
 
   const router = useRouter();
