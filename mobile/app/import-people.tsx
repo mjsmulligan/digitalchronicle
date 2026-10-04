@@ -15,11 +15,13 @@ import {
   Text,
   View,
   ScrollView,
+  Linking,
 } from "react-native";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { Stack, useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
+import { readDeviceContacts } from "../src/lib/deviceContacts";
 import { useJournal, putMany } from "@chronicle/journal/db";
 import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { uid } from "@chronicle/journal/types";
@@ -122,6 +124,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       marginBottom: spacingScale.sm,
     },
     pickBtnDisabled: { opacity: 0.5 },
+    deviceBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      backgroundColor: colors.accentBold,
+      borderRadius: radiusScale.xl,
+      paddingVertical: 18,
+      marginBottom: spacingScale.sm,
+    },
+    deviceBtnText: { ...textScale.lg, color: colors.white, fontWeight: "600" },
     pickBtnText: { ...textScale.lg, color: colors.accentSoft, fontWeight: "600" },
     hint: { ...textScale.sm, color: colors.textMuted, textAlign: "center", marginBottom: spacingScale.xl },
 
@@ -289,6 +302,41 @@ export default function ImportPeopleScreen() {
     }
   };
 
+  const importFromDevice = async () => {
+    setPhase("parsing");
+    setError(null);
+    try {
+      const res = await readDeviceContacts();
+      if (res.status === "unavailable") {
+        setPhase("idle");
+        dialog.alert("Not available", "Phone contacts can't be read on this device. Use a contacts file instead.");
+        return;
+      }
+      if (res.status === "denied") {
+        setPhase("idle");
+        dialog.alert(
+          "Contacts access needed",
+          res.canAskAgain
+            ? "Chronicle needs permission to read your contacts. Nothing leaves your phone."
+            : "Contacts access is turned off. Enable it for Chronicle in your phone's Settings, then try again.",
+          res.canAskAgain ? undefined : () => { Linking.openSettings(); },
+        );
+        return;
+      }
+      if (!res.contacts.length) {
+        setPhase("idle");
+        dialog.alert("No contacts found", "Your phone's address book has no named contacts.");
+        return;
+      }
+      setContacts(buildReviewContacts(res.contacts, journal.people));
+      setParseErrors([]);
+      setPhase("review");
+    } catch (err) {
+      setError(String(err));
+      setPhase("idle");
+    }
+  };
+
   const toggleContact = (idx: number, selected: boolean) => {
     setContacts((prev) => prev.map((c, i) => (i === idx ? { ...c, selected } : c)));
   };
@@ -342,6 +390,17 @@ export default function ImportPeopleScreen() {
           <Ionicons name="close" size={18} color={colors.textSecondary} />
         </Pressable>
       </View>
+
+      {/* Device contacts */}
+      <Pressable
+        style={[styles.deviceBtn, phase === "parsing" && styles.pickBtnDisabled]}
+        onPress={importFromDevice}
+        disabled={phase === "parsing"}
+      >
+        <Ionicons name="phone-portrait-outline" size={22} color={colors.white} />
+        <Text style={styles.deviceBtnText}>Import from phone contacts</Text>
+      </Pressable>
+      <Text style={styles.hint}>Read on this device only — you choose who to add</Text>
 
       {/* File picker */}
       <Pressable
