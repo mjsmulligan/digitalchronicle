@@ -7,6 +7,7 @@
 import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Link, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Trip } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
@@ -162,6 +163,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       marginBottom: spacingScale.sm,
     },
     emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+    newTripBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm2,
+      marginTop: spacingScale.xl,
+      paddingHorizontal: spacingScale.lg,
+      paddingVertical: spacingScale.md,
+      borderRadius: radiusScale.pill,
+      backgroundColor: colors.accentBold,
+    },
+    newTripBtnText: { color: colors.white, fontSize: 15, fontWeight: "700" },
   });
 }
 
@@ -247,6 +259,8 @@ export default function TripsScreen() {
       .map((t) => ({ trip: t, entryCount: countById.get(t.id) ?? 0 }));
   }, [journal]);
 
+  const router = useRouter();
+
   if (!trips.length) {
     return (
       <View style={styles.empty}>
@@ -255,6 +269,10 @@ export default function TripsScreen() {
         <Text style={styles.emptyHint}>
           Import a Viaduct or iCalendar file to populate your trips.
         </Text>
+        <Pressable style={styles.newTripBtn} onPress={() => router.push("/trip/new")}>
+          <Ionicons name="add" size={18} color="white" />
+          <Text style={styles.newTripBtnText}>New trip</Text>
+        </Pressable>
       </View>
     );
   }
