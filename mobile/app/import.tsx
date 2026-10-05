@@ -32,8 +32,10 @@ import { entryTitle, view, type StagingBatch, type StagedRecord, type StageStatu
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../src/components/ThemeProvider";
 import { KindIcon } from "../src/components/KindIcon";
-import { Linking } from "react-native";
+import { Linking, TextInput } from "react-native";
 import { readDeviceCalendar } from "../src/lib/deviceCalendar";
+import { fetchGoodreadsShelfCsv, parseGoodreadsUserId } from "@chronicle/journal/connectors/goodreads/rss";
+import { getGoodreadsUserId, setGoodreadsUserId } from "../src/lib/goodreadsPrefs";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
