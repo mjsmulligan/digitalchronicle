@@ -26,7 +26,7 @@ function HeaderRight({
   return (
     <View style={{ flexDirection: "row", gap: 4, marginRight: 8 }}>
       {/* Sources — covers file imports + photo library suggestions */}
-      <Link href="/sources" asChild>
+      <Link href="/sources" push asChild>
         <Pressable style={{ padding: 8 }}>
           <View>
             <Ionicons name="layers-outline" size={22} color={colors.accentSoft} />
