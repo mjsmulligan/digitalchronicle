@@ -15,6 +15,7 @@ import {
   Pressable,
   SectionList,
   StyleSheet,
+  Switch,
   Text,
   View,
   ActivityIndicator,
@@ -41,7 +42,7 @@ function pluralDays(n: number): string {
 
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
 
-type Tab = "suggestions" | "bin";
+type Tab = "suggestions" | "ignored";
 
 // ─── Suggestion section ───────────────────────────────────────────────────────
 
@@ -58,6 +59,8 @@ function PlaceRow({
 }) {
   const { colors, fonts } = useTheme();
   const s = useMemo(() => styles(colors, fonts), [colors, fonts]);
+  // Start ON (pre-approved) — matches the detail screen and file-import pattern
+  const [value, setValue] = useState(true);
 
   if (pg.pending.length === 0) return null;
 
@@ -67,23 +70,36 @@ function PlaceRow({
       ? fmtDay(days[0])
       : `${fmtDay(days[0])} – ${fmtDay(days[days.length - 1])}`;
 
+  const handleChange = (next: boolean) => {
+    setValue(next);
+    if (next) onAcceptAll();
+    else onDismissAll();
+  };
+
   return (
-    <Pressable style={({ pressed }) => [s.placeRow, pressed && s.pressed]} onPress={onPress}>
-      <View style={s.placeInfo}>
+    <View style={s.placeRow}>
+      {/* Left — tap to see per-day detail (only useful when multiple days) */}
+      <Pressable
+        style={({ pressed }) => [s.placeInfoPress, pressed && s.pressed]}
+        onPress={onPress}
+      >
         <Text style={s.placeName}>{pg.place.locality}</Text>
         <Text style={s.placeMeta}>
           {pluralDays(pg.pending.length)} · {dateLabel}
         </Text>
-      </View>
-      <View style={s.placeActions}>
-        <Pressable style={[s.actionBtn, s.acceptBtn]} onPress={onAcceptAll}>
-          <Ionicons name="checkmark" size={16} color={colors.white} />
-        </Pressable>
-        <Pressable style={[s.actionBtn, s.dismissBtn]} onPress={onDismissAll}>
-          <Ionicons name="close" size={16} color={colors.textSecondary} />
-        </Pressable>
-      </View>
-    </Pressable>
+        {pg.pending.length > 1 && (
+          <Text style={s.detailHint}>Tap to review days</Text>
+        )}
+      </Pressable>
+      {/* Right — Switch: ON = include, OFF = dismiss to bin */}
+      <Switch
+        value={value}
+        onValueChange={handleChange}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={value ? colors.surface : colors.textMuted}
+        style={s.rowSwitch}
+      />
+    </View>
   );
 }
 
@@ -127,7 +143,7 @@ function RegionSection({
             <Text style={s.smallBtnText}>Accept all</Text>
           </Pressable>
           <Pressable style={[s.actionBtn, s.dismissBtn, s.smallBtn]} onPress={() => onDismissRegion(rg.region)}>
-            <Text style={[s.smallBtnText, { color: colors.textSecondary }]}>Dismiss all</Text>
+            <Text style={[s.smallBtnText, { color: colors.textSecondary }]}>Ignore all</Text>
           </Pressable>
         </View>
       </Pressable>
@@ -146,9 +162,9 @@ function RegionSection({
   );
 }
 
-// ─── Bin section ──────────────────────────────────────────────────────────────
+// ─── Ignored section ──────────────────────────────────────────────────────────
 
-function BinSection({
+function IgnoredSection({
   hub,
   dialog,
 }: {
@@ -167,7 +183,7 @@ function BinSection({
   if (hub.binEntries.length === 0) {
     return (
       <View style={s.empty}>
-        <Text style={s.emptyText}>Bin is empty</Text>
+        <Text style={s.emptyText}>Nothing ignored yet</Text>
       </View>
     );
   }
@@ -180,14 +196,14 @@ function BinSection({
           style={s.binActionBtn}
           onPress={() =>
             dialog.confirm(
-              "Empty bin",
-              "This creates markers so these photos are never re-offered. You can undo this with Reset decisions.",
-              "Empty bin",
+              "Clear ignored",
+              "This creates markers so these suggestions are never re-offered. You can undo this with Reset decisions.",
+              "Clear ignored",
               () => hub.emptyBin(),
             )
           }
         >
-          <Text style={s.binActionText}>Empty bin</Text>
+          <Text style={s.binActionText}>Clear ignored</Text>
         </Pressable>
         <Pressable
           style={s.binActionBtn}
@@ -250,9 +266,9 @@ export default function StagingPlacesScreen() {
 
   function handleDismissRegion(region: string) {
     dialog.confirm(
-      `Dismiss all of ${region}`,
-      `Dismiss all pending entries for every locality in ${region}? They will go to the bin.`,
-      "Dismiss all",
+      `Ignore all of ${region}`,
+      `Ignore all pending suggestions for every locality in ${region}?`,
+      "Ignore all",
       () => hub.dismissRegion(region),
     );
   }
@@ -270,9 +286,9 @@ export default function StagingPlacesScreen() {
   function handleDismissPlace(placeId: string) {
     const place = hub.places.find((p) => p.id === placeId);
     dialog.confirm(
-      `Dismiss all of ${place?.locality ?? "place"}`,
-      "Send all pending days to the bin?",
-      "Dismiss all",
+      `Ignore all of ${place?.locality ?? "place"}`,
+      "Ignore all pending days for this place?",
+      "Ignore all",
       () => hub.dismissPlace(placeId),
     );
   }
@@ -288,9 +304,9 @@ export default function StagingPlacesScreen() {
 
   function handleDismissCountry(country: string) {
     dialog.confirm(
-      `Dismiss all of ${country}`,
-      `Send all pending entries for every place in ${country} to the bin?`,
-      "Dismiss all",
+      `Ignore all of ${country}`,
+      `Ignore all pending suggestions for every place in ${country}?`,
+      "Ignore all",
       () => hub.dismissCountry(country),
     );
   }
@@ -318,12 +334,12 @@ export default function StagingPlacesScreen() {
 
       {/* Tab bar */}
       <View style={s.tabBar}>
-        {(["suggestions", "bin"] as Tab[]).map((t) => (
+        {(["suggestions", "ignored"] as Tab[]).map((t) => (
           <Pressable key={t} style={[s.tab, tab === t && s.tabActive]} onPress={() => setTab(t)}>
             <Text style={[s.tabText, tab === t && s.tabTextActive]}>
               {t === "suggestions"
                 ? `Suggestions${hub.totalPending > 0 ? ` (${hub.totalPending})` : ""}`
-                : `Bin${hub.binEntries.length > 0 ? ` (${hub.binEntries.length})` : ""}`}
+                : `Ignored${hub.binEntries.length > 0 ? ` (${hub.binEntries.length})` : ""}`}
             </Text>
           </Pressable>
         ))}
@@ -360,7 +376,7 @@ export default function StagingPlacesScreen() {
                     style={[s.actionBtn, s.dismissBtn, s.smallBtn]}
                     onPress={() => handleDismissCountry(section.title)}
                   >
-                    <Text style={[s.smallBtnText, { color: colors.textSecondary }]}>Dismiss all</Text>
+                    <Text style={[s.smallBtnText, { color: colors.textSecondary }]}>Ignore all</Text>
                   </Pressable>
                 </View>
               </View>
@@ -379,7 +395,7 @@ export default function StagingPlacesScreen() {
           />
         )
       ) : (
-        <BinSection hub={hub} dialog={dialog} />
+        <IgnoredSection hub={hub} dialog={dialog} />
       )}
 
       <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
@@ -464,11 +480,12 @@ function styles(colors: ReturnType<typeof useTheme>["colors"], fonts: ReturnType
     },
     regionCount: {
       fontSize: 12,
-      color: colors.textMuted,
-      backgroundColor: colors.accentSubtle,
+      color: colors.accent,
+      backgroundColor: colors.surfaceAccent,
       borderRadius: 8,
       paddingHorizontal: 6,
       paddingVertical: 2,
+      fontFamily: fonts.sansMedium ?? fonts.sans,
     },
     regionBatch: {
       flexDirection: "row",
@@ -488,14 +505,18 @@ function styles(colors: ReturnType<typeof useTheme>["colors"], fonts: ReturnType
     placeRow: {
       flexDirection: "row",
       alignItems: "center",
-      paddingHorizontal: spacing.lg,
+      paddingLeft: spacing.lg,
+      paddingRight: spacing.md,
       paddingVertical: spacing.md,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.borderFaint,
       backgroundColor: colors.bg,
     },
+    placeInfoPress: {
+      flex: 1,
+      paddingRight: spacing.sm,
+    },
     pressed: { opacity: 0.7 },
-    placeInfo: { flex: 1 },
     placeName: {
       fontSize: 15,
       fontFamily: fonts.serifSemiBold,
@@ -506,16 +527,23 @@ function styles(colors: ReturnType<typeof useTheme>["colors"], fonts: ReturnType
       fontSize: 12,
       color: colors.textMuted,
     },
-    placeActions: {
-      flexDirection: "row",
-      gap: spacing.xs,
+    detailHint: {
+      fontSize: 11,
+      color: colors.accent,
+      marginTop: 2,
     },
+    rowSwitch: {
+      transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
+    },
+    // Used by bin rows (no pressable wrapper needed there)
+    placeInfo: { flex: 1 },
+    // Used by region/country batch buttons and bin restore
     actionBtn: {
-      width: 34,
       height: 34,
       borderRadius: radius.lg,
       alignItems: "center",
       justifyContent: "center",
+      paddingHorizontal: spacing.sm,
     },
     acceptBtn: { backgroundColor: colors.accentBold },
     dismissBtn: {

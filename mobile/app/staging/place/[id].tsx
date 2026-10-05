@@ -326,9 +326,9 @@ export default function PlaceDetailScreen() {
 
   const handleDismissAll = () => {
     dialog.confirm(
-      `Dismiss all of ${place.locality}`,
-      `Send all ${placeGroup.pending.length} pending days to the bin?`,
-      "Dismiss all",
+      `Ignore all of ${place.locality}`,
+      `Ignore all ${placeGroup.pending.length} pending days for this place?`,
+      "Ignore all",
       () => hub.dismissPlace(id),
     );
   };
@@ -374,7 +374,7 @@ export default function PlaceDetailScreen() {
                   <Text style={s.batchBtnText}>Accept all</Text>
                 </Pressable>
                 <Pressable style={[s.batchBtn, s.dismissBatch]} onPress={handleDismissAll}>
-                  <Text style={[s.batchBtnText, { color: colors.textSecondary }]}>Dismiss all</Text>
+                  <Text style={[s.batchBtnText, { color: colors.textSecondary }]}>Ignore all</Text>
                 </Pressable>
               </View>
             </View>
