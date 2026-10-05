@@ -30,7 +30,7 @@
 
 import type { LocalityKey } from "../../types";
 import type { Leg, Trip } from "../../types";
-import type { LocatedPhotoRecord, UnlocatedPhotoRecord, BuiltPlace } from "./types";
+import type { TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord, BuiltPlace } from "./types";
 
 // ─── Open questions from spec ──────────────────────────────────────────────────
 
@@ -65,7 +65,7 @@ export function daysDiff(a: string, b: string): number {
  * If the leg has resolved UTC timestamps, those are used for precise comparison.
  * Otherwise the photo's localDay is compared against the leg's start/end dates.
  */
-export function isDuringLeg(photo: LocatedPhotoRecord | UnlocatedPhotoRecord, legs: Leg[]): boolean {
+export function isDuringLeg(photo: TimedPhotoRecord, legs: Leg[]): boolean {
   for (const leg of legs) {
     if (leg.startUTC && leg.endUTC && photo.captureTimestamp !== null) {
       const tsMs = photo.captureTimestamp * 1000;

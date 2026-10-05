@@ -42,7 +42,17 @@ import {
   ResolvingLocalityResolver,
 } from "./localityResolver";
 import { buildPlaces, DEFAULT_MAX_GAP_DAYS, daysDiff, isDuringLeg } from "./placeBuilder";
-import type { Leg } from "../../types";
+import {
+  mapToStagingBatch,
+  placeConfidence,
+  sampleEvidenceRefs,
+  proposeTripId,
+  placeDedupeKey,
+  EXIF_SOURCE_ID,
+  EXIF_TIER,
+  MAX_EVIDENCE_REFS,
+} from "./stagingMapper";
+import type { Entry, Leg, Trip } from "../../types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Data model (WP1)
@@ -692,7 +702,7 @@ describe("Acceptance check 2 — no-GPS photos attach to existing place, never c
   it("no-GPS photos outside any place date range are not attached anywhere", async () => {
     // London place covers Jul 14–15; no-GPS photo on Aug 1 has nowhere to attach
     const { located } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
-    const lateUnlocated = [{ ...FIXTURE_NO_GPS[0], localDay: "2025-08-01", mediaId: "no-gps-late" }];
+    const lateUnlocated = [{ ...FIXTURE_NO_GPS[0], localDay: "2025-08-01", mediaId: "no-gps-late", locality: null as null }];
     const places = buildPlaces(located, lateUnlocated, [], []);
 
     expect(places[0].unlocatedPhotos).toHaveLength(0);
@@ -819,5 +829,174 @@ describe("Acceptance check 10 — two suburbs of the same city resolve to one pl
 
     expect(keys.has("gb:london")).toBe(true);
     expect(keys.has("ie:dublin")).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WP6 — Staging mapper unit tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("WP6 — placeDedupeKey", () => {
+  it("uses place|{localityKey}|{dateStart} format", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const [place] = buildPlaces(located, unlocated, [], []);
+    expect(placeDedupeKey(place)).toBe("place|gb:london|2025-07-14");
+  });
+});
+
+describe("WP6 — placeConfidence", () => {
+  it("returns 'inferred' for a single-photo place", async () => {
+    const { located, unlocated } = await resolveFixture([FIXTURE_LONDON_MULTI_DAY[0]]);
+    const [place] = buildPlaces(located, unlocated, [], []);
+    expect(placeConfidence(place)).toBe("inferred");
+  });
+
+  it("returns 'approximate' for a place with 5+ photos and good timing", async () => {
+    // Create 5 located photos with exif-offset timing
+    const manyPhotos = Array.from({ length: 5 }, (_, i) =>
+      ({ ...FIXTURE_LONDON_MULTI_DAY[0], mediaId: `many-${i}`, localDay: `2025-07-${14 + i}` }),
+    );
+    const { located, unlocated } = await resolveFixture(manyPhotos);
+    const [place] = buildPlaces(located, unlocated, [], []);
+    expect(placeConfidence(place)).toBe("approximate");
+  });
+});
+
+describe("WP6 — sampleEvidenceRefs", () => {
+  it("returns a PhotoEvidenceRef per sampled photo", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const [place] = buildPlaces(located, unlocated, [], []);
+    const refs = sampleEvidenceRefs(place);
+    expect(refs.length).toBeGreaterThan(0);
+    expect(refs.length).toBeLessThanOrEqual(MAX_EVIDENCE_REFS);
+    for (const ref of refs) {
+      expect(ref.mediaId).toBeTruthy();
+      expect(ref.localDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(typeof ref.hasGps).toBe("boolean");
+    }
+  });
+
+  it("caps evidence refs at MAX_EVIDENCE_REFS", async () => {
+    const manyPhotos = Array.from({ length: 20 }, (_, i) =>
+      ({ ...FIXTURE_LONDON_MULTI_DAY[0], mediaId: `bulk-${i}`, localDay: "2025-07-14" }),
+    );
+    const { located, unlocated } = await resolveFixture(manyPhotos);
+    const [place] = buildPlaces(located, unlocated, [], []);
+    expect(sampleEvidenceRefs(place).length).toBe(MAX_EVIDENCE_REFS);
+  });
+});
+
+describe("WP6 — proposeTripId", () => {
+  const trip: Trip = {
+    id: "trip-uk-2025", title: "UK 2025",
+    start: "2025-07-13", end: "2025-07-20",
+    notes: "", cover: "", createdAt: new Date().toISOString(),
+  };
+
+  it("proposes the trip id when place dates overlap", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const [place] = buildPlaces(located, unlocated, [], []);
+    expect(proposeTripId(place, [trip])).toBe("trip-uk-2025");
+  });
+
+  it("returns undefined when place is outside all trips", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_DUBLIN_SUBURBS); // Aug 1
+    const [place] = buildPlaces(located, unlocated, [], []);
+    expect(proposeTripId(place, [trip])).toBeUndefined();
+  });
+});
+
+describe("WP6 — mapToStagingBatch", () => {
+  it("produces a batch with one record per built place", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const places = buildPlaces(located, unlocated, [], []);
+    const batch = mapToStagingBatch(places, [], new Map());
+
+    expect(batch.source).toBe(EXIF_SOURCE_ID);
+    expect(batch.records).toHaveLength(places.length);
+  });
+
+  it("record entry has correct kind, tier, and source", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const places = buildPlaces(located, unlocated, [], []);
+    const batch = mapToStagingBatch(places, [], new Map());
+    const entry = batch.records[0].entry as import("../../types").PlaceEvent;
+
+    expect(entry.kind).toBe("place");
+    expect(entry.tier).toBe(EXIF_TIER);
+    expect(entry.source).toBe(EXIF_SOURCE_ID);
+    expect(entry.localityKey).toBe("gb:london");
+    expect(entry.start).toBe("2025-07-14");
+    expect(entry.end).toBe("2025-07-15");
+  });
+
+  it("new place is classified as 'new' when not in existing entries", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const places = buildPlaces(located, unlocated, [], []);
+    const batch = mapToStagingBatch(places, [], new Map());
+
+    expect(batch.records[0].status).toBe("new");
+    expect(batch.records[0].selected).toBe(true);
+  });
+
+  it("duplicate place is classified as 'duplicate' when dedupeKey already exists at same tier", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const places = buildPlaces(located, unlocated, [], []);
+
+    // Pre-populate the existing entries map with an entry at the same dedupeKey
+    const existing = makePlaceEvent({
+      localityKey: "gb:london",
+      start: "2025-07-14",
+      end: "2025-07-15",
+      dedupeKey: "place|gb:london|2025-07-14",
+    }) as Entry;
+    const existingMap = new Map([[existing.dedupeKey, existing]]);
+
+    const batch = mapToStagingBatch(places, [], existingMap);
+
+    expect(batch.records[0].status).toBe("duplicate");
+    expect(batch.records[0].selected).toBe(false);
+  });
+
+  it("batch-duplicate when same place appears twice in one batch", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const place = buildPlaces(located, unlocated, [], [])[0];
+    // Pass the same place twice
+    const batch = mapToStagingBatch([place, place], [], new Map());
+
+    expect(batch.records[0].status).toBe("new");
+    expect(batch.records[1].status).toBe("batch-duplicate");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 8 — photo place and calendar place coexist unflagged
+// spec §15.8
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Acceptance check 8 — photo place and calendar place in different cities coexist unflagged", () => {
+  it("photo-library place and an existing calendar place at a different key are both 'new' with no warning", async () => {
+    // Simulate an existing calendar place in Rome (different city entirely)
+    const calendarPlace = makePlaceEvent({
+      id: "cal-rome-1",
+      kind: "place",
+      source: "calendar",
+      tier: 2,
+      locality: "Rome", country: "Italy", localityKey: "it:rome",
+      start: "2025-07-14", end: "2025-07-17",
+      dedupeKey: "place|it:rome|2025-07-14",
+    }) as Entry;
+    const existingMap = new Map([[calendarPlace.dedupeKey, calendarPlace]]);
+
+    // Photo library produces a London place on the same dates
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const places = buildPlaces(located, unlocated, [], []);
+    const batch = mapToStagingBatch(places, [], existingMap);
+
+    // Photo place is new — no collision with calendar place (different key)
+    expect(batch.records[0].status).toBe("new");
+    expect(batch.records[0].warnings).toHaveLength(0);
+    // Existing calendar place is unaffected (not in the batch)
+    expect(batch.records.find((r) => (r.entry as any).localityKey === "it:rome")).toBeUndefined();
   });
 });
