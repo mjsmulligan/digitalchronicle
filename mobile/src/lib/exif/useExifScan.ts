@@ -22,15 +22,6 @@ import type { PlaceEvent } from "@chronicle/journal/types";
 
 function loadDeviceModules() {
   try {
-    // Use TurboModuleRegistry.get to probe for the native module without throwing.
-    // In New Architecture (Hermes JSI), accessing an unregistered Turbo Module via
-    // require() throws an error that can escape a try/catch. TurboModuleRegistry.get
-    // returns null safely instead.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { TurboModuleRegistry } = require("react-native") as typeof import("react-native");
-    if (typeof TurboModuleRegistry?.get === "function") {
-      if (!TurboModuleRegistry.get("ExpoMediaLibraryNext")) return null;
-    }
     const mediaAccess = require("./mediaAccess") as typeof import("./mediaAccess");
     const geocoder = require("./deviceGeocoder") as typeof import("./deviceGeocoder");
     if (typeof mediaAccess?.requestMediaPermissions !== "function") return null;

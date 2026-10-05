@@ -22,7 +22,7 @@
  *  - On iOS, the library returns GPS data with the media permission alone
  */
 
-import * as MediaLibrary from "expo-media-library";
+import * as MediaLibrary from "expo-media-library/legacy";
 import * as Location from "expo-location";
 import type { PhotoRecord } from "../../../../src/lib/journal/sources/exif/types";
 import type { ScanScope } from "../../../../src/lib/journal/sources/exif/types";
@@ -311,13 +311,18 @@ export async function* scanPhotos(
       const captureTimestamp = exifData.captureTimestamp
         ?? (asset.creationTime ? asset.creationTime / 1000 : null);
 
+      // On Android, GPS is exposed via assetInfo.location rather than in EXIF keys.
+      // Use EXIF-parsed coordinates first, fall back to the location field.
+      const latitude = exifData.latitude ?? assetInfo.location?.latitude ?? null;
+      const longitude = exifData.longitude ?? assetInfo.location?.longitude ?? null;
+
       batch.push({
         mediaId: asset.id,
         uri: asset.uri,
         captureTimestamp,
         tzOffset: exifData.tzOffset,
-        latitude: exifData.latitude,
-        longitude: exifData.longitude,
+        latitude,
+        longitude,
         cameraMake: exifData.cameraMake,
         cameraModel: exifData.cameraModel,
         ...(usedFallbackTime ? { usedFallbackTime: true } : {}),

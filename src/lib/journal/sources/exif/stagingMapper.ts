@@ -85,6 +85,7 @@ export function sampleEvidenceRefs(place: BuiltPlace): PhotoEvidenceRef[] {
   return sample.map(
     (p): PhotoEvidenceRef => ({
       mediaId: p.mediaId,
+      ...(p.uri ? { uri: p.uri } : {}),
       localDay: p.localDay,
       hasGps: p.latitude !== null && p.longitude !== null,
       timingRule: p.timingRule,

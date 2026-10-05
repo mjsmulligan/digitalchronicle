@@ -2,11 +2,11 @@
  * Entry detail screen — view-only for all entry kinds.
  * Reached by tapping any row in the Chronicle feed.
  */
-import { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book } from "@chronicle/journal/types";
+import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent } from "@chronicle/journal/types";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { SourceMark } from "../../src/components/SourceMark";
@@ -28,12 +28,13 @@ function modeLabel(mode: Leg["mode"]): string {
 
 function sourceLabel(source?: string): string {
   const map: Record<string, string> = {
-    letterboxd: "Letterboxd",
-    netflix:    "Netflix",
-    goodreads:  "Goodreads",
-    viaduct:    "Viaduct",
-    "setlist.fm": "Setlist.fm",
-    manual:     "Manual",
+    letterboxd:       "Letterboxd",
+    netflix:          "Netflix",
+    goodreads:        "Goodreads",
+    viaduct:          "Viaduct",
+    "setlist.fm":     "Setlist.fm",
+    "photo-library":  "Photo library",
+    manual:           "Manual",
   };
   return source ? (map[source] ?? source) : "Unknown";
 }
@@ -192,6 +193,49 @@ function BookDetail({ e, styles, ic }: { e: Book; styles: DetailStyles; ic: Icon
   );
 }
 
+function PlaceDetail({ e, styles, ic }: { e: PlaceEvent; styles: DetailStyles; ic: IconColors }) {
+  const v = view(e);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  if (v.kind !== "place") return null;
+  const evidence = v.photoEvidence?.filter((r) => !r.missing && r.uri) ?? [];
+  return (
+    <>
+      <Text style={styles.title}>{v.locality}{v.country ? `, ${v.country}` : ""}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="place" size={15} color={ic.secondary} />
+        <Text style={styles.subtitle}>Place{v.region ? ` · ${v.region}` : ""}</Text>
+      </View>
+      <Divider styles={styles} />
+      <Field label="From"    value={v.start?.slice(0, 10)}                          styles={styles} />
+      <Field label="To"      value={v.end?.slice(0, 10)}                            styles={styles} />
+      <Field label="Region"  value={v.region}                                        styles={styles} />
+      <Field label="Country" value={v.country}                                       styles={styles} />
+      <Field label="Photos"  value={v.photoCount ? String(v.photoCount) : undefined} styles={styles} />
+      {evidence.length > 0 && (
+        <>
+          <Divider styles={styles} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
+            {evidence.map((ref) => (
+              <Pressable
+                key={ref.mediaId}
+                onPress={() => ref.uri && setPreviewUri(ref.uri)}
+                style={{ borderRadius: 8, overflow: "hidden" }}
+              >
+                <Image source={{ uri: ref.uri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      )}
+      <Modal visible={!!previewUri} transparent animationType="fade" onRequestClose={() => setPreviewUri(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center" }} onPress={() => setPreviewUri(null)}>
+          <Image source={{ uri: previewUri ?? "" }} style={{ width: "100%", height: "80%" }} resizeMode="contain" />
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 function EventDetail({ e, styles, ic }: { e: JEvent; styles: DetailStyles; ic: IconColors }) {
   const v = view(e);
   if (v.kind !== "event") return null;
@@ -260,8 +304,8 @@ export default function EntryDetailScreen() {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
     },
-    sourceFieldRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5, gap: spacing.base },
-    sourceValue:    { flexDirection: "row", alignItems: "center", gap: 6 },
+    sourceFieldRow: { flexDirection: "row", alignItems: "center", paddingVertical: 5, gap: spacing.base },
+    sourceValue:    { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, justifyContent: "flex-end" },
 
     notFound:     { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
     notFoundText: { ...text.lg, color: colors.textTertiary },
@@ -297,12 +341,13 @@ export default function EntryDetailScreen() {
       <Stack.Screen options={{ title: "", ...common.header }} />
 
       <View style={styles.card}>
-        {entry.kind === "leg"     && <LegDetail     e={entry as Leg}     styles={styles} ic={ic} />}
-        {entry.kind === "stay"    && <StayDetail    e={entry as Stay}    styles={styles} ic={ic} />}
-        {entry.kind === "film"    && <FilmDetail    e={entry as Film}    styles={styles} ic={ic} />}
-        {entry.kind === "episode" && <EpisodeDetail e={entry as Episode} styles={styles} ic={ic} />}
-        {entry.kind === "book"    && <BookDetail    e={entry as Book}    styles={styles} ic={ic} />}
-        {entry.kind === "event"   && <EventDetail   e={entry as JEvent}  styles={styles} ic={ic} />}
+        {entry.kind === "leg"     && <LegDetail     e={entry as Leg}        styles={styles} ic={ic} />}
+        {entry.kind === "stay"    && <StayDetail    e={entry as Stay}       styles={styles} ic={ic} />}
+        {entry.kind === "place"   && <PlaceDetail   e={entry as PlaceEvent} styles={styles} ic={ic} />}
+        {entry.kind === "film"    && <FilmDetail    e={entry as Film}       styles={styles} ic={ic} />}
+        {entry.kind === "episode" && <EpisodeDetail e={entry as Episode}    styles={styles} ic={ic} />}
+        {entry.kind === "book"    && <BookDetail    e={entry as Book}       styles={styles} ic={ic} />}
+        {entry.kind === "event"   && <EventDetail   e={entry as JEvent}     styles={styles} ic={ic} />}
       </View>
 
       {/* Reflection */}
@@ -326,7 +371,7 @@ export default function EntryDetailScreen() {
           <Text style={styles.fieldLabel}>Source</Text>
           <View style={styles.sourceValue}>
             <SourceMark source={entry.source ?? ""} size={18} />
-            <Text style={styles.fieldValue}>{sourceLabel(entry.source)}</Text>
+            <Text style={styles.fieldValue} numberOfLines={1}>{sourceLabel(entry.source)}</Text>
           </View>
         </View>
         {entry.sourceRef && <Field label="Ref" value={entry.sourceRef} styles={styles} />}
