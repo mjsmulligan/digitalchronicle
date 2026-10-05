@@ -20,6 +20,7 @@ export function placeLabel(e: Entry): string {
   const v = view(e);
   if (v.kind === "leg") return v.toName ?? v.to;
   if (v.kind === "stay") return v.city ?? v.place;
+  if (v.kind === "place") return v.locality;
   if (v.kind === "film") return v.title;
   if (v.kind === "episode") return v.showTitle;
   if (v.kind === "book") return v.title;
@@ -78,7 +79,7 @@ const COMMIT_CHUNK = 100;
 export async function commitBatch(b: StagingBatch) {
   const s = getState();
   const byId = new Map(allEntries(s).map((e) => [e.id, e]));
-  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [], films: [], episodes: [], books: [] };
+  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [], films: [], episodes: [], books: [], placeEvents: [] };
   let count = 0;
   for (const r of b.records) {
     if (!r.selected) continue;
@@ -95,7 +96,7 @@ export async function commitBatch(b: StagingBatch) {
 
   // Flatten all entries to write so we can report progress across store types.
   const allWrites: { store: keyof typeof writes; entry: Entry }[] = [];
-  for (const store of ["legs", "stays", "events", "films", "episodes", "books"] as const) {
+  for (const store of ["legs", "stays", "events", "films", "episodes", "books", "placeEvents"] as const) {
     for (const entry of writes[store]) allWrites.push({ store, entry });
   }
 
@@ -112,7 +113,7 @@ export async function commitBatch(b: StagingBatch) {
       (chunkByStore[store] ??= []).push(entry);
     }
     for (const [store, entries] of Object.entries(chunkByStore)) {
-      await putMany(store as "legs" | "stays" | "events" | "films" | "episodes" | "books", entries);
+      await putMany(store as "legs" | "stays" | "events" | "films" | "episodes" | "books" | "placeEvents", entries);
     }
 
     setCommitProgress({ batchId: b.id, done: Math.min(i + COMMIT_CHUNK, total), total });

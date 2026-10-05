@@ -177,7 +177,67 @@ export interface Book extends Base {
   dateStarted?: string;
 }
 
-export type Entry = Leg | Stay | JEvent | Film | Episode | Book;
+/**
+ * A stable string key that uniquely identifies a locality (city / town) as
+ * returned by the device geocoder. Treated as opaque — the format is defined
+ * by the LocalityResolver implementation in the EXIF source (WP4).
+ */
+export type LocalityKey = string;
+
+/**
+ * A reference back to a single photo that contributed evidence to a PlaceEvent.
+ * The photo itself is never stored — only the minimal reference needed to re-link
+ * the journal entry to the original asset.
+ */
+export interface PhotoEvidenceRef {
+  /** Platform media asset id (e.g. Android content URI id or iOS localIdentifier) */
+  mediaId: string;
+  /** Platform-specific URI for opening the asset (content:// or ph://) */
+  uri?: string;
+  /** YYYY-MM-DD local day assigned to this photo (see WP3 time resolution) */
+  localDay: string;
+  /** Whether a GPS coordinate was present and used for locality resolution */
+  hasGps: boolean;
+  /** Which time-resolution rule was applied (see spec section 6) */
+  timingRule: "exif-offset" | "gps-inferred" | "fallback";
+  /** Set true when the photo has been deleted from the library after scanning */
+  missing?: boolean;
+}
+
+/**
+ * A city-level place event derived from evidence (photos, calendar, receipts, …).
+ *
+ * Not a reuse of `stay` (which implies lodging/check-in) and not photo-specific —
+ * any source can produce a `place`. Represents presence in a city over a date range.
+ *
+ * Base.start = dateStart (first day, YYYY-MM-DD)
+ * Base.end   = dateEnd   (last day,  YYYY-MM-DD)
+ *
+ * dedupeKey: `place|{localityKey}|{start}` — same city, same first day = same place.
+ */
+export interface PlaceEvent extends Base {
+  kind: "place";
+  /** Human-readable city / town name (e.g. "London") */
+  locality: string;
+  region?: string;
+  country?: string;
+  /**
+   * Stable opaque key from the device geocoder identifying this locality.
+   * Used for grouping, deduplication, and run identity.
+   */
+  localityKey: LocalityKey;
+  /**
+   * Representative sample of photo references that produced this place.
+   * Not exhaustive — full count is in photoCount.
+   */
+  photoEvidence: PhotoEvidenceRef[];
+  /** Total number of photos that contributed to this place (before sampling) */
+  photoCount: number;
+  /** True when this place was created from a single photo (reduced confidence) */
+  singlePhoto?: boolean;
+}
+
+export type Entry = Leg | Stay | JEvent | Film | Episode | Book | PlaceEvent;
 
 /**
  * A person who appears in journal entries.
@@ -260,9 +320,11 @@ export interface JournalData {
   staging: StagingBatch[];
   people: Person[];
   places: PlaceRecord[];
+  /** City-level place events from the EXIF photo library source and other evidence sources */
+  placeEvents: PlaceEvent[];
 }
 
-export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging", "people", "places"] as const;
+export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging", "people", "places", "placeEvents"] as const;
 export type StoreName = (typeof STORES)[number];
 
 /**
@@ -306,6 +368,7 @@ export function entryTitle(e: Entry): string {
   const v = view(e);
   if (v.kind === "leg") return `${v.from} → ${v.to}`;
   if (v.kind === "stay") return v.place;
+  if (v.kind === "place") return v.country ? `${v.locality}, ${v.country}` : v.locality;
   if (v.kind === "film") return v.year ? `${v.title} (${v.year})` : v.title;
   if (v.kind === "episode") return v.episodeTitle ? `${v.showTitle}: ${v.episodeTitle}` : v.showTitle;
   if (v.kind === "book") return v.author ? `${v.title} — ${v.author}` : v.title;
