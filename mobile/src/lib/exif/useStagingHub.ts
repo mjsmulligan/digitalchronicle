@@ -191,6 +191,22 @@ export function useStagingHub() {
     if (changed.length > 0) await putMany("placeEntries", changed);
   }
 
+  /**
+   * Commit mixed accept/dismiss decisions for a set of entries in a single
+   * putMany call — avoids the N concurrent writes that would occur with
+   * Promise.all([...entries.map(acceptSingleEntry)]).
+   */
+  async function batchCommitEntries(
+    toAccept: PlaceEntry[],
+    toDismiss: PlaceEntry[],
+  ): Promise<void> {
+    const updated = [
+      ...toAccept.map(_accept),
+      ...toDismiss.map(_dismiss),
+    ];
+    if (updated.length > 0) await putMany("placeEntries", updated);
+  }
+
   async function mergePlaces(survivorId: string, absorbedId: string) {
     const survivor = places.find((p) => p.id === survivorId);
     const absorbed = places.find((p) => p.id === absorbedId);
@@ -231,6 +247,7 @@ export function useStagingHub() {
     acceptSingleEntry,
     dismissSingleEntry,
     restoreSingleEntry,
+    batchCommitEntries,
     acceptPlace,
     dismissPlace,
     acceptRegion,

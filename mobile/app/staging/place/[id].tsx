@@ -393,10 +393,8 @@ export default function PlaceDetailScreen() {
   const handleCommit = () => {
     const toAccept  = pending.filter((e) => !deselected.has(e.id));
     const toDismiss = pending.filter((e) =>  deselected.has(e.id));
-    Promise.all([
-      ...toAccept.map((e)  => hub.acceptSingleEntry(e)),
-      ...toDismiss.map((e) => hub.dismissSingleEntry(e)),
-    ]).then(() => router.back());
+    // Single putMany for all decisions — avoids concurrent DB writes
+    hub.batchCommitEntries(toAccept, toDismiss).then(() => router.back());
   };
 
   // Merge candidates: all OTHER places

@@ -883,8 +883,13 @@ function PlaceStagingCard({
       "Ignore all suggestions",
       "All pending place suggestions will be ignored. They can be re-offered by re-scanning.",
       "Ignore all",
+      // Dismiss sequentially — each dismissPlace does its own putMany, and
+      // the SQLiteAdapter queue ensures they don't race for the DB lock.
+      // (A single dismissCountry per country would also work but this is clearer.)
       async () => {
-        await Promise.all([...allPendingIds].map((id) => hub.dismissPlace(id)));
+        for (const id of allPendingIds) {
+          await hub.dismissPlace(id);
+        }
       },
     );
 
