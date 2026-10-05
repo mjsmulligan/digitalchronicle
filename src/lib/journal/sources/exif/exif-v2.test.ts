@@ -18,6 +18,8 @@ import { describe, it, expect } from "vitest";
 
 import {
   FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP,
+  FIXTURE_LONDON_WEEKEND,
+  FIXTURE_LONDON_DAY_TRIP,
   FIXTURE_HOME_AREA_VARIANTS,
   FIXTURE_CINQUE_TERRE,
   FIXTURE_PORTO_VENERE_SPELLING_A,
@@ -33,6 +35,18 @@ import {
 } from "./fixtures";
 import { normaliseLocalityKey } from "./localityResolver";
 import { buildPlaceEntries } from "./entryBuilder";
+import {
+  buildStagingPlan,
+  acceptEntry,
+  dismissEntry,
+  restoreEntry,
+  acceptPlaceEntries,
+  dismissPlaceEntries,
+  acceptRegionEntries,
+  mergePlaces,
+  emptyBin,
+  resetDecisions,
+} from "./stagingService";
 
 // ─── Smoke: fixtures and factories compile ────────────────────────────────────
 
@@ -180,9 +194,54 @@ describe("Check 3: Re-scan creates zero duplicates; dismissed entries not re-off
    *
    * Depends on: WP13 (staging service).
    */
-  it.todo("second scan of the same photos creates zero new PlaceEntries");
-  it.todo("dismissed entry is not re-offered even with a different locality name");
-  it.todo("dismissed entry matched by photo IDs when locality key differs");
+  it("second scan of the same photos creates zero new PlaceEntries", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const built = buildPlaceEntries(located, unlocated, []);
+
+    // First scan
+    const plan1 = buildStagingPlan(built, [], [], []);
+    expect(plan1.newEntries.length).toBeGreaterThan(0);
+
+    // Second scan — same photos, existing entries from first scan
+    const plan2 = buildStagingPlan(built, plan1.newPlaces, plan1.newEntries, []);
+    expect(plan2.newEntries).toHaveLength(0);
+    expect(plan2.newPlaces).toHaveLength(0);
+    expect(plan2.updatedEntries).toHaveLength(0);
+  });
+
+  it("dismissed entry is not re-offered on re-scan (dedupeKey match)", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const built = buildPlaceEntries(located, unlocated, []);
+
+    // First scan → pending entries
+    const plan1 = buildStagingPlan(built, [], [], []);
+    // Dismiss all entries
+    const dismissed = plan1.newEntries.map(dismissEntry);
+
+    // Second scan — dismissed entries exist, no markers yet
+    const plan2 = buildStagingPlan(built, plan1.newPlaces, dismissed, []);
+    expect(plan2.newEntries).toHaveLength(0); // dismissed → not re-offered
+  });
+
+  it("dismissed entry not re-offered when geocoder returns different name (matched by photo IDs via marker)", async () => {
+    // Original scan with "Porto Venere" spelling
+    const { located: a } = await resolveFixtureV2(FIXTURE_PORTO_VENERE_SPELLING_A, fakeLocalityResolverV2);
+    const builtA = buildPlaceEntries(a, [], []);
+    const plan1 = buildStagingPlan(builtA, [], [], []);
+    // Dismiss and empty bin → creates marker with photo IDs
+    const dismissed1 = plan1.newEntries.map(dismissEntry);
+    const { markersToCreate } = emptyBin(dismissed1);
+
+    // Re-scan returns same coords but geocoder now says "Portovenere" (different key)
+    const { located: b } = await resolveFixtureV2(
+      FIXTURE_PORTO_VENERE_SPELLING_A, // same photos, same coords
+      fakeLocalityResolverPortoVenereB, // but different geocoder result
+    );
+    const builtB = buildPlaceEntries(b, [], []);
+    // Same photos → different locality key, but markers cover all photo IDs
+    const plan2 = buildStagingPlan(builtB, [], [], markersToCreate);
+    expect(plan2.newEntries).toHaveLength(0); // all photos covered by marker → skip
+  });
 });
 
 // ─── Acceptance check 4 ───────────────────────────────────────────────────────
@@ -195,8 +254,46 @@ describe("Check 4: New day in accepted place appears pending; new photos on acce
    *
    * Depends on: WP13 (staging service).
    */
-  it.todo("new day for an accepted place arrives as a pending PlaceEntry");
-  it.todo("new photos on an accepted day add evidence, no new staging item");
+  it("new day for an accepted place arrives as a pending PlaceEntry", async () => {
+    // First scan: weekend only (05 + 06)
+    const { located: l1, unlocated: u1 } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built1 = buildPlaceEntries(l1, u1, []);
+    const plan1 = buildStagingPlan(built1, [], [], []);
+    // Accept the weekend entries
+    const acceptedEntries = plan1.newEntries.map(acceptEntry);
+
+    // Second scan: day trip on 2025-07-19 is new
+    const { located: l2, unlocated: u2 } = await resolveFixtureV2(FIXTURE_LONDON_DAY_TRIP);
+    const built2 = buildPlaceEntries(l2, u2, []);
+    const plan2 = buildStagingPlan(built2, plan1.newPlaces, acceptedEntries, []);
+
+    // New day → new pending entry (even though the Place is already accepted)
+    expect(plan2.newEntries).toHaveLength(1);
+    expect(plan2.newEntries[0].localDay).toBe("2025-07-19");
+    expect(plan2.newEntries[0].status).toBe("pending");
+    expect(plan2.newEntries[0].placeId).toBe(plan1.newPlaces[0].id); // same Place
+  });
+
+  it("new photos on an accepted day add evidence without creating a new staging item", async () => {
+    // First scan: one photo on 2025-07-05
+    const onePhoto = [FIXTURE_LONDON_WEEKEND[0]]; // lon-wknd-1
+    const { located: l1, unlocated: u1 } = await resolveFixtureV2(onePhoto);
+    const built1 = buildPlaceEntries(l1, u1, []);
+    const plan1 = buildStagingPlan(built1, [], [], []);
+    const accepted = plan1.newEntries.map(acceptEntry);
+    expect(accepted[0].photoCount).toBe(1);
+
+    // Second scan: two more photos on the same day
+    const { located: l2, unlocated: u2 } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND.slice(0, 2));
+    const built2 = buildPlaceEntries(l2, u2, []);
+    const plan2 = buildStagingPlan(built2, plan1.newPlaces, accepted, []);
+
+    // No new staging item — existing accepted entry gets updated evidence
+    expect(plan2.newEntries).toHaveLength(0);
+    expect(plan2.updatedEntries).toHaveLength(1);
+    // Photo count increases
+    expect(plan2.updatedEntries[0].photoCount).toBe(2);
+  });
 });
 
 // ─── Acceptance check 5 ───────────────────────────────────────────────────────
@@ -209,8 +306,51 @@ describe("Check 5: Accepting a region accepts its localities; partial accept is 
    *
    * Depends on: WP13 (staging service), WP11 (hierarchy).
    */
-  it.todo("accepting Liguria region accepts all pending entries under its localities");
-  it.todo("accepting two of five villages leaves three pending");
+  it("accepting the Liguria region accepts all pending entries under its village localities", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_CINQUE_TERRE);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const plan = buildStagingPlan(built, [], [], []);
+
+    // All entries should be pending initially
+    expect(plan.newEntries.every((e) => e.status === "pending")).toBe(true);
+    // 5 villages × up to 2 days each = 9 photos → multiple entries
+    const allEntries = plan.newEntries;
+    const allPlaces  = plan.newPlaces;
+
+    // Batch-accept by Liguria region
+    const changed = acceptRegionEntries(allEntries, allPlaces, "Liguria");
+    expect(changed.length).toBe(allEntries.length); // all CT entries are in Liguria
+    expect(changed.every((e) => e.status === "accepted")).toBe(true);
+  });
+
+  it("accepting two of five Cinque Terre villages leaves the other three pending", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_CINQUE_TERRE);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const { newEntries, newPlaces } = buildStagingPlan(built, [], [], []);
+
+    // Find Vernazza and Monterosso places and accept their entries only
+    const vernazzaPlace    = newPlaces.find((p) => p.localityKey === "it:vernazza");
+    const monterossoPlace  = newPlaces.find((p) => p.localityKey === "it:monterosso");
+    expect(vernazzaPlace).toBeDefined();
+    expect(monterossoPlace).toBeDefined();
+
+    const acceptedV = acceptPlaceEntries(newEntries, vernazzaPlace!.id);
+    const acceptedM = acceptPlaceEntries(newEntries, monterossoPlace!.id);
+
+    const otherEntries = newEntries.filter(
+      (e) => e.placeId !== vernazzaPlace!.id && e.placeId !== monterossoPlace!.id,
+    );
+    // Three remaining villages still pending
+    const otherKeys = new Set(
+      newPlaces
+        .filter((p) => p.localityKey !== "it:vernazza" && p.localityKey !== "it:monterosso")
+        .map((p) => p.id),
+    );
+    const stillPending = otherEntries.filter((e) => otherKeys.has(e.placeId));
+    expect(stillPending.length).toBeGreaterThan(0);
+    expect(stillPending.every((e) => e.status === "pending")).toBe(true);
+    expect(acceptedV.length + acceptedM.length).toBeGreaterThan(0);
+  });
 });
 
 // ─── Acceptance check 6 ───────────────────────────────────────────────────────
@@ -223,8 +363,44 @@ describe("Check 6: Dismissing all pending days for a place does not hide a later
    *
    * Depends on: WP13 (staging service).
    */
-  it.todo("dismissing all pending entries for a place does not block future days");
-  it.todo("a later scan for a new day creates a fresh pending entry for the same place");
+  it("dismissing all pending entries for a place does not block future days", async () => {
+    // First scan: London weekend (05 + 06), dismiss all
+    const { located: l1, unlocated: u1 } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built1 = buildPlaceEntries(l1, u1, []);
+    const plan1 = buildStagingPlan(built1, [], [], []);
+    const dismissed = plan1.newEntries.map(dismissEntry);
+
+    // Second scan: new day 2025-07-19 — dismissed entries have no bin marker yet
+    const { located: l2, unlocated: u2 } = await resolveFixtureV2(FIXTURE_LONDON_DAY_TRIP);
+    const built2 = buildPlaceEntries(l2, u2, []);
+    const plan2 = buildStagingPlan(built2, plan1.newPlaces, dismissed, []);
+
+    // New day should still appear — dismissed status only blocks its own dedupeKey
+    expect(plan2.newEntries).toHaveLength(1);
+    expect(plan2.newEntries[0].localDay).toBe("2025-07-19");
+  });
+
+  it("a later scan for a new day creates a fresh pending entry for the same place", async () => {
+    // Dismiss the weekend, empty the bin (creates markers for 05 + 06 photo IDs)
+    const { located: l1, unlocated: u1 } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built1 = buildPlaceEntries(l1, u1, []);
+    const plan1 = buildStagingPlan(built1, [], [], []);
+    const dismissed = plan1.newEntries.map(dismissEntry);
+    const { markersToCreate } = emptyBin(dismissed);
+
+    // Re-scan with day trip photos — these are NEW photo IDs not in the markers
+    const { located: l2, unlocated: u2 } = await resolveFixtureV2(FIXTURE_LONDON_DAY_TRIP);
+    const built2 = buildPlaceEntries(l2, u2, []);
+    // No existing entries (they were deleted when bin was emptied), markers present
+    const plan2 = buildStagingPlan(built2, plan1.newPlaces, [], markersToCreate);
+
+    // New day trip is a brand-new pending entry
+    expect(plan2.newEntries).toHaveLength(1);
+    expect(plan2.newEntries[0].status).toBe("pending");
+    expect(plan2.newEntries[0].localDay).toBe("2025-07-19");
+    // It links to the same Place (key-match finds existing place)
+    expect(plan2.newEntries[0].placeId).toBe(plan1.newPlaces[0].id);
+  });
 });
 
 // ─── Acceptance check 7 ───────────────────────────────────────────────────────
@@ -238,10 +414,68 @@ describe("Check 7: Restore from bin returns entry to pending; after bin emptied 
    *
    * Depends on: WP13 (staging service).
    */
-  it.todo("restoring from the bin sets status back to pending");
-  it.todo("emptying the bin deletes the PlaceEntry but keeps a PlaceBinMarker");
-  it.todo("re-scan after bin emptied skips photos covered by the marker");
-  it.todo("reset decisions removes the marker; re-scan offers the entry again");
+  it("restoring a dismissed entry sets its status back to pending", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const { newEntries } = buildStagingPlan(built, [], [], []);
+
+    const dismissed = newEntries.map(dismissEntry);
+    expect(dismissed.every((e) => e.status === "dismissed")).toBe(true);
+
+    const restored = dismissed.map(restoreEntry);
+    expect(restored.every((e) => e.status === "pending")).toBe(true);
+  });
+
+  it("emptying the bin returns IDs to delete and a marker for each dismissed entry", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const { newEntries } = buildStagingPlan(built, [], [], []);
+
+    const dismissed = newEntries.map(dismissEntry);
+    const { entriesToDelete, markersToCreate } = emptyBin(dismissed);
+
+    // One marker per dismissed entry
+    expect(entriesToDelete).toHaveLength(dismissed.length);
+    expect(markersToCreate).toHaveLength(dismissed.length);
+    // Each marker covers the photo IDs from its entry
+    for (const marker of markersToCreate) {
+      const src = dismissed.find((e) => e.localityKey === marker.localityKey && e.localDay === marker.localDay);
+      expect(src).toBeDefined();
+      const expectedIds = src!.photoEvidence.map((r) => r.mediaId);
+      expect(marker.photoIds).toEqual(expect.arrayContaining(expectedIds));
+    }
+  });
+
+  it("re-scan after bin is emptied skips photos whose IDs are in the marker", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const plan1 = buildStagingPlan(built, [], [], []);
+    const dismissed = plan1.newEntries.map(dismissEntry);
+    const { markersToCreate } = emptyBin(dismissed);
+
+    // Re-scan same photos — entries deleted, markers present
+    const plan2 = buildStagingPlan(built, plan1.newPlaces, [], markersToCreate);
+    expect(plan2.newEntries).toHaveLength(0);
+    expect(plan2.newPlaces).toHaveLength(0);
+  });
+
+  it("reset decisions removes markers and returns dismissed entries to pending", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const plan1 = buildStagingPlan(built, [], [], []);
+    const dismissed = plan1.newEntries.map(dismissEntry);
+    const { markersToCreate } = emptyBin(dismissed);
+
+    // Reset: markers deleted, entries restored to pending
+    const { updatedEntries, markerIdsToDelete } = resetDecisions(dismissed, markersToCreate);
+    expect(updatedEntries.every((e) => e.status === "pending")).toBe(true);
+    expect(markerIdsToDelete).toHaveLength(markersToCreate.length);
+
+    // Re-scan with no markers and restored entries → treated as pending (no new entries)
+    const plan3 = buildStagingPlan(built, plan1.newPlaces, updatedEntries, []);
+    expect(plan3.newEntries).toHaveLength(0); // already in pending staging
+    expect(plan3.newPlaces).toHaveLength(0);
+  });
 });
 
 // ─── Acceptance check 8 ───────────────────────────────────────────────────────
@@ -399,6 +633,55 @@ describe("Check 14: Spelling variants can be merged; re-scan maps later photos t
    *
    * Depends on: WP13 (staging service — merge action + aliasKeys).
    */
-  it.todo("merging Porto Venere and Portovenere produces one Place with aliasKeys");
-  it.todo("re-scan with the Portovenere resolver maps photos to the merged Porto Venere place");
+  it("merging Porto Venere and Portovenere produces one Place with both keys", async () => {
+    // First: scan with "Porto Venere" spelling → one Place created
+    const { located: a } = await resolveFixtureV2(FIXTURE_PORTO_VENERE_SPELLING_A, fakeLocalityResolverV2);
+    const builtA = buildPlaceEntries(a, [], []);
+    const planA = buildStagingPlan(builtA, [], [], []);
+    expect(planA.newPlaces).toHaveLength(1);
+    const portoVenerePlace = planA.newPlaces[0];
+    expect(portoVenerePlace.localityKey).toBe("it:porto-venere");
+
+    // Second: scan with "Portovenere" spelling → new distinct Place
+    const { located: b } = await resolveFixtureV2(FIXTURE_PORTO_VENERE_SPELLING_B, fakeLocalityResolverPortoVenereB);
+    const builtB = buildPlaceEntries(b, [], []);
+    const planB = buildStagingPlan(builtB, planA.newPlaces, planA.newEntries, []);
+    expect(planB.newPlaces).toHaveLength(1);
+    const portovenerePlace = planB.newPlaces[0];
+    expect(portovenerePlace.localityKey).toBe("it:portovenere");
+
+    // Merge: "Portovenere" absorbed into "Porto Venere"
+    const merged = mergePlaces(portoVenerePlace, portovenerePlace);
+    expect(merged.localityKey).toBe("it:porto-venere"); // survivor keeps its key
+    expect(merged.aliasKeys).toContain("it:portovenere"); // absorbed key becomes alias
+    expect(merged.aliasKeys).not.toContain("it:porto-venere"); // own key not in aliases
+  });
+
+  it("re-scan with the Portovenere resolver maps new photos to the merged Porto Venere place", async () => {
+    // Set up merged place (survivor = Porto Venere, alias = Portovenere)
+    const { located: a } = await resolveFixtureV2(FIXTURE_PORTO_VENERE_SPELLING_A, fakeLocalityResolverV2);
+    const builtA = buildPlaceEntries(a, [], []);
+    const planA = buildStagingPlan(builtA, [], [], []);
+    const portoVenerePlace = planA.newPlaces[0];
+
+    const { located: b } = await resolveFixtureV2(FIXTURE_PORTO_VENERE_SPELLING_B, fakeLocalityResolverPortoVenereB);
+    const builtB = buildPlaceEntries(b, [], []);
+    const planB = buildStagingPlan(builtB, planA.newPlaces, planA.newEntries, []);
+    const portovenerePlace = planB.newPlaces[0];
+
+    const mergedPlace = mergePlaces(portoVenerePlace, portovenerePlace);
+    // Journal now has one merged place (portovenerePlace deleted), both sets of entries
+    const allEntries = [...planA.newEntries, ...planB.newEntries];
+
+    // Re-scan with Portovenere resolver — new photos with "it:portovenere" key
+    const { located: c } = await resolveFixtureV2(FIXTURE_PORTO_VENERE_SPELLING_B, fakeLocalityResolverPortoVenereB);
+    const builtC = buildPlaceEntries(c, [], []);
+    // Use only the merged place — alias map routes "it:portovenere" to survivor
+    const planC = buildStagingPlan(builtC, [mergedPlace], allEntries, []);
+
+    // No new places — alias routing found the survivor
+    expect(planC.newPlaces).toHaveLength(0);
+    // No new pending entries — same photos, already in staging
+    expect(planC.newEntries).toHaveLength(0);
+  });
 });
