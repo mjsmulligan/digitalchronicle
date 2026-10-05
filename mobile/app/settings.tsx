@@ -7,7 +7,7 @@ import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Stack } from "expo-router";
 import { clearAll, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
 // useExifScan removed — scan has moved to Sources page (WP15)
@@ -15,7 +15,6 @@ import { useTheme, THEMES } from "../src/components/ThemeProvider";
 export default function SettingsScreen() {
   const journal = useJournal();
   const router = useRouter();
-  const { top } = useSafeAreaInsets();
   const [clearing, setClearing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const dialog = useDialog();
@@ -24,37 +23,6 @@ export default function SettingsScreen() {
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
     content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
-
-    dragHandle: {
-      width: 36,
-      height: 4,
-      backgroundColor: colors.border,
-      borderRadius: 2,
-      alignSelf: "center",
-      marginBottom: spacing.lg,
-    },
-    modalHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: spacing.xl,
-    },
-    modalTitle: {
-      fontSize: 22,
-      fontFamily: fonts.serifSemiBold,
-      fontWeight: "600",
-      color: colors.textBright,
-    },
-    closeBtn: {
-      width: 32,
-      height: 32,
-      backgroundColor: colors.surface,
-      borderRadius: 9999,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
 
     sectionTitle: { ...text.label, color: colors.textTertiary, marginBottom: 10 },
 
@@ -275,21 +243,22 @@ export default function SettingsScreen() {
 
   return (
     <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTitle: "Settings",
+          headerStyle: { backgroundColor: colors.surface },
+          headerTitleStyle: {
+            fontFamily: fonts.serifSemiBold,
+            color: colors.textBright,
+          },
+          headerTintColor: colors.accent,
+        }}
+      />
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
+      contentContainerStyle={styles.content}
     >
-      <View style={styles.dragHandle} />
-      <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>Settings</Text>
-        <Pressable
-          onPress={() => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")}
-          hitSlop={8}
-          style={styles.closeBtn}
-        >
-          <Ionicons name="close" size={18} color={colors.textSecondary} />
-        </Pressable>
-      </View>
 
       {/* ── Appearance ─────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Appearance</Text>
