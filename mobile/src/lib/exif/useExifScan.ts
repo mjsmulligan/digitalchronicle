@@ -22,6 +22,15 @@ import type { PlaceEvent } from "@chronicle/journal/types";
 
 function loadDeviceModules() {
   try {
+    // Use TurboModuleRegistry.get to probe for the native module without throwing.
+    // In New Architecture (Hermes JSI), accessing an unregistered Turbo Module via
+    // require() throws an error that can escape a try/catch. TurboModuleRegistry.get
+    // returns null safely instead.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { TurboModuleRegistry } = require("react-native") as typeof import("react-native");
+    if (typeof TurboModuleRegistry?.get === "function") {
+      if (!TurboModuleRegistry.get("ExpoMediaLibraryNext")) return null;
+    }
     const mediaAccess = require("./mediaAccess") as typeof import("./mediaAccess");
     const geocoder = require("./deviceGeocoder") as typeof import("./deviceGeocoder");
     if (typeof mediaAccess?.requestMediaPermissions !== "function") return null;
@@ -72,16 +81,16 @@ export function useExifScan() {
     cancelRef.current = false;
     setState({ ...IDLE, phase: "requesting-permissions" });
 
-    // Check native modules are available
-    const modules = loadDeviceModules();
-    if (!modules) {
-      setState((s) => ({ ...s, phase: "error", error: DEV_BUILD_MSG }));
-      return;
-    }
-
-    const { mediaAccess: { requestMediaPermissions, scanPhotos }, geocoder: { deviceGeocoder } } = modules;
-
     try {
+      // Check native modules are available — inside try/catch so any JSI-level
+      // error that escapes loadDeviceModules is still handled gracefully.
+      const modules = loadDeviceModules();
+      if (!modules) {
+        setState((s) => ({ ...s, phase: "error", error: DEV_BUILD_MSG }));
+        return;
+      }
+
+      const { mediaAccess: { requestMediaPermissions, scanPhotos }, geocoder: { deviceGeocoder } } = modules;
       // ── Step 1: permissions ────────────────────────────────────────────────
       const perms = await requestMediaPermissions();
       if (perms.status !== "granted" && perms.status !== "limited") {
