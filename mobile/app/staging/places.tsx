@@ -277,6 +277,24 @@ export default function StagingPlacesScreen() {
     );
   }
 
+  function handleAcceptCountry(country: string) {
+    dialog.confirm(
+      `Accept all of ${country}`,
+      `Accept all pending entries for every place in ${country}?`,
+      "Accept all",
+      () => hub.acceptCountry(country),
+    );
+  }
+
+  function handleDismissCountry(country: string) {
+    dialog.confirm(
+      `Dismiss all of ${country}`,
+      `Send all pending entries for every place in ${country} to the bin?`,
+      "Dismiss all",
+      () => hub.dismissCountry(country),
+    );
+  }
+
   // Flatten for SectionList: sections = countries, each item = RegionGroup
   const sections = hub.hierarchy
     .filter((cg) => cg.pendingCount > 0)
@@ -327,8 +345,24 @@ export default function StagingPlacesScreen() {
             keyExtractor={(rg) => `${rg.country}:${rg.region}`}
             renderSectionHeader={({ section }) => (
               <View style={s.countryHeader}>
-                <Text style={s.countryName}>{section.title}</Text>
-                <Text style={s.countryCount}>{section.pendingCount} pending</Text>
+                <View style={s.countryLeft}>
+                  <Text style={s.countryName}>{section.title}</Text>
+                  <Text style={s.countryCount}>{section.pendingCount} pending</Text>
+                </View>
+                <View style={s.regionBatch}>
+                  <Pressable
+                    style={[s.actionBtn, s.acceptBtn, s.smallBtn]}
+                    onPress={() => handleAcceptCountry(section.title)}
+                  >
+                    <Text style={s.smallBtnText}>Accept all</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[s.actionBtn, s.dismissBtn, s.smallBtn]}
+                    onPress={() => handleDismissCountry(section.title)}
+                  >
+                    <Text style={[s.smallBtnText, { color: colors.textSecondary }]}>Dismiss all</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
             renderItem={({ item: rg }) => (
@@ -389,6 +423,12 @@ function styles(colors: ReturnType<typeof useTheme>["colors"], fonts: ReturnType
       paddingHorizontal: spacing.lg,
       paddingTop: spacing.xl,
       paddingBottom: spacing.sm,
+    },
+    countryLeft: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
     },
     countryName: {
       fontFamily: fonts.serifSemiBold,

@@ -25,6 +25,8 @@ import {
   dismissPlaceEntries,
   acceptRegionEntries,
   dismissRegionEntries,
+  acceptCountryEntries,
+  dismissCountryEntries,
   mergePlaces as _merge,
   emptyBin as _emptyBin,
   resetDecisions as _resetDecisions,
@@ -179,6 +181,16 @@ export function useStagingHub() {
     if (changed.length > 0) await putMany("placeEntries", changed);
   }
 
+  async function acceptCountry(countryName: string) {
+    const changed = acceptCountryEntries(entries, places, countryName);
+    if (changed.length > 0) await putMany("placeEntries", changed);
+  }
+
+  async function dismissCountry(countryName: string) {
+    const changed = dismissCountryEntries(entries, places, countryName);
+    if (changed.length > 0) await putMany("placeEntries", changed);
+  }
+
   async function mergePlaces(survivorId: string, absorbedId: string) {
     const survivor = places.find((p) => p.id === survivorId);
     const absorbed = places.find((p) => p.id === absorbedId);
@@ -223,6 +235,8 @@ export function useStagingHub() {
     dismissPlace,
     acceptRegion,
     dismissRegion,
+    acceptCountry,
+    dismissCountry,
     mergePlaces,
     emptyBin,
     resetDecisions,

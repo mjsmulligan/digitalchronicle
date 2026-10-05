@@ -303,6 +303,50 @@ export function dismissRegionEntries(
     .map(dismissEntry);
 }
 
+/**
+ * Accept all pending PlaceEntries for all localities in a given country.
+ *
+ * "Country" is matched against the `country` field of the Place container.
+ *
+ * @param entries     All PlaceEntries in the journal.
+ * @param places      All Place containers.
+ * @param countryName Country name to match (e.g. "Italy", "Ireland").
+ * @returns           Entries that were changed (all → "accepted").
+ */
+export function acceptCountryEntries(
+  entries: PlaceEntry[],
+  places: Place[],
+  countryName: string,
+): PlaceEntry[] {
+  const countryPlaceIds = new Set(
+    places
+      .filter((p) => p.country === countryName)
+      .map((p) => p.id),
+  );
+  return entries
+    .filter((e) => countryPlaceIds.has(e.placeId) && e.status === "pending")
+    .map(acceptEntry);
+}
+
+/**
+ * Dismiss all pending PlaceEntries for all localities in a given country.
+ * Returns only the entries that changed.
+ */
+export function dismissCountryEntries(
+  entries: PlaceEntry[],
+  places: Place[],
+  countryName: string,
+): PlaceEntry[] {
+  const countryPlaceIds = new Set(
+    places
+      .filter((p) => p.country === countryName)
+      .map((p) => p.id),
+  );
+  return entries
+    .filter((e) => countryPlaceIds.has(e.placeId) && e.status === "pending")
+    .map(dismissEntry);
+}
+
 // ─── Merge ────────────────────────────────────────────────────────────────────
 
 /**
