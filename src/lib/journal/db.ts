@@ -300,7 +300,7 @@ export function storeFor(e: Entry): StoreName {
 export function allEntries(s: JournalData): Entry[] {
   return [
     ...s.legs, ...s.stays, ...s.events, ...s.films, ...s.episodes, ...s.books,
-    ...(s.placeEvents ?? []),      // legacy — removed after WP12/13
-    ...(s.placeEntries ?? []),     // WP10
+    ...(s.placeEvents ?? []),                                          // legacy
+    ...(s.placeEntries ?? []).filter((e) => e.status === "accepted"), // WP10: pending/dismissed are staging items, not journal entries
   ];
 }
