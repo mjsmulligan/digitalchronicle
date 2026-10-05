@@ -21,6 +21,7 @@ import {
   type Leg,
   type Film,
   type Book,
+  type PlaceEntry,
 } from "@chronicle/journal/types";
 import { type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "./ThemeProvider";
 import { KindIcon, StarRating } from "./KindIcon";
@@ -39,6 +40,7 @@ export function entryLabel(e: Entry): string {
   }
   if (v.kind === "stay")    return "Stay";
   if (v.kind === "place")   return "Place";
+  if (v.kind === "place-entry") return "Place";
   if (v.kind === "film")    return (v as Film).rewatch ? "Rewatch" : "Film";
   if (v.kind === "episode") return "Episode";
   if (v.kind === "book")    return (v as Book).series ? "Series" : "Book";
@@ -60,6 +62,11 @@ export function entryMeta(e: Entry): string {
   if (v.kind === "place") {
     const p = v as Extract<Entry, { kind: "place" }>;
     return [p.region, p.start && p.end && p.start !== p.end ? `${p.start.slice(0, 10)} – ${p.end.slice(0, 10)}` : p.start?.slice(0, 10)]
+      .filter(Boolean).join(" · ");
+  }
+  if (v.kind === "place-entry") {
+    const pe = v as PlaceEntry;
+    return [pe.localDay, `${pe.photoCount} photo${pe.photoCount === 1 ? "" : "s"}`]
       .filter(Boolean).join(" · ");
   }
   if (v.kind === "film") {
