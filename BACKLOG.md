@@ -110,6 +110,7 @@ digitalchronicle/          ← existing web root (TanStack Start)
 - [x] **Expo Router navigation** — Tab bar: Chronicle · Trips · Culture · People. (Moments deferred — see below.)
 - [x] **Device contacts import** — `expo-contacts` read-only bridge on the Import People screen; reuses duplicate review before adding people.
 - [x] **Device calendar import** — `expo-calendar` read-only bridge on the Import screen; events (past year → next 30 days, recurring skipped) are converted to iCalendar text and staged through the shared icalendar connector for review before commit.
+- [x] **Goodreads direct sync (mobile)** — "Sync from Goodreads" on the Import screen fetches the public read-shelf RSS on-device (all pages), converts it to export-shaped CSV and stages it through the existing goodreads connector for review. ID saved locally.
 - [ ] **Share Sheet intent handler** — accept `.csv`, `.ics`, `.vcf`, `.json` from iOS/Android Share → deposit into Staging Hub.
 - [ ] **`expo-calendar` integration** — pull system Calendar events on permission grant; feed into iCalendar connector.
 - [ ] **Offline-first sync indicator** — badge on import tab showing unreviewed Staging records.
