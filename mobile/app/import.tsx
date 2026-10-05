@@ -563,6 +563,55 @@ export default function ImportScreen() {
     }
   };
 
+  const [grId, setGrId] = useState<string | null>(null);
+  const [grInput, setGrInput] = useState("");
+  const [grEditing, setGrEditing] = useState(false);
+  useEffect(() => { void getGoodreadsUserId().then(setGrId); }, []);
+
+  const syncGoodreads = async (userId: string) => {
+    setPhase("parsing");
+    setError(null);
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    try {
+      const { csv, count } = await fetchGoodreadsShelfCsv(userId);
+      if (!count) {
+        setPhase("idle");
+        dialog.alert("No books found", "Your Goodreads \"read\" shelf is empty or private.");
+        return;
+      }
+      const batch = await stageFile(`goodreads-${userId}.csv`, csv, "goodreads");
+      setFreshBatch(batch);
+      setPhase("review");
+    } catch (err) {
+      setError(String(err));
+      setPhase("idle");
+    }
+  };
+
+  const onGoodreadsPress = () => {
+    if (grId && !grEditing) return void syncGoodreads(grId);
+    setGrEditing(true);
+  };
+
+  const saveGoodreadsId = async () => {
+    const id = parseGoodreadsUserId(grInput);
+    if (!id) {
+      dialog.alert("Couldn't read that", "Paste your Goodreads profile link or the number in it.");
+      return;
+    }
+    await setGoodreadsUserId(id);
+    setGrId(id);
+    setGrEditing(false);
+    setGrInput("");
+    void syncGoodreads(id);
+  };
+
+  const forgetGoodreads = async () => {
+    await setGoodreadsUserId(null);
+    setGrId(null);
+    setGrEditing(false);
+  };
+
   const pickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -637,6 +686,46 @@ export default function ImportScreen() {
         <Ionicons name="calendar-outline" size={22} color={colors.accentSoft} />
         <Text style={styles.pickBtnText}>Import from phone calendar</Text>
       </Pressable>
+
+      {/* Goodreads read-shelf sync (public RSS, fetched on-device) */}
+      <Pressable
+        style={[styles.pickBtn, { marginBottom: spacing.sm }, phase === "parsing" && styles.pickBtnDisabled]}
+        onPress={onGoodreadsPress}
+        disabled={phase === "parsing"}
+      >
+        <Ionicons name="book-outline" size={22} color={colors.accentSoft} />
+        <Text style={styles.pickBtnText}>Sync from Goodreads</Text>
+      </Pressable>
+      {grId && !grEditing && (
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: spacing.base, marginBottom: spacing.md }}>
+          <Text style={styles.hint}>Goodreads ID {grId}</Text>
+          <Pressable onPress={() => setGrEditing(true)}><Text style={styles.quickActionText}>Change</Text></Pressable>
+          <Pressable onPress={forgetGoodreads}><Text style={styles.quickActionText}>Remove</Text></Pressable>
+        </View>
+      )}
+      {grEditing && (
+        <View style={{ marginBottom: spacing.md, gap: spacing.sm }}>
+          <Text style={styles.hint}>
+            Paste your Goodreads profile link (Goodreads → My profile → Share). Your profile must be public.
+          </Text>
+          <TextInput
+            value={grInput}
+            onChangeText={setGrInput}
+            placeholder="https://www.goodreads.com/user/show/12345678-jane"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{
+              borderWidth: 1, borderColor: colors.border, borderRadius: radiusScale.md,
+              padding: spacing.md, color: colors.textPrimary, backgroundColor: colors.surface,
+            }}
+          />
+          <View style={{ flexDirection: "row", gap: spacing.base, justifyContent: "flex-end" }}>
+            <Pressable onPress={() => setGrEditing(false)}><Text style={styles.quickActionText}>Cancel</Text></Pressable>
+            <Pressable onPress={saveGoodreadsId}><Text style={styles.quickActionText}>Save & sync</Text></Pressable>
+          </View>
+        </View>
+      )}
 
       {/* Pick file button */}
       <Pressable
