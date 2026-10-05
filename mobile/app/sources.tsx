@@ -856,6 +856,9 @@ function PlaceStagingCard({
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
   const [collapsedCountries, setCollapsedCountries] = useState<Set<string>>(new Set());
   const [collapsedRegions, setCollapsedRegions] = useState<Set<string>>(new Set());
+  // Progress state — while non-null the card shows a slim progress bar instead
+  // of the interactive content (same pattern as BatchReview for CSV imports).
+  const [commitProg, setCommitProg] = useState<{ done: number; total: number } | null>(null);
 
   const selectedCount = useMemo(
     () => [...allPendingIds].filter((id) => !deselected.has(id)).length,
@@ -871,10 +874,19 @@ function PlaceStagingCard({
   const handleCommit = async () => {
     const toAccept = [...allPendingIds].filter((id) => !deselected.has(id));
     const toIgnore = [...allPendingIds].filter((id) => deselected.has(id));
-    await Promise.all([
-      ...toAccept.map((id) => hub.acceptPlace(id)),
-      ...toIgnore.map((id) => hub.dismissPlace(id)),
-    ]);
+    const all = [...toAccept, ...toIgnore];
+    if (!all.length) return;
+    setCommitProg({ done: 0, total: all.length });
+    let done = 0;
+    for (const id of toAccept) {
+      await hub.acceptPlace(id);
+      setCommitProg({ done: ++done, total: all.length });
+    }
+    for (const id of toIgnore) {
+      await hub.dismissPlace(id);
+      setCommitProg({ done: ++done, total: all.length });
+    }
+    setCommitProg(null);
     setDeselected(new Set());
   };
 
@@ -883,15 +895,40 @@ function PlaceStagingCard({
       "Ignore all suggestions",
       "All pending place suggestions will be ignored. They can be re-offered by re-scanning.",
       "Ignore all",
-      // Dismiss sequentially — each dismissPlace does its own putMany, and
-      // the SQLiteAdapter queue ensures they don't race for the DB lock.
-      // (A single dismissCountry per country would also work but this is clearer.)
       async () => {
-        for (const id of allPendingIds) {
+        const ids = [...allPendingIds];
+        setCommitProg({ done: 0, total: ids.length });
+        let done = 0;
+        for (const id of ids) {
           await hub.dismissPlace(id);
+          setCommitProg({ done: ++done, total: ids.length });
         }
+        setCommitProg(null);
       },
     );
+
+  // ── Progress state — replaces card content while committing ─────────────────
+  if (commitProg) {
+    const pct = commitProg.total > 0 ? commitProg.done / commitProg.total : 0;
+    return (
+      <View style={[br.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={br.commitTop}>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={[br.filename, { color: colors.textPrimary, fontFamily: fonts.sans }]}>
+              Photo library suggestions
+            </Text>
+            <Text style={[br.commitCount, { color: colors.textTertiary }]}>
+              Saving {commitProg.done} of {commitProg.total} {commitProg.total === 1 ? "place" : "places"}…
+            </Text>
+          </View>
+        </View>
+        <View style={[br.track, { backgroundColor: colors.border }]}>
+          <View style={[br.fill, { width: `${Math.round(pct * 100)}%`, backgroundColor: colors.accent }]} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[br.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>

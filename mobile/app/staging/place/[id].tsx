@@ -14,6 +14,7 @@
 
 import React, { useState, useMemo } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Pressable,
@@ -340,6 +341,8 @@ export default function PlaceDetailScreen() {
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
   // Expanded rows for photo strips
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // True while batchCommitEntries is in flight — freeze the button label
+  const [committing, setCommitting] = useState(false);
 
   const place = hub.places.find((p) => p.id === id);
 
@@ -393,7 +396,9 @@ export default function PlaceDetailScreen() {
   const handleCommit = () => {
     const toAccept  = pending.filter((e) => !deselected.has(e.id));
     const toDismiss = pending.filter((e) =>  deselected.has(e.id));
-    // Single putMany for all decisions — avoids concurrent DB writes
+    // Snapshot count before committing so the button label doesn't flicker
+    // as pending entries leave the list while the write completes.
+    setCommitting(true);
     hub.batchCommitEntries(toAccept, toDismiss).then(() => router.back());
   };
 
@@ -459,14 +464,21 @@ export default function PlaceDetailScreen() {
                 </Pressable>
               </View>
 
-              {/* Commit button */}
+              {/* Commit button — disabled + spinner while write is in flight */}
               <Pressable
-                style={[s.commitBtn, selectedCount === 0 && s.commitBtnDisabled]}
-                onPress={selectedCount > 0 ? handleCommit : undefined}
+                style={[
+                  s.commitBtn,
+                  (selectedCount === 0 || committing) && s.commitBtnDisabled,
+                ]}
+                onPress={!committing && selectedCount > 0 ? handleCommit : undefined}
               >
-                <Text style={s.commitBtnText}>
-                  Accept {selectedCount} day{selectedCount !== 1 ? "s" : ""} to journal
-                </Text>
+                {committing ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={s.commitBtnText}>
+                    Accept {selectedCount} day{selectedCount !== 1 ? "s" : ""} to journal
+                  </Text>
+                )}
               </Pressable>
             </View>
 
