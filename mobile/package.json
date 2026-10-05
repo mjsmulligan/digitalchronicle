@@ -18,6 +18,7 @@
     "@react-native-community/datetimepicker": "9.1.0",
     "expo": "~57.0.0",
     "expo-asset": "*",
+    "expo-calendar": "~57.0.5",
     "expo-constants": "~57.0.20",
     "expo-contacts": "~57.0.6",
     "expo-document-picker": "^57.0.3",
