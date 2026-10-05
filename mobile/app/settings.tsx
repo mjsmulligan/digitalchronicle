@@ -3,7 +3,7 @@
  * Reachable via the gear icon in the Chronicle header.
  */
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,6 +17,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { top } = useSafeAreaInsets();
   const [clearing, setClearing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const dialog = useDialog();
   const { colors, fonts, text, spacing, radius, themeId, setThemeId } = useTheme();
   const { state: scan, start: startScan, cancel: cancelScan, reset: resetScan } = useExifScan();
@@ -245,6 +246,18 @@ export default function SettingsScreen() {
     journal.episodes.length +
     journal.books.length;
 
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const json = JSON.stringify(journal, null, 2);
+      await Share.share({ message: json, title: "Chronicle export" });
+    } catch (e) {
+      console.warn("Export failed", e);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleReset = () => {
     dialog.confirm(
       "Reset database",
@@ -404,6 +417,17 @@ export default function SettingsScreen() {
           <Text style={styles.statValue}>{journal.staging.length}</Text>
         </View>
       </View>
+
+      <Pressable
+        style={[styles.resetBtn, exporting && styles.resetBtnDisabled, { borderColor: colors.border, marginBottom: spacing.sm }]}
+        onPress={handleExport}
+        disabled={exporting}
+      >
+        <Ionicons name="share-outline" size={18} color={colors.textPrimary} />
+        <Text style={[styles.resetBtnText, { color: colors.textPrimary }]}>
+          {exporting ? "Exporting…" : "Export JSON"}
+        </Text>
+      </Pressable>
 
       <Pressable
         style={[styles.resetBtn, clearing && styles.resetBtnDisabled]}

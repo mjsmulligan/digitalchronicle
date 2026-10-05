@@ -65,7 +65,21 @@
           "calendarPermission": "Chronicle reads events from your calendars so you can review and add them to your journal. Nothing is written back and nothing leaves your phone."
         }
       ],
-      "./plugins/withEdgeToEdge"
+      "./plugins/withEdgeToEdge",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Chronicle reads photo metadata from your library to generate place entries. No photos leave your phone.",
+          "savePhotosPermission": false,
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Chronicle uses your location to look up place names for photos. Location is only read during a scan and never stored or sent anywhere."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
