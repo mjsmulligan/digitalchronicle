@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { SourceIcon } from "@/components/journal/SourceIcon";
-import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2, X, Plus, AlertTriangle } from "lucide-react";
+import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, MapPin, ChevronDown, Trash2, X, Plus, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,12 +23,14 @@ export function entryIcon(e: Entry) {
   if (e.kind === "film") return Clapperboard;
   if (e.kind === "episode") return Tv;
   if (e.kind === "book") return BookOpen;
+  if (e.kind === "place") return MapPin;
   return CAT_ICON[e.category ?? "activity"];
 }
 export function entryColor(e: Entry) {
   if (e.kind === "leg") return e.mode === "air" ? "text-air" : e.mode === "rail" ? "text-rail" : "text-road";
   if (e.kind === "stay") return "text-stay";
   if (e.kind === "film" || e.kind === "episode" || e.kind === "book") return "text-muted-foreground";
+  if (e.kind === "place") return "text-muted-foreground";
   return e.category === "milestone" ? "text-primary" : "text-gig";
 }
 export function entryLabel(e: Entry) {
@@ -37,6 +39,7 @@ export function entryLabel(e: Entry) {
   if (e.kind === "film") return e.rewatch ? "Rewatch" : "Film";
   if (e.kind === "episode") return "Episode";
   if (e.kind === "book") return e.series ? "Series" : "Book";
+  if (e.kind === "place") return "Place";
   return CATEGORY_LABEL[e.category ?? "activity"];
 }
 
@@ -49,6 +52,7 @@ const OVERRIDE_FIELDS: Record<Entry["kind"], string[]> = {
   film: ["title", "year", "director", "start"],
   episode: ["showTitle", "season", "episodeTitle", "start"],
   book: ["title", "author", "year", "series", "start"],
+  place: ["locality", "region", "country", "start", "end"],
 };
 
 // ---------------------------------------------------------------------------
@@ -274,7 +278,9 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             ? [v.season, v.episodeNumber && `Ep ${v.episodeNumber}`].filter(Boolean).join(" · ")
             : v.kind === "book"
               ? [v.series && `${v.series}${v.seriesNumber ? ` #${v.seriesNumber}` : ""}`, v.year && String(v.year)].filter(Boolean).join(" · ")
-              : [v.category === "concert" ? v.venue : v.venue, v.city, v.people?.join(", ")].filter(Boolean).join(" · ");
+              : v.kind === "place"
+                ? [v.region, v.country].filter(Boolean).join(", ")
+                : [v.category === "concert" ? v.venue : v.venue, v.city, v.people?.join(", ")].filter(Boolean).join(" · ");
 
   return (
     <div className="rounded-md border border-border bg-card">

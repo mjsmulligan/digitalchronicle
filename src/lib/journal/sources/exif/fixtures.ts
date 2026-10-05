@@ -12,6 +12,7 @@
  */
 
 import type { PhotoRecord, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord, LocalityResolver, LocalityInfo } from "./types";
+// fakeLocalityResolver is declared later in the file — references below are fine
 import type { PlaceEvent, PhotoEvidenceRef } from "../../types";
 
 // ─── Low-level record factories ───────────────────────────────────────────────
@@ -160,7 +161,7 @@ const FAKE_LOCALITY_TABLE: Record<string, LocalityInfo> = {
 };
 
 function coarsen(lat: number, lon: number): string {
-  return `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
+  return `${(Math.round(lat * 100) / 100).toFixed(2)},${(Math.round(lon * 100) / 100).toFixed(2)}`;
 }
 
 export const fakeLocalityResolver: LocalityResolver = {
@@ -169,3 +170,34 @@ export const fakeLocalityResolver: LocalityResolver = {
     return FAKE_LOCALITY_TABLE[key] ?? null;
   },
 };
+
+// ─── Photo resolution helper ─────────────────────────────────────────────────
+
+/**
+ * Run TimedPhotoRecords through the fake resolver to produce the LocatedPhotoRecord /
+ * UnlocatedPhotoRecord split that WP5 (buildPlaces) needs as input.
+ *
+ * Usage in tests:
+ *   const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+ *   const places = buildPlaces(located, unlocated, [], []);
+ */
+export async function resolveFixture(photos: TimedPhotoRecord[]): Promise<{
+  located: LocatedPhotoRecord[];
+  unlocated: UnlocatedPhotoRecord[];
+}> {
+  const located: LocatedPhotoRecord[] = [];
+  const unlocated: UnlocatedPhotoRecord[] = [];
+  for (const photo of photos) {
+    if (photo.latitude !== null && photo.longitude !== null) {
+      const info = await fakeLocalityResolver.resolve(photo.latitude, photo.longitude);
+      if (info) {
+        located.push({ ...photo, locality: info });
+      } else {
+        unlocated.push({ ...photo, locality: null });
+      }
+    } else {
+      unlocated.push({ ...photo, locality: null });
+    }
+  }
+  return { located, unlocated };
+}
