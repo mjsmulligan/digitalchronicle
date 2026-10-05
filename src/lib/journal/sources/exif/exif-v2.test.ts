@@ -652,10 +652,81 @@ describe("Check 11: Scan scope respected; scan-all can be cancelled and resumed"
    * and picks up from where it left off.
    *
    * Depends on: WP15 (Sources page entry and re-scan).
+   *
+   * Scope filtering happens at the media access layer (device OS), so the pure
+   * pipeline receives only the pre-filtered TimedPhotoRecords. These tests
+   * simulate that by manually slicing the fixture before resolving.
    */
-  it.todo("album scope only processes assets in the specified album");
-  it.todo("date-range scope only processes assets within the date range");
-  it.todo("cancelling and resuming a scan-all run produces no duplicates");
+
+  it("album scope only processes assets in the specified album", async () => {
+    // Simulate "album A" = FIXTURE_LONDON_WEEKEND, "album B" = FIXTURE_LONDON_DAY_TRIP.
+    // Scanning with album A scope means only FIXTURE_LONDON_WEEKEND records are passed.
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const plan = buildStagingPlan(built, [], [], []);
+
+    // Only weekend days (Jul 05 + Jul 06) — day trip (Jul 19) is not included
+    const days = plan.newEntries.map((e) => e.localDay).sort();
+    expect(days).toEqual(["2025-07-05", "2025-07-06"]);
+    expect(plan.newEntries.every((e) => e.localityKey === "gb:london")).toBe(true);
+    // Jul 19 must not appear
+    expect(days).not.toContain("2025-07-19");
+  });
+
+  it("date-range scope only processes assets within the date range", async () => {
+    // Simulate date-range scope "2025-07-05 – 2025-07-06" by filtering the combined
+    // fixture to only those days before resolving — as the media access layer would.
+    const RANGE_START = "2025-07-05";
+    const RANGE_END   = "2025-07-06";
+    const inRange = FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP.filter(
+      (p) => p.localDay >= RANGE_START && p.localDay <= RANGE_END,
+    );
+    expect(inRange.length).toBeGreaterThan(0); // sanity
+
+    const { located, unlocated } = await resolveFixtureV2(inRange);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const plan = buildStagingPlan(built, [], [], []);
+
+    const days = plan.newEntries.map((e) => e.localDay).sort();
+    // Only the two weekend days should be present
+    expect(days).toEqual(["2025-07-05", "2025-07-06"]);
+    // Jul 19 (the day trip outside the range) is absent
+    expect(days).not.toContain("2025-07-19");
+  });
+
+  it("cancelling and resuming a scan-all run produces no duplicates", async () => {
+    // PHASE 1 — "cancelled" partial scan: only process FIXTURE_LONDON_WEEKEND.
+    const { located: loc1, unlocated: unloc1 } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
+    const built1 = buildPlaceEntries(loc1, unloc1, []);
+    const plan1 = buildStagingPlan(built1, [], [], []);
+    expect(plan1.newEntries).toHaveLength(2); // Jul 05 + Jul 06
+
+    // Simulate the user accepting those entries before the resumed scan
+    const committedPlaces = plan1.newPlaces;
+    const committedEntries = plan1.newEntries.map((e) => ({ ...e, status: "pending" as const }));
+
+    // PHASE 2 — "resumed" scan: re-scan the full fixture (all 3 days).
+    // The media access layer has already delivered the Jul 05 + Jul 06 photos again
+    // (resume is not incremental; it re-processes all photos in scope).
+    const { located: loc2, unlocated: unloc2 } = await resolveFixtureV2(
+      FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP,
+    );
+    const built2 = buildPlaceEntries(loc2, unloc2, []);
+    const plan2 = buildStagingPlan(built2, committedPlaces, committedEntries, []);
+
+    // Jul 05 and Jul 06 already exist as pending — no new entries for those days.
+    // Only Jul 19 (FIXTURE_LONDON_DAY_TRIP) should be a new entry.
+    expect(plan2.newEntries).toHaveLength(1);
+    expect(plan2.newEntries[0].localDay).toBe("2025-07-19");
+
+    // No new Places are needed — the London Place already exists.
+    expect(plan2.newPlaces).toHaveLength(0);
+
+    // Total pending entries after both phases = 3 (no duplicates).
+    const allEntries = [...committedEntries, ...plan2.newEntries];
+    const uniqueDays = new Set(allEntries.map((e) => e.localDay));
+    expect(uniqueDays.size).toBe(3);
+  });
 });
 
 // ─── Acceptance check 12 ─────────────────────────────────────────────────────

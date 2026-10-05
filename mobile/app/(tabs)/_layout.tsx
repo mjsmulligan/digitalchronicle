@@ -8,13 +8,21 @@ import { useJournal } from "@chronicle/journal/db";
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
 /**
- * Shared top-bar right side: Sources icon (with dot when staged items are
- * pending) + Settings icon. Rendered on every tab via screenOptions.headerRight.
+ * Shared top-bar right side: Import icon (staging dot) + Sources icon
+ * (pending place suggestions dot) + Settings icon.
+ * Rendered on every tab via screenOptions.headerRight.
  */
-function HeaderRight({ stagingCount }: { stagingCount: number }) {
+function HeaderRight({
+  stagingCount,
+  pendingPlacesCount,
+}: {
+  stagingCount: number;
+  pendingPlacesCount: number;
+}) {
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: "row", gap: 4, marginRight: 8 }}>
+      {/* Import — staging dot */}
       <Link href="/import" asChild>
         <Pressable style={{ padding: 8 }}>
           <View>
@@ -35,6 +43,28 @@ function HeaderRight({ stagingCount }: { stagingCount: number }) {
           </View>
         </Pressable>
       </Link>
+      {/* Sources — pending place suggestions dot (WP15) */}
+      <Link href="/sources" asChild>
+        <Pressable style={{ padding: 8 }}>
+          <View>
+            <Ionicons name="images-outline" size={22} color={colors.textMuted} />
+            {pendingPlacesCount > 0 && (
+              <View
+                style={{
+                  position: "absolute",
+                  top: 1,
+                  right: 1,
+                  width: 7,
+                  height: 7,
+                  borderRadius: 3.5,
+                  backgroundColor: colors.accentBold,
+                }}
+              />
+            )}
+          </View>
+        </Pressable>
+      </Link>
+      {/* Settings */}
       <Link href="/settings" asChild>
         <Pressable style={{ padding: 8 }}>
           <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
@@ -50,6 +80,9 @@ export default function TabLayout() {
   const { colors, fonts } = useTheme();
   const journal = useJournal();
   const stagingCount = journal.staging.length;
+  const pendingPlacesCount = (journal.placeEntries ?? []).filter(
+    (e) => e.status === "pending",
+  ).length;
 
   // Derive active tab from current path so FloatingNavBar stays in sync
   // without needing the non-existent onIndexChange prop on Tabs.
@@ -89,7 +122,12 @@ export default function TabLayout() {
           },
           tabBarStyle: { display: "none" },
           // Shared top-bar right side on every tab (spec 6.2)
-          headerRight: () => <HeaderRight stagingCount={stagingCount} />,
+          headerRight: () => (
+            <HeaderRight
+              stagingCount={stagingCount}
+              pendingPlacesCount={pendingPlacesCount}
+            />
+          ),
         }}
       >
       <Tabs.Screen
