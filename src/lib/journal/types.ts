@@ -474,7 +474,16 @@ export function entryTitle(e: Entry): string {
   if (v.kind === "leg") return `${v.from} → ${v.to}`;
   if (v.kind === "stay") return v.place;
   if (v.kind === "place") return v.country ? `${v.locality}, ${v.country}` : v.locality;
-  if (v.kind === "place-entry") return v.localDay; // WP10: title filled in by WP14 UI
+  if (v.kind === "place-entry") {
+    // Derive a human-readable name from localityKey ("gb:london" → "London",
+    // "it:porto-venere" → "Porto Venere"). The Place container carries the
+    // canonical name but entryTitle can't access the store, so we parse the key.
+    const slug = v.localityKey.slice(v.localityKey.indexOf(":") + 1);
+    return slug
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
   if (v.kind === "film") return v.year ? `${v.title} (${v.year})` : v.title;
   if (v.kind === "episode") return v.episodeTitle ? `${v.showTitle}: ${v.episodeTitle}` : v.showTitle;
   if (v.kind === "book") return v.author ? `${v.title} — ${v.author}` : v.title;
