@@ -17,8 +17,9 @@
  *   - Runs the scan via useExifScan.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Animated,
   ActivityIndicator,
   Pressable,
   StyleSheet,
@@ -82,6 +83,29 @@ export function PhotoSourceEntry({ onReviewSuggestions }: PhotoSourceEntryProps)
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [scope, setScope] = useState<ScanScope>({ kind: "all" });
   const [scopePickerOpen, setScopePickerOpen] = useState(false);
+
+  // Animated progress bar — indeterminate while scanning, reaches 1.0 on done
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
+  useEffect(() => {
+    if (isActive) {
+      // Gentle pulsing advance: cycles between 15% and 70%
+      loopRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(progressAnim, { toValue: 0.7, duration: 1400, useNativeDriver: false }),
+          Animated.timing(progressAnim, { toValue: 0.15, duration: 1000, useNativeDriver: false }),
+        ]),
+      );
+      loopRef.current.start();
+    } else {
+      loopRef.current?.stop();
+      Animated.timing(progressAnim, {
+        toValue: scan.phase === "done" ? 1 : 0,
+        duration: scan.phase === "done" ? 300 : 200,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [isActive, scan.phase]);
 
   // Load persisted scan marker on mount
   useEffect(() => {
@@ -184,21 +208,38 @@ export function PhotoSourceEntry({ onReviewSuggestions }: PhotoSourceEntryProps)
         )}
       </View>
 
-      {/* Progress bar (while active) */}
-      {isActive && (
-        <View style={s.progressRow}>
-          <ActivityIndicator size="small" color={colors.accent} style={{ marginRight: spacing.sm }} />
-          {scan.phase === "scanning" && (
-            <Text style={s.progressText}>
-              {scan.scanned} photo{scan.scanned !== 1 ? "s" : ""}
-              {scan.pending > 0 ? ` · ${scan.pending} pending lookups` : ""}
-            </Text>
+      {/* Progress card — shown while active, same visual style as file-import commit */}
+      {(isActive || scan.phase === "done") && (
+        <View style={s.progressCard}>
+          {isActive && (
+            <View style={s.progressTop}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={s.progressText} numberOfLines={1}>
+                {scan.phase === "scanning"
+                  ? `${scan.scanned} photo${scan.scanned !== 1 ? "s" : ""} found${scan.pending > 0 ? ` · ${scan.pending} pending` : ""}`
+                  : scan.phase === "geocoding"
+                  ? scan.pending > 0
+                    ? `${scan.pending} location lookup${scan.pending !== 1 ? "s" : ""} remaining`
+                    : "Finishing location lookups…"
+                  : scan.phase === "building"
+                  ? "Building place entries…"
+                  : "Saving…"}
+              </Text>
+            </View>
           )}
-          {scan.phase === "geocoding" && (
-            <Text style={s.progressText}>
-              {scan.pending > 0 ? `${scan.pending} location lookup${scan.pending !== 1 ? "s" : ""} remaining` : "Finishing location lookups…"}
-            </Text>
-          )}
+          <View style={s.progressTrack}>
+            <Animated.View
+              style={[
+                s.progressFill,
+                {
+                  width: progressAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0%", "100%"],
+                  }),
+                },
+              ]}
+            />
+          </View>
         </View>
       )}
 
@@ -327,16 +368,30 @@ function styles(colors: any, fonts: any) {
       color: colors.white,
       fontFamily: fonts.sansMedium ?? fonts.sans,
     },
-    progressRow: {
+    progressCard: {
+      gap: spacing.xs,
+      marginBottom: spacing.sm,
+    },
+    progressTop: {
       flexDirection: "row",
       alignItems: "center",
-      marginBottom: spacing.sm,
-      paddingTop: spacing.xs,
+      gap: spacing.sm,
     },
     progressText: {
       fontSize: 12,
       color: colors.textMuted,
       flex: 1,
+    },
+    progressTrack: {
+      height: 3,
+      backgroundColor: colors.borderFaint,
+      borderRadius: 2,
+      overflow: "hidden",
+    },
+    progressFill: {
+      height: "100%",
+      backgroundColor: colors.accent,
+      borderRadius: 2,
     },
     scopeRow: {
       flexDirection: "row",

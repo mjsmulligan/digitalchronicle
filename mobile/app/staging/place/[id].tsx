@@ -18,6 +18,7 @@ import {
   FlatList,
   Pressable,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -40,9 +41,13 @@ function fmtDay(iso: string): string {
   return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-// ─── Entry card ───────────────────────────────────────────────────────────────
+// ─── Entry row ────────────────────────────────────────────────────────────────
+//
+// Compact row with a Switch on the right — mirrors the per-record pattern in
+// the file-import review screen. All pending entries start ON (pre-approved);
+// toggling OFF dismisses to the bin.
 
-function EntryCard({
+function EntryRow({
   entry,
   unusual,
   onAccept,
@@ -54,67 +59,72 @@ function EntryCard({
   onDismiss: () => void;
 }) {
   const { colors, fonts } = useTheme();
-  const s = useMemo(() => cardStyles(colors, fonts), [colors, fonts]);
+  const s = useMemo(() => rowStyles(colors, fonts), [colors, fonts]);
+
+  // Pending entries start ON (pre-approved). User toggles off to dismiss.
+  const [value, setValue] = useState(true);
+
+  const handleChange = (next: boolean) => {
+    setValue(next);
+    if (next) onAccept();
+    else      onDismiss();
+  };
 
   return (
-    <View style={[s.card, unusual && s.cardUnusual]}>
-      <View style={s.dateBlock}>
-        <Text style={s.dateText}>{fmtDay(entry.localDay)}</Text>
-        {unusual && (
-          <View style={s.unusualBadge}>
-            <Text style={s.unusualBadgeText}>Unusual</Text>
-          </View>
-        )}
+    <View style={[s.row, unusual && s.rowUnusual]}>
+      <View style={s.body}>
+        <View style={s.titleRow}>
+          <Text style={s.dateText}>{fmtDay(entry.localDay)}</Text>
+          {unusual && (
+            <View style={s.unusualBadge}>
+              <Text style={s.unusualBadgeText}>Unusual</Text>
+            </View>
+          )}
+        </View>
+        <View style={s.metaRow}>
+          <Ionicons name="images-outline" size={12} color={colors.textMuted} style={{ marginRight: 3 }} />
+          <Text style={s.metaText}>
+            {entry.photoCount} photo{entry.photoCount !== 1 ? "s" : ""}
+            {entry.singlePhoto ? " · Transit?" : ""}
+          </Text>
+        </View>
       </View>
-
-      <View style={s.metaRow}>
-        <Ionicons name="images-outline" size={13} color={colors.textMuted} style={{ marginRight: 4 }} />
-        <Text style={s.metaText}>
-          {entry.photoCount} photo{entry.photoCount !== 1 ? "s" : ""}
-          {entry.singlePhoto ? " · Airport / transit?" : ""}
-        </Text>
-      </View>
-
-      <View style={s.actions}>
-        <Pressable
-          style={({ pressed }) => [s.btn, s.acceptBtn, pressed && s.pressed]}
-          onPress={onAccept}
-        >
-          <Ionicons name="checkmark" size={16} color={colors.white} />
-          <Text style={s.btnText}>Accept</Text>
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [s.btn, s.dismissBtn, pressed && s.pressed]}
-          onPress={onDismiss}
-        >
-          <Ionicons name="close" size={16} color={colors.textSecondary} />
-          <Text style={[s.btnText, { color: colors.textSecondary }]}>Dismiss</Text>
-        </Pressable>
-      </View>
+      <Switch
+        value={value}
+        onValueChange={handleChange}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={value ? colors.accentSubtle : colors.textMuted}
+        style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+      />
     </View>
   );
 }
 
-function cardStyles(colors: any, fonts: any) {
+function rowStyles(colors: any, fonts: any) {
   return StyleSheet.create({
-    card: {
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
       marginHorizontal: spacing.lg,
-      marginBottom: spacing.sm,
-      padding: spacing.md,
+      marginBottom: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
       borderWidth: 1,
       borderColor: colors.borderFaint,
+      gap: spacing.md,
     },
-    cardUnusual: {
+    rowUnusual: {
       borderColor: colors.accent,
       borderLeftWidth: 3,
     },
-    dateBlock: {
+    body: { flex: 1 },
+    titleRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: spacing.xs,
+      gap: spacing.sm,
+      marginBottom: 2,
     },
     dateText: {
       fontSize: 14,
@@ -134,33 +144,11 @@ function cardStyles(colors: any, fonts: any) {
     metaRow: {
       flexDirection: "row",
       alignItems: "center",
-      marginBottom: spacing.md,
     },
     metaText: {
       fontSize: 12,
       color: colors.textMuted,
     },
-    actions: {
-      flexDirection: "row",
-      gap: spacing.sm,
-    },
-    btn: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      paddingVertical: spacing.sm,
-      borderRadius: radius.md,
-      gap: 4,
-    },
-    acceptBtn: { backgroundColor: colors.accentBold },
-    dismissBtn: {
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    btnText: { fontSize: 13, color: colors.white },
-    pressed: { opacity: 0.7 },
   });
 }
 
@@ -432,7 +420,7 @@ export default function PlaceDetailScreen() {
             );
           }
           return (
-            <EntryCard
+            <EntryRow
               entry={item.entry!}
               unusual={item.type === "unusual"}
               onAccept={() => handleAcceptEntry(item.entry!)}

@@ -1,23 +1,979 @@
 /**
- * WP15 — Sources page.
+ * Sources — unified hub for all ways data enters Chronicle.
  *
- * Lists all connected data sources with their status and controls. Currently
- * contains only the photo library source. Other sources (connectors) will be
- * added here when the Sources page rework lands (see spec §5 note).
+ * Sections:
+ *   "Pending review"  — appears when staged import batches are waiting
+ *   "On device"       — Photo library (scan), Device calendar
+ *   "Online"          — Goodreads read-shelf sync
+ *   "File import"     — CSV / ICS / VCF file picker
  *
- * Reachable via the Chronicle tab header (sources icon).
+ * Design principles:
+ *   - All source cards share the same chrome (icon + title + status + action button)
+ *   - Progress is shown as a slim animated bar, matching the commit progress card
+ *   - Batch review uses a Switch per record (same as the place-staging screens)
+ *   - A single "Sources" icon in the tab header replaces the old Import icon
  */
 
-import React, { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  FlatList,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { Stack, useRouter } from "expo-router";
+import * as DocumentPicker from "expo-document-picker";
+import { Ionicons } from "@expo/vector-icons";
+import { useJournal, removeMany, type CommitProgress } from "@chronicle/journal/db";
+import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
+import {
+  entryTitle,
+  view,
+  type StagingBatch,
+  type StagedRecord,
+  type StageStatus,
+} from "@chronicle/journal/types";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTheme, spacing, radius } from "../src/components/ThemeProvider";
+import { KindIcon } from "../src/components/KindIcon";
+import { useDialog, Dialog } from "../src/components/Dialog";
 import { PhotoSourceEntry } from "../src/components/PhotoSourceEntry";
-import { useTheme, spacing } from "../src/components/ThemeProvider";
+import { readDeviceCalendar } from "../src/lib/deviceCalendar";
+import {
+  fetchGoodreadsShelfCsv,
+  parseGoodreadsUserId,
+} from "@chronicle/journal/connectors/goodreads/rss";
+import {
+  getGoodreadsUserId,
+  setGoodreadsUserId,
+} from "../src/lib/goodreadsPrefs";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type ActiveSource = "calendar" | "goodreads" | "file" | null;
+
+// ─── Batch review helpers (same as old import.tsx) ────────────────────────────
+
+const STATUS_COLOR: Record<StageStatus, string> = {
+  new: "#22c55e",
+  supersedes: "#3b82f6",
+  duplicate: "#475569",
+  superseded: "#475569",
+  "batch-duplicate": "#ef4444",
+};
+
+const STATUS_LABEL: Record<StageStatus, string> = {
+  new: "new",
+  supersedes: "replaces",
+  duplicate: "duplicate",
+  superseded: "lower tier",
+  "batch-duplicate": "dupe in file",
+};
+
+function entrySubkind(e: StagedRecord["entry"]): string | undefined {
+  if (e.kind === "leg") return e.mode;
+  if (e.kind === "event")
+    return (e as Extract<typeof e, { kind: "event" }>).category;
+  return undefined;
+}
+
+function isSelectable(status: StageStatus): boolean {
+  return status === "new" || status === "supersedes";
+}
+
+const INITIAL_VISIBLE = 100;
+
+// ─── RecordRow ────────────────────────────────────────────────────────────────
+
+function RecordRow({
+  record,
+  onToggle,
+  colors,
+  fonts,
+}: {
+  record: StagedRecord;
+  onToggle: (selected: boolean) => void;
+  colors: any;
+  fonts: any;
+}) {
+  const v = view(record.entry);
+  const selectable = isSelectable(record.status);
+  return (
+    <View
+      style={[
+        rr.row,
+        { borderBottomColor: colors.border },
+        !selectable && rr.dim,
+      ]}
+    >
+      <Switch
+        value={record.selected}
+        onValueChange={onToggle}
+        disabled={!selectable}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={record.selected ? colors.accentSubtle : colors.textMuted}
+        style={rr.sw}
+      />
+      <View style={rr.iconWrap}>
+        <KindIcon
+          kind={record.entry.kind}
+          subkind={entrySubkind(record.entry)}
+          size={16}
+          color={colors.textSecondary}
+          accessibilityLabel=""
+        />
+      </View>
+      <View style={rr.body}>
+        <Text style={[rr.title, { color: colors.textPrimary, fontFamily: fonts.sans }]} numberOfLines={1}>
+          {entryTitle(v)}
+        </Text>
+        <View style={rr.meta}>
+          <Text style={[rr.status, { color: STATUS_COLOR[record.status] }]}>
+            {STATUS_LABEL[record.status]}
+          </Text>
+          {record.warnings.length > 0 && (
+            <Text style={[rr.warning, { color: colors.star }]} numberOfLines={1}>
+              {"⚠"} {record.warnings[0]}
+            </Text>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const rr = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 10,
+  },
+  dim: { opacity: 0.45 },
+  sw: { transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] },
+  iconWrap: { width: 22, alignItems: "center" },
+  body: { flex: 1 },
+  title: { fontSize: 14, fontWeight: "500", marginBottom: 2 },
+  meta: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  status: { fontSize: 11, fontWeight: "700", textTransform: "uppercase" },
+  warning: { fontSize: 11, flex: 1 },
+});
+
+// ─── BatchReview ──────────────────────────────────────────────────────────────
+
+function BatchReview({
+  batch,
+  commitProgress,
+  onCommit,
+  onDiscard,
+  onError,
+  colors,
+  fonts,
+}: {
+  batch: StagingBatch;
+  commitProgress: CommitProgress | null;
+  onCommit: (count: number) => void;
+  onDiscard: () => void;
+  onError: (title: string, message: string) => void;
+  colors: any;
+  fonts: any;
+}) {
+  const [b, setB] = useState(batch);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
+
+  const committing = commitProgress?.batchId === batch.id;
+  const progressPct =
+    committing && commitProgress!.total > 0
+      ? commitProgress!.done / commitProgress!.total
+      : 0;
+
+  const selected = b.records.filter((r) => r.selected).length;
+  const importable = b.records.filter((r) => isSelectable(r.status)).length;
+  const visibleRecords = b.records.slice(0, visibleCount);
+  const hiddenCount = b.records.length - visibleCount;
+
+  const update = useCallback((next: StagingBatch) => {
+    setB(next);
+    void saveBatch(next);
+  }, []);
+
+  const toggleRecord = (idx: number, sel: boolean) => {
+    update({ ...b, records: b.records.map((r, i) => (i === idx ? { ...r, selected: sel } : r)) });
+  };
+
+  const selectImportable = () =>
+    update({ ...b, records: b.records.map((r) => ({ ...r, selected: isSelectable(r.status) })) });
+
+  const deselectAll = () =>
+    update({ ...b, records: b.records.map((r) => ({ ...r, selected: false })) });
+
+  const handleCommit = async () => {
+    try {
+      const result = await commitBatch(b);
+      onCommit(result.count);
+    } catch (err) {
+      onError("Commit failed", String(err));
+    }
+  };
+
+  // Committing → slim progress card
+  if (committing) {
+    return (
+      <View style={[br.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={br.commitTop}>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={[br.filename, { color: colors.textPrimary, fontFamily: fonts.sans }]} numberOfLines={1}>
+              {b.filename}
+            </Text>
+            <Text style={[br.commitCount, { color: colors.textTertiary }]}>
+              Saving {commitProgress!.done} of {commitProgress!.total} entries…
+            </Text>
+          </View>
+        </View>
+        <View style={[br.track, { backgroundColor: colors.border }]}>
+          <View style={[br.fill, { width: `${Math.round(progressPct * 100)}%`, backgroundColor: colors.accent }]} />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[br.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      {/* Header */}
+      <View style={[br.header, { borderBottomColor: colors.border }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[br.filename, { color: colors.textPrimary, fontFamily: fonts.sans }]} numberOfLines={1}>
+            {b.filename}
+          </Text>
+          <Text style={[br.meta, { color: colors.textTertiary }]}>
+            {b.records.length} parsed · {b.errors.length} errors · {selected} selected
+          </Text>
+        </View>
+        <Pressable onPress={onDiscard} style={{ padding: 4 }}>
+          <Ionicons name="trash-outline" size={18} color={colors.error} />
+        </Pressable>
+      </View>
+
+      {/* Parse errors */}
+      {b.errors.length > 0 && (
+        <View style={[br.errBox, { backgroundColor: colors.errorBg, borderBottomColor: colors.border }]}>
+          {b.errors.slice(0, 3).map((e, i) => (
+            <Text key={i} style={[br.errText, { color: colors.errorLight }]} numberOfLines={2}>
+              {e}
+            </Text>
+          ))}
+          {b.errors.length > 3 && (
+            <Text style={[br.errText, { color: colors.errorLight }]}>
+              …and {b.errors.length - 3} more
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Quick actions */}
+      <View style={[br.quick, { borderBottomColor: colors.borderFaint }]}>
+        <Pressable onPress={selectImportable}>
+          <Text style={[br.quickText, { color: colors.accent }]}>
+            Select importable ({importable})
+          </Text>
+        </Pressable>
+        <Pressable onPress={deselectAll}>
+          <Text style={[br.quickText, { color: colors.accent }]}>Deselect all</Text>
+        </Pressable>
+      </View>
+
+      {/* Commit bar */}
+      <View style={br.commitBar}>
+        <Pressable
+          style={[br.commitBtn, { backgroundColor: colors.accentBold }, !selected && { opacity: 0.4 }]}
+          disabled={!selected}
+          onPress={handleCommit}
+        >
+          <Text style={[br.commitBtnText, { fontFamily: fonts.sans }]}>
+            Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Record list */}
+      <FlatList
+        data={visibleRecords}
+        keyExtractor={(r) => r.entry.id}
+        renderItem={({ item, index }) => (
+          <RecordRow
+            record={item}
+            onToggle={(v) => toggleRecord(index, v)}
+            colors={colors}
+            fonts={fonts}
+          />
+        )}
+        scrollEnabled={false}
+        ListFooterComponent={
+          hiddenCount > 0 ? (
+            <Pressable
+              style={[br.loadMore, { borderTopColor: colors.border }]}
+              onPress={() => setVisibleCount((n) => n + INITIAL_VISIBLE)}
+            >
+              <Text style={[br.loadMoreText, { color: colors.accent }]}>
+                Show next {Math.min(INITIAL_VISIBLE, hiddenCount)} of {hiddenCount} remaining
+              </Text>
+            </Pressable>
+          ) : null
+        }
+      />
+    </View>
+  );
+}
+
+const br = StyleSheet.create({
+  card: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    marginBottom: spacing.lg,
+    overflow: "hidden",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: spacing.md,
+    borderBottomWidth: 1,
+    gap: spacing.md,
+  },
+  filename: { fontSize: 14, fontWeight: "600", marginBottom: 2 },
+  meta: { fontSize: 12 },
+  errBox: {
+    padding: 10,
+    borderBottomWidth: 1,
+  },
+  errText: { fontSize: 11, marginBottom: 2 },
+  quick: {
+    flexDirection: "row",
+    gap: spacing.base,
+    padding: 10,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+  },
+  quickText: { fontSize: 12, fontWeight: "600" },
+  commitBar: { padding: spacing.md },
+  commitBtn: {
+    borderRadius: radius.lg,
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  commitBtnText: { fontSize: 14, color: "#fff", fontWeight: "700" },
+  loadMore: {
+    padding: spacing.md,
+    alignItems: "center",
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  loadMoreText: { fontSize: 13, fontWeight: "600" },
+  commitTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  commitCount: { fontSize: 12, marginTop: 2 },
+  track: {
+    height: 4,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  fill: { height: "100%", borderRadius: 2 },
+});
+
+// ─── Source card chrome ───────────────────────────────────────────────────────
+//
+// Consistent wrapper for calendar, goodreads, file cards. Matches the visual
+// style of PhotoSourceEntry from PhotoSourceEntry.tsx.
+
+function SourceCard({
+  icon,
+  title,
+  statusText,
+  statusColor,
+  active,
+  progressPct,
+  action,
+  children,
+  colors,
+  fonts,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  title: string;
+  statusText: string;
+  statusColor?: string;
+  active: boolean;
+  progressPct: number; // 0–1, only shown when active
+  action: React.ReactNode;
+  children?: React.ReactNode;
+  colors: any;
+  fonts: any;
+}) {
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
+
+  useEffect(() => {
+    if (active) {
+      loopRef.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(progressAnim, { toValue: 0.7, duration: 1400, useNativeDriver: false }),
+          Animated.timing(progressAnim, { toValue: 0.15, duration: 1000, useNativeDriver: false }),
+        ]),
+      );
+      loopRef.current.start();
+    } else {
+      loopRef.current?.stop();
+      Animated.timing(progressAnim, {
+        toValue: progressPct,
+        duration: 300,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [active]);
+
+  return (
+    <View
+      style={[
+        sc.card,
+        { backgroundColor: colors.surface, borderColor: colors.borderFaint },
+      ]}
+    >
+      <View style={sc.header}>
+        <View style={[sc.iconWrap, { backgroundColor: colors.accentSubtle }]}>
+          <Ionicons name={icon} size={20} color={colors.accent} />
+        </View>
+        <View style={sc.info}>
+          <Text style={[sc.title, { color: colors.textPrimary, fontFamily: fonts.serifSemiBold }]}>
+            {title}
+          </Text>
+          <Text style={[sc.status, { color: statusColor ?? colors.textMuted }]}>
+            {statusText}
+          </Text>
+        </View>
+        {action}
+      </View>
+
+      {active && (
+        <View style={sc.progressCard}>
+          <View style={[sc.progressTrack, { backgroundColor: colors.borderFaint }]}>
+            <Animated.View
+              style={[
+                sc.progressFill,
+                {
+                  backgroundColor: colors.accent,
+                  width: progressAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0%", "100%"],
+                  }),
+                },
+              ]}
+            />
+          </View>
+        </View>
+      )}
+
+      {children}
+    </View>
+  );
+}
+
+const sc = StyleSheet.create({
+  card: {
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    padding: spacing.lg,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  iconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: spacing.md,
+  },
+  info: { flex: 1 },
+  title: { fontSize: 15, marginBottom: 2 },
+  status: { fontSize: 12, lineHeight: 17 },
+  progressCard: { marginTop: spacing.sm },
+  progressTrack: {
+    height: 3,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: { height: "100%", borderRadius: 2 },
+});
+
+// ─── Section label ────────────────────────────────────────────────────────────
+
+function SectionLabel({ label, colors }: { label: string; colors: any }) {
+  return (
+    <Text
+      style={{
+        fontSize: 11,
+        color: colors.textMuted,
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+        paddingHorizontal: spacing.lg,
+        marginTop: spacing.xl,
+        marginBottom: spacing.sm,
+      }}
+    >
+      {label}
+    </Text>
+  );
+}
+
+// ─── Action button (used inside source cards) ─────────────────────────────────
+
+function SrcButton({
+  label,
+  onPress,
+  disabled,
+  colors,
+  fonts,
+  variant = "primary",
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  colors: any;
+  fonts: any;
+  variant?: "primary" | "ghost";
+}) {
+  return (
+    <Pressable
+      style={[
+        sb.btn,
+        variant === "primary"
+          ? { backgroundColor: colors.accentBold }
+          : { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border },
+        disabled && { opacity: 0.45 },
+      ]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <Text
+        style={[
+          sb.label,
+          { fontFamily: fonts.sansMedium ?? fonts.sans },
+          variant === "ghost" ? { color: colors.textSecondary } : { color: "#fff" },
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+const sb = StyleSheet.create({
+  btn: {
+    paddingVertical: spacing.xs + 1,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: { fontSize: 13, fontWeight: "600" },
+});
+
+// ─── Calendar source card ─────────────────────────────────────────────────────
+
+function CalendarSourceCard({
+  active,
+  disabled,
+  onSync,
+  colors,
+  fonts,
+}: {
+  active: boolean;
+  disabled: boolean;
+  onSync: () => void;
+  colors: any;
+  fonts: any;
+}) {
+  return (
+    <SourceCard
+      icon="calendar-outline"
+      title="Device calendar"
+      statusText={
+        active
+          ? "Syncing…"
+          : "Imports one-off events from the past year and next 30 days"
+      }
+      active={active}
+      progressPct={0}
+      colors={colors}
+      fonts={fonts}
+      action={
+        active ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : (
+          <SrcButton
+            label="Sync"
+            onPress={onSync}
+            disabled={disabled}
+            colors={colors}
+            fonts={fonts}
+          />
+        )
+      }
+    />
+  );
+}
+
+// ─── Goodreads source card ────────────────────────────────────────────────────
+
+function GoodreadsSourceCard({
+  active,
+  disabled,
+  grId,
+  grEditing,
+  grInput,
+  onGrInputChange,
+  onSync,
+  onStartEdit,
+  onCancelEdit,
+  onSaveId,
+  onForget,
+  colors,
+  fonts,
+}: {
+  active: boolean;
+  disabled: boolean;
+  grId: string | null;
+  grEditing: boolean;
+  grInput: string;
+  onGrInputChange: (v: string) => void;
+  onSync: () => void;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveId: () => void;
+  onForget: () => void;
+  colors: any;
+  fonts: any;
+}) {
+  return (
+    <SourceCard
+      icon="book-outline"
+      title="Goodreads"
+      statusText={
+        active
+          ? "Syncing…"
+          : grId
+          ? `Connected — ID ${grId}`
+          : "Sync your read-shelf via public RSS"
+      }
+      active={active}
+      progressPct={0}
+      colors={colors}
+      fonts={fonts}
+      action={
+        active ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : grId && !grEditing ? (
+          <SrcButton
+            label="Sync"
+            onPress={onSync}
+            disabled={disabled}
+            colors={colors}
+            fonts={fonts}
+          />
+        ) : !grEditing ? (
+          <SrcButton
+            label="Connect"
+            onPress={onStartEdit}
+            disabled={disabled}
+            colors={colors}
+            fonts={fonts}
+          />
+        ) : null
+      }
+    >
+      {/* ID entry / management */}
+      {grId && !grEditing && (
+        <View
+          style={{
+            flexDirection: "row",
+            gap: spacing.md,
+            marginTop: spacing.sm,
+          }}
+        >
+          <Pressable onPress={onStartEdit}>
+            <Text style={{ fontSize: 12, color: colors.accent }}>Change ID</Text>
+          </Pressable>
+          <Pressable onPress={onForget}>
+            <Text style={{ fontSize: 12, color: colors.error }}>Disconnect</Text>
+          </Pressable>
+        </View>
+      )}
+      {grEditing && (
+        <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+          <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>
+            Paste your Goodreads profile link. Your profile must be public.
+          </Text>
+          <TextInput
+            value={grInput}
+            onChangeText={onGrInputChange}
+            placeholder="https://www.goodreads.com/user/show/12345678"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={{
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: radius.md,
+              padding: spacing.md,
+              color: colors.textPrimary,
+              backgroundColor: colors.surfaceMuted,
+              fontSize: 13,
+            }}
+          />
+          <View style={{ flexDirection: "row", gap: spacing.md, justifyContent: "flex-end" }}>
+            <Pressable onPress={onCancelEdit}>
+              <Text style={{ fontSize: 13, color: colors.textMuted }}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={onSaveId}>
+              <Text style={{ fontSize: 13, color: colors.accent, fontWeight: "600" }}>
+                Save & sync
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </SourceCard>
+  );
+}
+
+// ─── File import source card ──────────────────────────────────────────────────
+
+function FileSourceCard({
+  active,
+  disabled,
+  onPickFile,
+  colors,
+  fonts,
+}: {
+  active: boolean;
+  disabled: boolean;
+  onPickFile: () => void;
+  colors: any;
+  fonts: any;
+}) {
+  return (
+    <SourceCard
+      icon="document-outline"
+      title="File import"
+      statusText={
+        active
+          ? "Parsing…"
+          : "CSV · ICS · VCF — Letterboxd, Setlist.fm, iCalendar, contacts…"
+      }
+      active={active}
+      progressPct={0}
+      colors={colors}
+      fonts={fonts}
+      action={
+        active ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : (
+          <SrcButton
+            label="Choose file"
+            onPress={onPickFile}
+            disabled={disabled}
+            colors={colors}
+            fonts={fonts}
+          />
+        )
+      }
+    />
+  );
+}
+
+// ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function SourcesScreen() {
-  const router  = useRouter();
+  const router = useRouter();
+  const { top } = useSafeAreaInsets();
   const { colors, fonts } = useTheme();
-  const s = useMemo(() => styles(colors, fonts), [colors, fonts]);
+  const journal = useJournal();
+  const dialog = useDialog();
+
+  const [activeSource, setActiveSource] = useState<ActiveSource>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [freshBatch, setFreshBatch] = useState<StagingBatch | null>(null);
+
+  // Goodreads state
+  const [grId, setGrId] = useState<string | null>(null);
+  const [grInput, setGrInput] = useState("");
+  const [grEditing, setGrEditing] = useState(false);
+  useEffect(() => {
+    void getGoodreadsUserId().then(setGrId);
+  }, []);
+
+  // Combined pending batches: freshly parsed (first) + persisted
+  const pendingBatches: StagingBatch[] = useMemo(
+    () => [
+      ...(freshBatch ? [freshBatch] : []),
+      ...journal.staging.filter((b) => b.id !== freshBatch?.id),
+    ],
+    [freshBatch, journal.staging],
+  );
+
+  const anyActive = activeSource !== null;
+
+  // ── Source actions ──────────────────────────────────────────────────────────
+
+  const processUri = async (uri: string, filename: string) => {
+    setActiveSource("file");
+    setParseError(null);
+    await new Promise<void>((r) => setTimeout(r, 50));
+    try {
+      const response = await fetch(uri);
+      if (!response.ok) throw new Error(`Could not read file (HTTP ${response.status})`);
+      const text = await response.text();
+      await new Promise<void>((r) => setTimeout(r, 0));
+      const batch = await stageFile(filename, text);
+      setFreshBatch(batch);
+    } catch (err) {
+      setParseError(String(err));
+    } finally {
+      setActiveSource(null);
+    }
+  };
+
+  const pickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["text/csv", "text/calendar", "text/x-vcard", "application/json", "application/octet-stream", "*/*"],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const { uri, name } = result.assets[0];
+      await processUri(uri, name ?? "imported-file");
+    } catch (err) {
+      setParseError(String(err));
+    }
+  };
+
+  const importFromCalendar = async () => {
+    setActiveSource("calendar");
+    setParseError(null);
+    await new Promise<void>((r) => setTimeout(r, 50));
+    try {
+      const res = await readDeviceCalendar();
+      if (res.status === "unavailable") {
+        dialog.alert("Calendar unavailable", "This device doesn't expose a calendar.");
+        return;
+      }
+      if (res.status === "denied") {
+        if (!res.canAskAgain) {
+          dialog.confirm(
+            "Calendar access needed",
+            "Allow calendar access in Settings. Nothing leaves your phone.",
+            "Open Settings",
+            () => void Linking.openSettings(),
+          );
+        } else {
+          dialog.alert("Calendar access needed", "Chronicle needs permission to read your calendar.");
+        }
+        return;
+      }
+      if (!res.count) {
+        dialog.alert("No events found", "No one-off events in the past year or next 30 days.");
+        return;
+      }
+      const batch = await stageFile("device-calendar.ics", res.ics, "icalendar");
+      setFreshBatch(batch);
+    } catch (err) {
+      setParseError(String(err));
+    } finally {
+      setActiveSource(null);
+    }
+  };
+
+  const syncGoodreads = async (userId: string) => {
+    setActiveSource("goodreads");
+    setParseError(null);
+    await new Promise<void>((r) => setTimeout(r, 50));
+    try {
+      const { csv, count } = await fetchGoodreadsShelfCsv(userId);
+      if (!count) {
+        dialog.alert("No books found", "Your Goodreads \"read\" shelf is empty or private.");
+        return;
+      }
+      const batch = await stageFile(`goodreads-${userId}.csv`, csv, "goodreads");
+      setFreshBatch(batch);
+    } catch (err) {
+      setParseError(String(err));
+    } finally {
+      setActiveSource(null);
+    }
+  };
+
+  const onGoodreadsSync = () => {
+    if (grId && !grEditing) syncGoodreads(grId);
+    else setGrEditing(true);
+  };
+
+  const saveGoodreadsId = async () => {
+    const id = parseGoodreadsUserId(grInput);
+    if (!id) {
+      dialog.alert("Couldn't read that", "Paste your Goodreads profile link or the number in it.");
+      return;
+    }
+    await setGoodreadsUserId(id);
+    setGrId(id);
+    setGrEditing(false);
+    setGrInput("");
+    void syncGoodreads(id);
+  };
+
+  const forgetGoodreads = async () => {
+    await setGoodreadsUserId(null);
+    setGrId(null);
+    setGrEditing(false);
+  };
+
+  const handleCommit = (count: number) => {
+    setFreshBatch(null);
+    dialog.alert(
+      "Import complete",
+      `${count} ${count === 1 ? "entry" : "entries"} added to your journal.`,
+    );
+  };
+
+  const handleDiscard = async (batchId: string) => {
+    await removeMany("staging", [batchId]);
+    if (freshBatch?.id === batchId) {
+      setFreshBatch(null);
+    }
+  };
 
   return (
     <>
@@ -25,36 +981,114 @@ export default function SourcesScreen() {
         options={{
           headerShown: true,
           headerTitle: "Sources",
-          headerStyle:  { backgroundColor: colors.surface },
-          headerTitleStyle: { fontFamily: fonts.serifSemiBold, color: colors.textBright },
+          headerStyle: { backgroundColor: colors.surface },
+          headerTitleStyle: {
+            fontFamily: fonts.serifSemiBold,
+            color: colors.textBright,
+          },
           headerTintColor: colors.accent,
         }}
       />
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.content}>
-        <Text style={s.sectionLabel}>On-device</Text>
+      <ScrollView
+        style={{ flex: 1, backgroundColor: colors.bg }}
+        contentContainerStyle={{ paddingTop: spacing.md, paddingBottom: spacing["3xl"] }}
+      >
+        {/* ── Pending review ──────────────────────────────────────────────── */}
+        {pendingBatches.length > 0 && (
+          <>
+            <SectionLabel label="Pending review" colors={colors} />
+            <View style={{ paddingHorizontal: spacing.lg }}>
+              {parseError && (
+                <View
+                  style={{
+                    backgroundColor: colors.errorBg,
+                    borderRadius: radius.md,
+                    padding: spacing.md,
+                    marginBottom: spacing.md,
+                  }}
+                >
+                  <Text style={{ color: colors.errorLight, fontSize: 13 }}>{parseError}</Text>
+                </View>
+              )}
+              {pendingBatches.map((batch) => (
+                <BatchReview
+                  key={batch.id}
+                  batch={batch}
+                  commitProgress={journal.commitProgress}
+                  onCommit={handleCommit}
+                  onDiscard={() => handleDiscard(batch.id)}
+                  onError={dialog.alert}
+                  colors={colors}
+                  fonts={fonts}
+                />
+              ))}
+            </View>
+          </>
+        )}
+
+        {/* ── On device ───────────────────────────────────────────────────── */}
+        <SectionLabel label="On device" colors={colors} />
 
         <PhotoSourceEntry
           onReviewSuggestions={() => router.push("/staging/places" as any)}
         />
 
-        {/* Future connectors go here */}
+        <CalendarSourceCard
+          active={activeSource === "calendar"}
+          disabled={anyActive}
+          onSync={importFromCalendar}
+          colors={colors}
+          fonts={fonts}
+        />
+
+        {/* ── Online ──────────────────────────────────────────────────────── */}
+        <SectionLabel label="Online" colors={colors} />
+
+        <GoodreadsSourceCard
+          active={activeSource === "goodreads"}
+          disabled={anyActive && activeSource !== "goodreads"}
+          grId={grId}
+          grEditing={grEditing}
+          grInput={grInput}
+          onGrInputChange={setGrInput}
+          onSync={onGoodreadsSync}
+          onStartEdit={() => setGrEditing(true)}
+          onCancelEdit={() => setGrEditing(false)}
+          onSaveId={saveGoodreadsId}
+          onForget={forgetGoodreads}
+          colors={colors}
+          fonts={fonts}
+        />
+
+        {/* ── File import ──────────────────────────────────────────────────── */}
+        <SectionLabel label="File import" colors={colors} />
+
+        <FileSourceCard
+          active={activeSource === "file"}
+          disabled={anyActive && activeSource !== "file"}
+          onPickFile={pickFile}
+          colors={colors}
+          fonts={fonts}
+        />
+
+        {/* Error shown when no pending batches (won't appear in pending section) */}
+        {parseError && pendingBatches.length === 0 && (
+          <View
+            style={{
+              marginHorizontal: spacing.lg,
+              marginTop: spacing.sm,
+              backgroundColor: colors.errorBg,
+              borderRadius: radius.md,
+              padding: spacing.md,
+            }}
+          >
+            <Text style={{ color: colors.errorLight, fontSize: 13 }}>{parseError}</Text>
+          </View>
+        )}
       </ScrollView>
+
+      <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>
   );
-}
-
-function styles(colors: any, fonts: any) {
-  return StyleSheet.create({
-    scroll: { flex: 1, backgroundColor: colors.bg },
-    content: { paddingTop: spacing.lg, paddingBottom: spacing["3xl"] },
-    sectionLabel: {
-      fontSize: 11,
-      color: colors.textMuted,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-      paddingHorizontal: spacing.lg,
-      marginBottom: spacing.sm,
-    },
-  });
 }
