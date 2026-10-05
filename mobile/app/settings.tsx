@@ -3,13 +3,14 @@
  * Reachable via the gear icon in the Chronicle header.
  */
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { clearAll, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
+import { useExifScan } from "../src/lib/exif/useExifScan";
 
 export default function SettingsScreen() {
   const journal = useJournal();
@@ -18,6 +19,7 @@ export default function SettingsScreen() {
   const [clearing, setClearing] = useState(false);
   const dialog = useDialog();
   const { colors, fonts, text, spacing, radius, themeId, setThemeId } = useTheme();
+  const { state: scan, start: startScan, cancel: cancelScan, reset: resetScan } = useExifScan();
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
@@ -95,6 +97,52 @@ export default function SettingsScreen() {
       color: colors.textMuted,
       textAlign: "center",
     },
+
+    // ── Photo library section ─────────────────────────────────────────
+    scanBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+      backgroundColor: colors.accent,
+      borderRadius: radius.xl,
+      paddingVertical: 14,
+      marginBottom: spacing.sm,
+    },
+    scanBtnDisabled: { opacity: 0.5 },
+    scanBtnText: { ...text.base, color: colors.white, fontWeight: "600" },
+
+    cancelBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: spacing.sm,
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 14,
+      marginBottom: spacing.sm,
+    },
+    cancelBtnText: { ...text.base, color: colors.textPrimary, fontWeight: "600" },
+
+    scanStatus: {
+      ...text.sm,
+      color: colors.textMuted,
+      textAlign: "center",
+      marginBottom: spacing.sm,
+    },
+    scanStatusDone: { color: colors.accent },
+    scanStatusError: { color: colors.error },
+
+    progressRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      justifyContent: "center",
+      marginBottom: spacing.sm,
+    },
+    progressText: { ...text.sm, color: colors.textDim },
 
     // ── Appearance section ────────────────────────────────────────────
     themeRow: {
@@ -281,6 +329,66 @@ export default function SettingsScreen() {
           </View>
         ))}
       </View>
+
+      {/* ── Photo library ───────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>Photo library</Text>
+
+      {/* Scan progress / status */}
+      {(scan.phase === "scanning" || scan.phase === "geocoding" || scan.phase === "building" || scan.phase === "committing") && (
+        <View style={styles.progressRow}>
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={styles.progressText}>
+            {scan.phase === "scanning" && `Scanning… ${scan.scanned} photos`}
+            {scan.phase === "geocoding" && `Looking up locations… ${scan.scanned} photos`}
+            {scan.phase === "building" && "Building places…"}
+            {scan.phase === "committing" && "Saving…"}
+          </Text>
+        </View>
+      )}
+
+      {scan.phase === "done" && (
+        <Text style={[styles.scanStatus, styles.scanStatusDone]}>
+          Done — {scan.created} new place{scan.created !== 1 ? "s" : ""}{scan.extended > 0 ? `, ${scan.extended} extended` : ""}
+        </Text>
+      )}
+      {scan.phase === "error" && (
+        <Text style={[styles.scanStatus, styles.scanStatusError]}>
+          Error: {scan.error}
+        </Text>
+      )}
+      {scan.phase === "permission-denied" && (
+        <Text style={[styles.scanStatus, styles.scanStatusError]}>
+          Photo library access was denied. Enable it in Settings → Privacy → Photos.
+        </Text>
+      )}
+      {scan.phase === "cancelled" && (
+        <Text style={styles.scanStatus}>Scan cancelled.</Text>
+      )}
+
+      {/* Scan / Cancel button */}
+      {(scan.phase === "scanning" || scan.phase === "geocoding" || scan.phase === "building" || scan.phase === "committing") ? (
+        <Pressable style={styles.cancelBtn} onPress={cancelScan}>
+          <Ionicons name="stop-circle-outline" size={18} color={colors.textPrimary} />
+          <Text style={styles.cancelBtnText}>Cancel scan</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          style={[styles.scanBtn, scan.phase === "requesting-permissions" && styles.scanBtnDisabled]}
+          disabled={scan.phase === "requesting-permissions"}
+          onPress={() => startScan({ kind: "all" })}
+        >
+          <Ionicons name="images-outline" size={18} color={colors.white} />
+          <Text style={styles.scanBtnText}>
+            {scan.phase === "done" ? "Re-scan photo library" : "Scan photo library"}
+          </Text>
+        </Pressable>
+      )}
+
+      <Text style={styles.resetHint}>
+        Reads photo locations from your library to generate place entries. Runs on-device — no photos leave your phone.
+      </Text>
+
+      <View style={{ marginBottom: spacing.xl }} />
 
       {/* ── Database ────────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Database</Text>
