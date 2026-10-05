@@ -22,7 +22,7 @@
 
 import type { PhotoRecord, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord, LocalityResolver, LocalityInfo } from "./types";
 // fakeLocalityResolver is declared later in the file — references below are fine
-import type { PlaceEvent, Place, PlaceEntry, PlaceBinMarker, PhotoEvidenceRef } from "../../types";
+import type { PlaceEvent, Place, PlaceEntry, PlaceBinMarker, PhotoEvidenceRef, JEvent } from "../../types";
 import { uid } from "../../types";
 
 // ─── Low-level record factories ───────────────────────────────────────────────
@@ -450,4 +450,21 @@ export function makePlaceBinMarker(overrides: Partial<PlaceBinMarker> = {}): Pla
     photoIds: overrides.photoIds ?? ["media-1", "media-2"],
     ...overrides,
   };
+}
+
+/** Build a minimal valid JEvent (calendar/diary event). Override any field. */
+export function makeJEvent({ start, ...rest }: Partial<JEvent> & { start: string }): JEvent {
+  return {
+    id: `event-${uid()}`,
+    kind: "event",
+    source: "icalendar",
+    tier: 1,
+    start,
+    category: rest.category ?? "activity",
+    artist:   rest.artist   ?? "Event",
+    venue:    rest.venue    ?? "Venue",
+    city:     rest.city     ?? "London",
+    createdAt: new Date().toISOString(),
+    ...rest,
+  } as JEvent;
 }

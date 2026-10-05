@@ -29,10 +29,17 @@ import {
   makePlace,
   makePlaceEntry,
   makePlaceBinMarker,
+  makeJEvent,
   fakeLocalityResolverV2,
   fakeLocalityResolverPortoVenereB,
   resolveFixtureV2,
 } from "./fixtures";
+import {
+  sortEntriesByHints,
+  partitionByRoutine,
+  isRoutine,
+  computePlaceNorm,
+} from "./stagingHints";
 import { normaliseLocalityKey } from "./localityResolver";
 import { buildPlaceEntries } from "./entryBuilder";
 import {
@@ -491,9 +498,67 @@ describe("Check 8: Unusual days appear before routine days; single-photo days ne
    *
    * Depends on: WP14 (staging UI).
    */
-  it.todo("a day with 10x the place's norm appears before days at norm");
-  it.todo("a day with one photo is still in the list (never hidden)");
-  it.todo("a day matching a calendar entry is surfaced before unmatched days");
+  it("a day with 10× the place's norm appears before days at norm", () => {
+    const placeId = "place-london";
+    // Establish a norm: 5 accepted entries × 3 photos each → norm = 3
+    const accepted = Array.from({ length: 5 }, (_, i) =>
+      makePlaceEntry({ placeId, localDay: `2024-0${i + 1}-01`, photoCount: 3, status: "accepted" }),
+    );
+
+    const normalDay  = makePlaceEntry({ placeId, localDay: "2025-07-05", photoCount: 3,  status: "pending" });
+    const unusualDay = makePlaceEntry({ placeId, localDay: "2025-07-06", photoCount: 30, status: "pending" }); // 10× norm
+
+    const allEntries = [...accepted, normalDay, unusualDay];
+    const sorted = sortEntriesByHints([normalDay, unusualDay], allEntries, []);
+
+    expect(sorted[0].localDay).toBe("2025-07-06"); // unusual first
+    expect(sorted[1].localDay).toBe("2025-07-05"); // normal second
+  });
+
+  it("a day with one photo is still in the list and is never classified as routine", () => {
+    const placeId = "place-london";
+    // High norm: 5 accepted entries × 20 photos each → norm = 20
+    const accepted = Array.from({ length: 5 }, (_, i) =>
+      makePlaceEntry({ placeId, localDay: `2024-0${i + 1}-01`, photoCount: 20, status: "accepted" }),
+    );
+
+    const singlePhotoDay = makePlaceEntry({ placeId, localDay: "2025-07-05", photoCount: 1, status: "pending" });
+    const allEntries     = [...accepted, singlePhotoDay];
+
+    // A 1-photo day against a norm of 20 would be routine by ratio — but the rule says never
+    const norm = computePlaceNorm(allEntries, placeId);
+    expect(norm).toBe(20);
+    expect(isRoutine(singlePhotoDay, norm)).toBe(false); // single-photo days are never routine
+
+    // It must appear in the sorted list
+    const sorted = sortEntriesByHints([singlePhotoDay], allEntries, []);
+    expect(sorted).toHaveLength(1);
+    expect(sorted[0].photoCount).toBe(1);
+
+    // partitionByRoutine places it in unusual, not routine
+    const { unusual, routine } = partitionByRoutine(sorted, allEntries);
+    expect(unusual).toHaveLength(1);
+    expect(routine).toHaveLength(0);
+  });
+
+  it("a day matching a calendar entry is surfaced before an equal-count day without one", () => {
+    const placeId = "place-london";
+    const accepted = Array.from({ length: 3 }, (_, i) =>
+      makePlaceEntry({ placeId, localDay: `2024-0${i + 1}-01`, photoCount: 5, status: "accepted" }),
+    );
+
+    // Both days have the same photoCount (5 = exactly the norm) — calendar entry breaks the tie
+    const dayWithEvent    = makePlaceEntry({ placeId, localDay: "2025-07-05", photoCount: 5, status: "pending" });
+    const dayWithoutEvent = makePlaceEntry({ placeId, localDay: "2025-07-06", photoCount: 5, status: "pending" });
+    const allEntries = [...accepted, dayWithEvent, dayWithoutEvent];
+
+    const calEvent = makeJEvent({ start: "2025-07-05", artist: "Birthday party" });
+
+    const sorted = sortEntriesByHints([dayWithoutEvent, dayWithEvent], allEntries, [calEvent]);
+
+    expect(sorted[0].localDay).toBe("2025-07-05"); // has calendar entry → higher score
+    expect(sorted[1].localDay).toBe("2025-07-06"); // no calendar entry
+  });
 });
 
 // ─── Acceptance check 9 ───────────────────────────────────────────────────────

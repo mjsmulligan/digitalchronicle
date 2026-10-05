@@ -114,6 +114,10 @@ export class SQLiteAdapter implements StorageAdapter {
       staging: [],
       people: [],
       places: [],
+      placeEvents: [],
+      localityPlaces: [],
+      placeEntries: [],
+      placeBinMarkers: [],
     });
   }
 }
