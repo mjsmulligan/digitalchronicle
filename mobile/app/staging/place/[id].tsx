@@ -76,11 +76,6 @@ function EntryRow({
         <Pressable style={s.body} onPress={onExpandToggle}>
           <View style={s.titleRow}>
             <Text style={s.dateText}>{fmtDay(entry.localDay)}</Text>
-            {unusual && (
-              <View style={s.unusualBadge}>
-                <Text style={s.unusualBadgeText}>Unusual</Text>
-              </View>
-            )}
           </View>
           <View style={s.metaRow}>
             <Ionicons name="images-outline" size={12} color={colors.textMuted} style={{ marginRight: 3 }} />
@@ -166,17 +161,6 @@ function rowStyles(colors: any, fonts: any) {
       fontSize: 14,
       fontFamily: fonts.serifSemiBold,
       color: colors.textPrimary,
-    },
-    unusualBadge: {
-      // surfaceAccent = warm cream — passes contrast AA with accent text
-      backgroundColor: colors.surfaceAccent,
-      borderRadius: 8,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    },
-    unusualBadgeText: {
-      fontSize: 11,
-      color: colors.accent,
     },
     metaRow: {
       flexDirection: "row",
