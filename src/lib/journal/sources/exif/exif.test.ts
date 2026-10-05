@@ -52,7 +52,15 @@ import {
   EXIF_TIER,
   MAX_EVIDENCE_REFS,
 } from "./stagingMapper";
-import type { Entry, Leg, Trip } from "../../types";
+import {
+  buildUpsertPlan,
+  markMissingPhotos,
+  rangesOverlapOrAdjacent,
+  mergeEvidence,
+  minDay,
+  maxDay,
+} from "./sync";
+import type { Entry, Leg, Trip, PlaceEvent } from "../../types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Group 1: Data model (WP1)
@@ -998,5 +1006,209 @@ describe("Acceptance check 8 — photo place and calendar place in different cit
     expect(batch.records[0].warnings).toHaveLength(0);
     // Existing calendar place is unaffected (not in the batch)
     expect(batch.records.find((r) => (r.entry as any).localityKey === "it:rome")).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WP7 — Sync and re-scan helper unit tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("WP7 — rangesOverlapOrAdjacent", () => {
+  it("returns true for identical ranges", () => {
+    expect(rangesOverlapOrAdjacent("2025-07-14", "2025-07-15", "2025-07-14", "2025-07-15")).toBe(true);
+  });
+
+  it("returns true for overlapping ranges", () => {
+    expect(rangesOverlapOrAdjacent("2025-07-14", "2025-07-16", "2025-07-15", "2025-07-18")).toBe(true);
+  });
+
+  it("returns true for adjacent ranges (end and start differ by 1 day)", () => {
+    expect(rangesOverlapOrAdjacent("2025-07-14", "2025-07-15", "2025-07-16", "2025-07-17")).toBe(true);
+  });
+
+  it("returns false for ranges with a 2-day gap", () => {
+    expect(rangesOverlapOrAdjacent("2025-07-14", "2025-07-15", "2025-07-17", "2025-07-18")).toBe(false);
+  });
+
+  it("returns true for one range contained within the other", () => {
+    expect(rangesOverlapOrAdjacent("2025-07-10", "2025-07-20", "2025-07-14", "2025-07-15")).toBe(true);
+  });
+});
+
+describe("WP7 — mergeEvidence", () => {
+  it("combines refs from both arrays, deduplicating by mediaId", () => {
+    const a = [makeEvidenceRef({ mediaId: "m1" }), makeEvidenceRef({ mediaId: "m2" })];
+    const b = [makeEvidenceRef({ mediaId: "m2" }), makeEvidenceRef({ mediaId: "m3" })];
+    const merged = mergeEvidence(a, b);
+    expect(merged).toHaveLength(3);
+    expect(new Set(merged.map((r) => r.mediaId)).size).toBe(3);
+  });
+
+  it("preserves the existing array when incoming adds nothing new", () => {
+    const a = [makeEvidenceRef({ mediaId: "m1" })];
+    const b = [makeEvidenceRef({ mediaId: "m1" })];
+    const merged = mergeEvidence(a, b);
+    expect(merged).toHaveLength(1);
+  });
+});
+
+describe("WP7 — markMissingPhotos", () => {
+  it("marks a ref as missing when its mediaId is absent from currentIds", () => {
+    const place = makePlaceEvent({
+      photoEvidence: [makeEvidenceRef({ mediaId: "m1" }), makeEvidenceRef({ mediaId: "m2" })],
+    });
+    const updated = markMissingPhotos(place as PlaceEvent, new Set(["m1"]));
+    const refs = updated.photoEvidence;
+    expect(refs.find((r) => r.mediaId === "m1")?.missing).toBeFalsy();
+    expect(refs.find((r) => r.mediaId === "m2")?.missing).toBe(true);
+  });
+
+  it("returns the original object when no refs are missing", () => {
+    const place = makePlaceEvent({
+      photoEvidence: [makeEvidenceRef({ mediaId: "m1" })],
+    });
+    const updated = markMissingPhotos(place as PlaceEvent, new Set(["m1"]));
+    expect(updated).toBe(place); // reference equality — no clone needed
+  });
+
+  it("does not re-mark an already-missing ref", () => {
+    const ref = makeEvidenceRef({ mediaId: "m1", missing: true });
+    const place = makePlaceEvent({ photoEvidence: [ref] });
+    const updated = markMissingPhotos(place as PlaceEvent, new Set());
+    expect(updated.photoEvidence[0].missing).toBe(true);
+  });
+});
+
+describe("WP7 — buildUpsertPlan", () => {
+  function makeCandidate(localityKey: string, start: string, end: string): { entry: PlaceEvent } {
+    return {
+      entry: makePlaceEvent({ localityKey, start, end, dedupeKey: `place|${localityKey}|${start}` }) as PlaceEvent,
+    };
+  }
+
+  it("returns 'create' for a candidate with no existing match", () => {
+    const plan = buildUpsertPlan(
+      [makeCandidate("gb:london", "2025-07-14", "2025-07-15")],
+      [],
+    );
+    expect(plan.actions).toHaveLength(1);
+    expect(plan.actions[0].kind).toBe("create");
+    expect(plan.toWrite).toHaveLength(1);
+  });
+
+  it("returns 'no-op' (exact-duplicate) when same range already exists", () => {
+    const existing = makePlaceEvent({
+      localityKey: "gb:london", start: "2025-07-14", end: "2025-07-15",
+    }) as PlaceEvent;
+    const plan = buildUpsertPlan(
+      [makeCandidate("gb:london", "2025-07-14", "2025-07-15")],
+      [existing],
+    );
+    expect(plan.actions[0].kind).toBe("no-op");
+    expect((plan.actions[0] as any).reason).toBe("exact-duplicate");
+    expect(plan.toWrite).toHaveLength(0);
+  });
+
+  it("returns 'no-op' (subsumed) when candidate is fully contained in existing", () => {
+    const existing = makePlaceEvent({
+      localityKey: "gb:london", start: "2025-07-10", end: "2025-07-20",
+    }) as PlaceEvent;
+    const plan = buildUpsertPlan(
+      [makeCandidate("gb:london", "2025-07-14", "2025-07-15")],
+      [existing],
+    );
+    expect(plan.actions[0].kind).toBe("no-op");
+    expect((plan.actions[0] as any).reason).toBe("subsumed");
+  });
+
+  it("returns 'extend' with a wider date range when candidate overlaps existing", () => {
+    const existing = makePlaceEvent({
+      localityKey: "gb:london", start: "2025-07-14", end: "2025-07-15",
+    }) as PlaceEvent;
+    const plan = buildUpsertPlan(
+      [makeCandidate("gb:london", "2025-07-15", "2025-07-17")],
+      [existing],
+    );
+    expect(plan.actions[0].kind).toBe("extend");
+    const ext = plan.actions[0] as Extract<typeof plan.actions[0], { kind: "extend" }>;
+    expect(ext.merged.start).toBe("2025-07-14");
+    expect(ext.merged.end).toBe("2025-07-17");
+    expect(plan.toWrite).toHaveLength(1);
+  });
+
+  it("returns 'extend' for an adjacent candidate (end + 1 day = start)", () => {
+    const existing = makePlaceEvent({
+      localityKey: "gb:london", start: "2025-07-14", end: "2025-07-15",
+    }) as PlaceEvent;
+    const plan = buildUpsertPlan(
+      [makeCandidate("gb:london", "2025-07-16", "2025-07-17")],
+      [existing],
+    );
+    expect(plan.actions[0].kind).toBe("extend");
+  });
+
+  it("does not match a candidate from a different locality key", () => {
+    const existing = makePlaceEvent({
+      localityKey: "gb:london", start: "2025-07-14", end: "2025-07-15",
+    }) as PlaceEvent;
+    const plan = buildUpsertPlan(
+      [makeCandidate("ie:dublin", "2025-07-14", "2025-07-15")],
+      [existing],
+    );
+    expect(plan.actions[0].kind).toBe("create");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 3 — re-scan creates zero duplicates, adjacent day extends place
+// spec §15.3
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Acceptance check 3 — re-scan creates zero duplicates, adjacent day extends place", () => {
+  it("running the same scan twice produces zero new writes on the second pass", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const places = buildPlaces(located, unlocated, [], []);
+    const candidates = places.map((p) => ({ entry: makePlaceEvent({
+      localityKey: p.localityKey, start: p.dateStart, end: p.dateEnd,
+      dedupeKey: `place|${p.localityKey}|${p.dateStart}`,
+    }) as PlaceEvent }));
+
+    // First scan: creates the place
+    const plan1 = buildUpsertPlan(candidates, []);
+    expect(plan1.toWrite).toHaveLength(1);
+    expect(plan1.actions[0].kind).toBe("create");
+
+    // Second scan with the same candidates against the now-committed place
+    const committed = plan1.toWrite;
+    const plan2 = buildUpsertPlan(candidates, committed);
+
+    // All candidates are exact-duplicates → zero new writes
+    expect(plan2.toWrite).toHaveLength(0);
+    expect(plan2.actions.every((a) => a.kind === "no-op")).toBe(true);
+  });
+
+  it("a new photo on an adjacent day extends the existing place instead of creating a new one", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const [place] = buildPlaces(located, unlocated, [], []);
+
+    // First committed place: Jul 14–15
+    const existing = makePlaceEvent({
+      localityKey: place.localityKey, start: "2025-07-14", end: "2025-07-15",
+      dedupeKey: `place|${place.localityKey}|2025-07-14`,
+    }) as PlaceEvent;
+
+    // Re-scan adds a photo on Jul 16 (adjacent day) → same city
+    const newCandidate = { entry: makePlaceEvent({
+      localityKey: place.localityKey, start: "2025-07-16", end: "2025-07-16",
+      dedupeKey: `place|${place.localityKey}|2025-07-16`,
+    }) as PlaceEvent };
+
+    const plan = buildUpsertPlan([newCandidate], [existing]);
+
+    expect(plan.actions[0].kind).toBe("extend");
+    const ext = plan.actions[0] as Extract<typeof plan.actions[0], { kind: "extend" }>;
+    expect(ext.merged.start).toBe("2025-07-14");
+    expect(ext.merged.end).toBe("2025-07-16"); // extended to include the new day
+    expect(plan.toWrite).toHaveLength(1);
   });
 });
