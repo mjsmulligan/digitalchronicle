@@ -25,6 +25,7 @@ import {
   FIXTURE_NO_GPS,
   FIXTURE_IN_FLIGHT,
   fakeLocalityResolver,
+  resolveFixture,
 } from "./fixtures";
 import { entryTitle } from "../../types";
 import {
@@ -40,6 +41,7 @@ import {
   InMemoryLocalityCache,
   ResolvingLocalityResolver,
 } from "./localityResolver";
+import { buildPlaces, DEFAULT_MAX_GAP_DAYS, daysDiff, isDuringLeg } from "./placeBuilder";
 import type { Leg } from "../../types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -554,37 +556,268 @@ describe("Acceptance check 7 — failed lookup leaves photos pending, no wrong p
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Acceptance checks pending WP5–WP7
+// WP5 helper unit tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("WP5 — daysDiff", () => {
+  it("returns 0 for the same day", () => {
+    expect(daysDiff("2025-07-14", "2025-07-14")).toBe(0);
+  });
+
+  it("returns 1 for adjacent days", () => {
+    expect(daysDiff("2025-07-14", "2025-07-15")).toBe(1);
+  });
+
+  it("returns 31 for a month-long gap", () => {
+    expect(daysDiff("2025-07-01", "2025-08-01")).toBe(31);
+  });
+
+  it("is commutative (order of arguments does not matter)", () => {
+    expect(daysDiff("2025-07-14", "2025-07-20")).toBe(daysDiff("2025-07-20", "2025-07-14"));
+  });
+});
+
+describe("WP5 — isDuringLeg", () => {
+  // FIXTURE_IN_FLIGHT photo: captureTimestamp = 2025-07-13T12:00 UTC
+  // Flight window (UTC): 11:30–12:45 → photo at 12:00 is mid-flight ✓
+  const flightLeg: Leg = {
+    id: "leg-flight", kind: "leg", source: "viaduct", tier: 2,
+    mode: "air", from: "DUB", to: "LHR",
+    start: "2025-07-13T12:30", end: "2025-07-13T13:45",
+    startUTC: "2025-07-13T11:30:00.000Z",
+    endUTC:   "2025-07-13T12:45:00.000Z",
+    startTz: "Europe/Dublin", endTz: "Europe/London",
+    dedupeKey: "leg|2025-07-13|DUB|LHR",
+    confidence: "confirmed",
+    createdAt: new Date().toISOString(),
+  };
+
+  it("returns true for a photo mid-flight (UTC timestamp inside leg window)", () => {
+    const photo = FIXTURE_IN_FLIGHT[0]; // captureTimestamp = 2025-07-13T12:00 UTC
+    expect(isDuringLeg(photo, [flightLeg])).toBe(true);
+  });
+
+  it("returns false for a photo outside any leg window", () => {
+    const photo = FIXTURE_LONDON_MULTI_DAY[0]; // 2025-07-14 — after the flight
+    expect(isDuringLeg(photo, [flightLeg])).toBe(false);
+  });
+
+  it("returns false when legs array is empty", () => {
+    expect(isDuringLeg(FIXTURE_IN_FLIGHT[0], [])).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 1 — multi-day city run produces one place
+// spec §15.1
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("Acceptance check 1 — multi-day city run produces one place", () => {
-  it.todo("implement after WP5 (place builder) is done");
+  it("four London photos across two days produce a single PlaceEvent candidate", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const places = buildPlaces(located, unlocated, [], []);
+
+    expect(places).toHaveLength(1);
+    expect(places[0].localityKey).toBe("gb:london");
+    expect(places[0].dateStart).toBe("2025-07-14");
+    expect(places[0].dateEnd).toBe("2025-07-15");
+    expect(places[0].photos).toHaveLength(4);
+  });
+
+  it("locality name, region, country are populated from the resolver output", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const [place] = buildPlaces(located, unlocated, [], []);
+
+    expect(place.locality).toBe("London");
+    expect(place.region).toBe("England");
+    expect(place.country).toBe("United Kingdom");
+  });
+
+  it("a single-day visit produces a place with identical dateStart and dateEnd", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_WINDSOR_DAY_TRIP);
+    const places = buildPlaces(located, unlocated, [], []);
+
+    expect(places).toHaveLength(1);
+    expect(places[0].dateStart).toBe("2025-07-16");
+    expect(places[0].dateEnd).toBe("2025-07-16");
+  });
+
+  it("two visits to the same city with a gap > DEFAULT_MAX_GAP_DAYS produce two separate places", async () => {
+    const { located: located1 } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY); // Jul 14–15
+    // Simulate a second London visit 40 days later
+    const lateVisit = [
+      { ...located1[0], localDay: "2025-08-24", mediaId: "london-late-1" },
+    ];
+    const allLocated = [...located1, ...lateVisit];
+    const places = buildPlaces(allLocated, [], [], [], DEFAULT_MAX_GAP_DAYS);
+
+    expect(places).toHaveLength(2);
+    expect(places[0].dateStart).toBe("2025-07-14");
+    expect(places[1].dateStart).toBe("2025-08-24");
+  });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 2 — no-GPS photos attach to existing place, never create one
+// spec §15.2
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("Acceptance check 2 — no-GPS photos attach to existing place, never create one", () => {
-  it.todo("implement after WP5 (place builder) is done");
+  it("no-GPS photos on the same day as a located photo attach as unlocated evidence", async () => {
+    // FIXTURE_NO_GPS photos are on 2025-07-14 — same day as FIXTURE_LONDON_MULTI_DAY
+    const allPhotos = [...FIXTURE_LONDON_MULTI_DAY, ...FIXTURE_NO_GPS];
+    // resolveFixture splits them by GPS presence
+    const { located, unlocated } = await resolveFixture(allPhotos);
+
+    expect(located.length).toBeGreaterThan(0);
+    expect(unlocated.length).toBeGreaterThan(0); // no-GPS → unlocated
+
+    const places = buildPlaces(located, unlocated, [], []);
+
+    // Still only one London place
+    expect(places).toHaveLength(1);
+    // No-GPS photos are attached as unlocated evidence, not as separate places
+    expect(places[0].unlocatedPhotos.length).toBe(FIXTURE_NO_GPS.length);
+  });
+
+  it("no-GPS photos with no matching located place produce no new place", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_NO_GPS);
+
+    expect(located).toHaveLength(0); // all no-GPS → none located
+    const places = buildPlaces(located, unlocated, [], []);
+
+    expect(places).toHaveLength(0); // no located photos → no places
+  });
+
+  it("no-GPS photos outside any place date range are not attached anywhere", async () => {
+    // London place covers Jul 14–15; no-GPS photo on Aug 1 has nowhere to attach
+    const { located } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const lateUnlocated = [{ ...FIXTURE_NO_GPS[0], localDay: "2025-08-01", mediaId: "no-gps-late" }];
+    const places = buildPlaces(located, lateUnlocated, [], []);
+
+    expect(places[0].unlocatedPhotos).toHaveLength(0);
+  });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 3 — re-scan creates zero duplicates (pending WP7)
+// ─────────────────────────────────────────────────────────────────────────────
 
 describe("Acceptance check 3 — re-scan creates zero duplicates, adjacent day extends place", () => {
   it.todo("implement after WP7 (sync and re-scan) is done");
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 4 — location permission declined (device test)
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("Acceptance check 4 — location permission declined → time-only mode, no places created", () => {
   it.todo("device test only — implement manually in Expo (WP2)");
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 5 — scope respected, cancel and resume (device test)
+// ─────────────────────────────────────────────────────────────────────────────
 
 describe("Acceptance check 5 — scope respected, scan-all can cancel and resume without duplicates", () => {
   it.todo("device test only — implement manually in Expo (WP2 + WP7)");
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 8 — photo place and calendar place coexist unflagged (pending WP6)
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("Acceptance check 8 — photo place and calendar place in different cities coexist unflagged", () => {
   it.todo("implement after WP6 (staging mapper) is done");
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 9 — photos during a known leg do not create places
+// spec §15.9
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("Acceptance check 9 — photos during a known leg do not create places", () => {
-  it.todo("implement after WP5 (place builder) is done");
+  // FIXTURE_IN_FLIGHT photo: captureTimestamp = 2025-07-13T12:00 UTC
+  // Leg UTC window covers that timestamp: 11:30–12:45 UTC
+  const dubToLhrFlight: Leg = {
+    id: "leg-dub-lhr", kind: "leg", source: "viaduct", tier: 2,
+    mode: "air", from: "DUB", to: "LHR",
+    start: "2025-07-13T12:30", end: "2025-07-13T13:45",
+    startUTC: "2025-07-13T11:30:00.000Z",
+    endUTC:   "2025-07-13T12:45:00.000Z",
+    startTz: "Europe/Dublin", endTz: "Europe/London",
+    dedupeKey: "leg|2025-07-13|DUB|LHR",
+    confidence: "confirmed",
+    createdAt: new Date().toISOString(),
+  };
+
+  it("in-flight photo (GPS present but during leg) produces no place", async () => {
+    // FIXTURE_IN_FLIGHT photo has GPS (~52.4,-3.5) that the fake resolver won't match,
+    // but even if it did resolve, isDuringLeg should exclude it.
+    const { located, unlocated } = await resolveFixture(FIXTURE_IN_FLIGHT);
+    const places = buildPlaces(located, unlocated, [], [dubToLhrFlight]);
+
+    expect(places).toHaveLength(0);
+  });
+
+  it("leg exclusion does not affect photos before or after the leg", async () => {
+    // London photos on Jul 14–15 (after the Jul 13 flight) must still produce a place
+    const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
+    const places = buildPlaces(located, unlocated, [], [dubToLhrFlight]);
+
+    expect(places).toHaveLength(1);
+    expect(places[0].localityKey).toBe("gb:london");
+  });
+
+  it("mixing in-flight and non-flight photos — only non-flight photos create a place", async () => {
+    const allPhotos = [...FIXTURE_IN_FLIGHT, ...FIXTURE_LONDON_MULTI_DAY];
+    const { located, unlocated } = await resolveFixture(allPhotos);
+    const places = buildPlaces(located, unlocated, [], [dubToLhrFlight]);
+
+    // In-flight photo excluded; London photos produce 1 place
+    expect(places).toHaveLength(1);
+    // No in-flight photo in the place evidence
+    const allPhotoIds = places.flatMap((p) => [...p.photos, ...p.unlocatedPhotos].map((ph) => ph.mediaId));
+    expect(allPhotoIds).not.toContain("inflight-1");
+  });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Acceptance check 10 — two suburbs of the same city resolve to one place
+// spec §15.10
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe("Acceptance check 10 — two suburbs of the same city resolve to one place", () => {
-  it.todo("implement after WP5 (place builder) is done — resolver half covered by FakeLocalityResolver smoke tests above");
+  it("Dublin suburb photos from three different coordinates produce one Dublin place", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_DUBLIN_SUBURBS);
+    const places = buildPlaces(located, unlocated, [], []);
+
+    expect(places).toHaveLength(1);
+    expect(places[0].localityKey).toBe("ie:dublin");
+    expect(places[0].locality).toBe("Dublin");
+    expect(places[0].photos).toHaveLength(3);
+  });
+
+  it("all three suburb photos are included in the single place's evidence", async () => {
+    const { located, unlocated } = await resolveFixture(FIXTURE_DUBLIN_SUBURBS);
+    const [place] = buildPlaces(located, unlocated, [], []);
+
+    const ids = new Set(place.photos.map((p) => p.mediaId));
+    expect(ids.has("dub-ranelagh")).toBe(true);
+    expect(ids.has("dub-sandymount")).toBe(true);
+    expect(ids.has("dub-clontarf")).toBe(true);
+  });
+
+  it("London + Dublin photos on the same day produce two separate places (different cities)", async () => {
+    const mixedPhotos = [
+      ...FIXTURE_LONDON_MULTI_DAY,
+      ...FIXTURE_DUBLIN_SUBURBS,
+    ];
+    const { located, unlocated } = await resolveFixture(mixedPhotos);
+    const places = buildPlaces(located, unlocated, [], []);
+    const keys = new Set(places.map((p) => p.localityKey));
+
+    expect(keys.has("gb:london")).toBe(true);
+    expect(keys.has("ie:dublin")).toBe(true);
+  });
 });
