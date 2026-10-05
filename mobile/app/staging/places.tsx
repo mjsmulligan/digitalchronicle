@@ -1,15 +1,17 @@
 /**
- * WP14 — Staging Hub: Places.
+ * Staging Hub — Places
  *
- * Entry point for reviewing photo-library place suggestions. Shows a
- * country → region → locality hierarchy with pending counts and batch
- * accept / dismiss actions. Navigates to the locality detail screen for
- * per-day review.
+ * Mirrors the file-import BatchReview pattern:
+ *   - Single list (no Suggestions / Ignored tabs)
+ *   - All pending places shown with Switches (start ON = pre-accepted)
+ *   - "Select all" / "Deselect all" quick links
+ *   - Prominent "Accept X places to journal" commit button
+ *   - On commit: ON → accepted, OFF → dismissed
  *
- * Two tabs: Suggestions (pending entries) and Bin (dismissed entries).
+ * Hierarchy: country (chevron + switch) → region (chevron + switch) → place (switch)
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -18,7 +20,6 @@ import {
   Switch,
   Text,
   View,
-  ActivityIndicator,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -40,28 +41,35 @@ function pluralDays(n: number): string {
   return n === 1 ? "1 day" : `${n} days`;
 }
 
-// ─── Tab bar ──────────────────────────────────────────────────────────────────
+// ─── Selection helpers ────────────────────────────────────────────────────────
 
-type Tab = "suggestions" | "ignored";
+function regionPlaceIds(rg: RegionGroup): string[] {
+  return rg.places.filter((pg) => pg.pending.length > 0).map((pg) => pg.place.id);
+}
 
-// ─── Suggestion section ───────────────────────────────────────────────────────
+function countryPlaceIds(cg: CountryGroup): string[] {
+  return cg.regions.flatMap(regionPlaceIds);
+}
+
+// ─── Place row ────────────────────────────────────────────────────────────────
 
 function PlaceRow({
   pg,
+  isOn,
+  onToggle,
   onPress,
-  onAcceptAll,
-  onDismissAll,
+  colors,
+  fonts,
+  s,
 }: {
   pg: PlaceGroup;
+  isOn: boolean;
+  onToggle: (id: string, next: boolean) => void;
   onPress: () => void;
-  onAcceptAll: () => void;
-  onDismissAll: () => void;
+  colors: any;
+  fonts: any;
+  s: any;
 }) {
-  const { colors, fonts } = useTheme();
-  const s = useMemo(() => styles(colors, fonts), [colors, fonts]);
-  // Start ON (pre-approved) — matches the detail screen and file-import pattern
-  const [value, setValue] = useState(true);
-
   if (pg.pending.length === 0) return null;
 
   const days = pg.pending.map((e) => e.localDay).sort();
@@ -70,15 +78,8 @@ function PlaceRow({
       ? fmtDay(days[0])
       : `${fmtDay(days[0])} – ${fmtDay(days[days.length - 1])}`;
 
-  const handleChange = (next: boolean) => {
-    setValue(next);
-    if (next) onAcceptAll();
-    else onDismissAll();
-  };
-
   return (
     <View style={s.placeRow}>
-      {/* Left — tap to see per-day detail (only useful when multiple days) */}
       <Pressable
         style={({ pressed }) => [s.placeInfoPress, pressed && s.pressed]}
         onPress={onPress}
@@ -88,41 +89,48 @@ function PlaceRow({
           {pluralDays(pg.pending.length)} · {dateLabel}
         </Text>
         {pg.pending.length > 1 && (
-          <Text style={s.detailHint}>Tap to review days</Text>
+          <Text style={[s.detailHint, { color: colors.accent }]}>Tap for per-day review</Text>
         )}
       </Pressable>
-      {/* Right — Switch: ON = include, OFF = dismiss to bin */}
       <Switch
-        value={value}
-        onValueChange={handleChange}
+        value={isOn}
+        onValueChange={(next) => onToggle(pg.place.id, next)}
         trackColor={{ true: colors.accent, false: colors.border }}
-        thumbColor={value ? colors.surface : colors.textMuted}
+        thumbColor={isOn ? colors.surface : colors.textMuted}
         style={s.rowSwitch}
       />
     </View>
   );
 }
 
-function RegionSection({
+// ─── Region block ─────────────────────────────────────────────────────────────
+
+function RegionBlock({
   rg,
+  deselected,
+  onTogglePlace,
+  onToggleRegion,
   onPlacePress,
-  onAcceptAll,
-  onDismissAll,
-  onAcceptRegion,
-  onDismissRegion,
+  colors,
+  fonts,
+  s,
 }: {
   rg: RegionGroup;
+  deselected: Set<string>;
+  onTogglePlace: (id: string, next: boolean) => void;
+  onToggleRegion: (ids: string[], next: boolean) => void;
   onPlacePress: (placeId: string) => void;
-  onAcceptAll: (placeId: string) => void;
-  onDismissAll: (placeId: string) => void;
-  onAcceptRegion: (region: string) => void;
-  onDismissRegion: (region: string) => void;
+  colors: any;
+  fonts: any;
+  s: any;
 }) {
-  const { colors, fonts } = useTheme();
-  const s = useMemo(() => styles(colors, fonts), [colors, fonts]);
   const [expanded, setExpanded] = useState(true);
 
   if (rg.pendingCount === 0) return null;
+
+  const ids = regionPlaceIds(rg);
+  // Region switch: ON if any place in region is selected
+  const regionOn = ids.some((id) => !deselected.has(id));
 
   return (
     <View style={s.regionBlock}>
@@ -138,109 +146,80 @@ function RegionSection({
           <Text style={s.regionName}>{rg.region}</Text>
           <Text style={s.regionCount}>{rg.pendingCount}</Text>
         </View>
-        <View style={s.regionBatch}>
-          <Pressable style={[s.actionBtn, s.acceptBtn, s.smallBtn]} onPress={() => onAcceptRegion(rg.region)}>
-            <Text style={s.smallBtnText}>Accept all</Text>
-          </Pressable>
-          <Pressable style={[s.actionBtn, s.dismissBtn, s.smallBtn]} onPress={() => onDismissRegion(rg.region)}>
-            <Text style={[s.smallBtnText, { color: colors.textSecondary }]}>Ignore all</Text>
-          </Pressable>
-        </View>
+        {/* Stop propagation so Switch doesn't toggle expand/collapse */}
+        <Pressable onPress={(e) => e.stopPropagation()}>
+          <Switch
+            value={regionOn}
+            onValueChange={(next) => onToggleRegion(ids, next)}
+            trackColor={{ true: colors.accent, false: colors.border }}
+            thumbColor={regionOn ? colors.surface : colors.textMuted}
+            style={s.rowSwitch}
+          />
+        </Pressable>
       </Pressable>
 
       {/* Place rows */}
-      {expanded && rg.places.map((pg) => (
-        <PlaceRow
-          key={pg.place.id}
-          pg={pg}
-          onPress={() => onPlacePress(pg.place.id)}
-          onAcceptAll={() => onAcceptAll(pg.place.id)}
-          onDismissAll={() => onDismissAll(pg.place.id)}
-        />
-      ))}
+      {expanded &&
+        rg.places.map((pg) => (
+          <PlaceRow
+            key={pg.place.id}
+            pg={pg}
+            isOn={!deselected.has(pg.place.id)}
+            onToggle={onTogglePlace}
+            onPress={() => onPlacePress(pg.place.id)}
+            colors={colors}
+            fonts={fonts}
+            s={s}
+          />
+        ))}
     </View>
   );
 }
 
-// ─── Ignored section ──────────────────────────────────────────────────────────
+// ─── Commit bar ───────────────────────────────────────────────────────────────
 
-function IgnoredSection({
-  hub,
-  dialog,
+function CommitBar({
+  selectedCount,
+  totalCount,
+  onCommit,
+  onSelectAll,
+  onDeselectAll,
+  colors,
+  fonts,
+  s,
 }: {
-  hub: ReturnType<typeof useStagingHub>;
-  dialog: ReturnType<typeof useDialog>;
+  selectedCount: number;
+  totalCount: number;
+  onCommit: () => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  colors: any;
+  fonts: any;
+  s: any;
 }) {
-  const { colors, fonts } = useTheme();
-  const s = useMemo(() => styles(colors, fonts), [colors, fonts]);
-
-  const placeById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const p of hub.places) m.set(p.id, p.locality);
-    return m;
-  }, [hub.places]);
-
-  if (hub.binEntries.length === 0) {
-    return (
-      <View style={s.empty}>
-        <Text style={s.emptyText}>Nothing ignored yet</Text>
-      </View>
-    );
-  }
-
   return (
-    <View style={{ flex: 1 }}>
-      {/* Actions bar */}
-      <View style={s.binActions}>
-        <Pressable
-          style={s.binActionBtn}
-          onPress={() =>
-            dialog.confirm(
-              "Clear ignored",
-              "This creates markers so these suggestions are never re-offered. You can undo this with Reset decisions.",
-              "Clear ignored",
-              () => hub.emptyBin(),
-            )
-          }
-        >
-          <Text style={s.binActionText}>Clear ignored</Text>
+    <View style={[s.commitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      {/* Quick links */}
+      <View style={s.quickLinks}>
+        <Pressable onPress={onSelectAll}>
+          <Text style={[s.quickLink, { color: colors.accent }]}>
+            Select all ({totalCount})
+          </Text>
         </Pressable>
-        <Pressable
-          style={s.binActionBtn}
-          onPress={() =>
-            dialog.confirm(
-              "Reset decisions",
-              "All dismissed entries return to pending and markers are deleted. Photos will be offered again on re-scan.",
-              "Reset",
-              () => hub.resetDecisions(),
-            )
-          }
-        >
-          <Text style={s.binActionText}>Reset decisions</Text>
+        <Pressable onPress={onDeselectAll}>
+          <Text style={[s.quickLink, { color: colors.accent }]}>Deselect all</Text>
         </Pressable>
       </View>
-
-      <FlatList
-        data={hub.binEntries}
-        keyExtractor={(e) => e.id}
-        renderItem={({ item: e }) => (
-          <View style={s.binRow}>
-            <View style={s.placeInfo}>
-              <Text style={s.placeName}>
-                {placeById.get(e.placeId) ?? e.localityKey}
-              </Text>
-              <Text style={s.placeMeta}>{fmtDay(e.localDay)} · {e.photoCount} photo{e.photoCount !== 1 ? "s" : ""}</Text>
-            </View>
-            <Pressable
-              style={[s.actionBtn, s.restoreBtn]}
-              onPress={() => hub.restoreSingleEntry(e)}
-            >
-              <Text style={s.restoreBtnText}>Restore</Text>
-            </Pressable>
-          </View>
-        )}
-        contentContainerStyle={{ paddingBottom: spacing["3xl"] }}
-      />
+      {/* Commit button */}
+      <Pressable
+        style={[s.commitBtn, { backgroundColor: colors.accentBold }, !selectedCount && s.commitBtnDisabled]}
+        disabled={!selectedCount}
+        onPress={onCommit}
+      >
+        <Text style={[s.commitBtnText, { fontFamily: fonts.sansMedium ?? fonts.sans }]}>
+          Accept {selectedCount} {selectedCount === 1 ? "place" : "places"} to journal
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -253,72 +232,87 @@ export default function StagingPlacesScreen() {
   const s = useMemo(() => styles(colors, fonts), [colors, fonts]);
   const dialog = useDialog();
   const hub = useStagingHub();
-  const [tab, setTab] = useState<Tab>("suggestions");
+  const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
 
-  function handleAcceptRegion(region: string) {
-    dialog.confirm(
-      `Accept all of ${region}`,
-      `Accept all pending entries for every locality in ${region}?`,
-      "Accept all",
-      () => hub.acceptRegion(region),
-    );
-  }
+  // All pending place IDs across the hierarchy
+  const allPendingIds = useMemo(
+    () => new Set(hub.hierarchy.flatMap(countryPlaceIds)),
+    [hub.hierarchy],
+  );
 
-  function handleDismissRegion(region: string) {
-    dialog.confirm(
-      `Ignore all of ${region}`,
-      `Ignore all pending suggestions for every locality in ${region}?`,
-      "Ignore all",
-      () => hub.dismissRegion(region),
-    );
-  }
+  // deselected: place IDs explicitly turned OFF by the user
+  // (new places from re-scan auto-start ON since they're not in this set)
+  const [deselected, setDeselected] = useState<Set<string>>(new Set());
 
-  function handleAcceptPlace(placeId: string) {
-    const place = hub.places.find((p) => p.id === placeId);
-    dialog.confirm(
-      `Accept all of ${place?.locality ?? "place"}`,
-      "Accept all pending days for this place?",
-      "Accept all",
-      () => hub.acceptPlace(placeId),
-    );
-  }
+  // Count of pending places currently switched ON
+  const selectedCount = useMemo(
+    () => [...allPendingIds].filter((id) => !deselected.has(id)).length,
+    [allPendingIds, deselected],
+  );
 
-  function handleDismissPlace(placeId: string) {
-    const place = hub.places.find((p) => p.id === placeId);
-    dialog.confirm(
-      `Ignore all of ${place?.locality ?? "place"}`,
-      "Ignore all pending days for this place?",
-      "Ignore all",
-      () => hub.dismissPlace(placeId),
-    );
-  }
+  // ── Toggle helpers ────────────────────────────────────────────────────────
 
-  function handleAcceptCountry(country: string) {
-    dialog.confirm(
-      `Accept all of ${country}`,
-      `Accept all pending entries for every place in ${country}?`,
-      "Accept all",
-      () => hub.acceptCountry(country),
-    );
-  }
+  const togglePlace = useCallback((id: string, next: boolean) => {
+    setDeselected((prev) => {
+      const s = new Set(prev);
+      if (next) s.delete(id);
+      else s.add(id);
+      return s;
+    });
+  }, []);
 
-  function handleDismissCountry(country: string) {
-    dialog.confirm(
-      `Ignore all of ${country}`,
-      `Ignore all pending suggestions for every place in ${country}?`,
-      "Ignore all",
-      () => hub.dismissCountry(country),
-    );
-  }
+  const toggleGroup = useCallback((ids: string[], next: boolean) => {
+    setDeselected((prev) => {
+      const s = new Set(prev);
+      for (const id of ids) {
+        if (next) s.delete(id);
+        else s.add(id);
+      }
+      return s;
+    });
+  }, []);
 
-  // Flatten for SectionList: sections = countries, each item = RegionGroup
-  const sections = hub.hierarchy
-    .filter((cg) => cg.pendingCount > 0)
-    .map((cg) => ({
-      title: cg.country,
-      pendingCount: cg.pendingCount,
-      data: cg.regions.filter((rg) => rg.pendingCount > 0),
-    }));
+  const toggleCountryExpand = useCallback((country: string) => {
+    setExpandedCountries((prev) => {
+      const s = new Set(prev);
+      if (s.has(country)) s.delete(country);
+      else s.add(country);
+      return s;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => setDeselected(new Set()), []);
+  const deselectAll = useCallback(
+    () => setDeselected(new Set(allPendingIds)),
+    [allPendingIds],
+  );
+
+  // ── Commit ────────────────────────────────────────────────────────────────
+
+  const handleCommit = useCallback(async () => {
+    const toAccept = [...allPendingIds].filter((id) => !deselected.has(id));
+    const toIgnore = [...allPendingIds].filter((id) => deselected.has(id));
+    await Promise.all([
+      ...toAccept.map((id) => hub.acceptPlace(id)),
+      ...toIgnore.map((id) => hub.dismissPlace(id)),
+    ]);
+    setDeselected(new Set());
+  }, [allPendingIds, deselected, hub]);
+
+  // ── Section data ──────────────────────────────────────────────────────────
+
+  const sections = useMemo(
+    () =>
+      hub.hierarchy
+        .filter((cg) => cg.pendingCount > 0)
+        .map((cg) => ({
+          country: cg.country,
+          pendingCount: cg.pendingCount,
+          ids: countryPlaceIds(cg),
+          data: cg.regions.filter((rg) => rg.pendingCount > 0),
+        })),
+    [hub.hierarchy],
+  );
 
   return (
     <>
@@ -326,76 +320,85 @@ export default function StagingPlacesScreen() {
         options={{
           headerShown: true,
           headerTitle: "Staging Hub",
-          headerStyle:  { backgroundColor: colors.surface },
+          headerStyle: { backgroundColor: colors.surface },
           headerTitleStyle: { fontFamily: fonts.serifSemiBold, color: colors.textBright },
           headerTintColor: colors.accent,
         }}
       />
 
-      {/* Tab bar */}
-      <View style={s.tabBar}>
-        {(["suggestions", "ignored"] as Tab[]).map((t) => (
-          <Pressable key={t} style={[s.tab, tab === t && s.tabActive]} onPress={() => setTab(t)}>
-            <Text style={[s.tabText, tab === t && s.tabTextActive]}>
-              {t === "suggestions"
-                ? `Suggestions${hub.totalPending > 0 ? ` (${hub.totalPending})` : ""}`
-                : `Ignored${hub.binEntries.length > 0 ? ` (${hub.binEntries.length})` : ""}`}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {tab === "suggestions" ? (
-        sections.length === 0 ? (
-          <View style={s.empty}>
-            <Text style={s.emptyText}>No pending suggestions</Text>
-            <Text style={s.emptySubtext}>
-              Run a photo scan to find places from your library.
-            </Text>
-          </View>
-        ) : (
-          <SectionList
-            style={{ flex: 1, backgroundColor: colors.bg }}
-            contentContainerStyle={{ paddingBottom: spacing["3xl"] }}
-            sections={sections}
-            keyExtractor={(rg) => `${rg.country}:${rg.region}`}
-            renderSectionHeader={({ section }) => (
-              <View style={s.countryHeader}>
+      {allPendingIds.size === 0 ? (
+        <View style={s.empty}>
+          <Text style={s.emptyText}>No pending suggestions</Text>
+          <Text style={s.emptySubtext}>
+            Run a photo scan to find places from your library.
+          </Text>
+        </View>
+      ) : (
+        <SectionList
+          style={{ flex: 1, backgroundColor: colors.bg }}
+          contentContainerStyle={{ paddingBottom: spacing["3xl"] }}
+          sections={sections}
+          keyExtractor={(rg) => `${rg.country ?? "?"}:${rg.region}`}
+          ListHeaderComponent={
+            <CommitBar
+              selectedCount={selectedCount}
+              totalCount={allPendingIds.size}
+              onCommit={handleCommit}
+              onSelectAll={selectAll}
+              onDeselectAll={deselectAll}
+              colors={colors}
+              fonts={fonts}
+              s={s}
+            />
+          }
+          renderSectionHeader={({ section }) => {
+            const expanded = !expandedCountries.has(section.country);
+            const countryOn = section.ids.some((id) => !deselected.has(id));
+            return (
+              <Pressable
+                style={s.countryHeader}
+                onPress={() => toggleCountryExpand(section.country)}
+              >
                 <View style={s.countryLeft}>
-                  <Text style={s.countryName}>{section.title}</Text>
+                  <Ionicons
+                    name={expanded ? "chevron-down" : "chevron-forward"}
+                    size={14}
+                    color={colors.textMuted}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={s.countryName}>{section.country}</Text>
                   <Text style={s.countryCount}>{section.pendingCount} pending</Text>
                 </View>
-                <View style={s.regionBatch}>
-                  <Pressable
-                    style={[s.actionBtn, s.acceptBtn, s.smallBtn]}
-                    onPress={() => handleAcceptCountry(section.title)}
-                  >
-                    <Text style={s.smallBtnText}>Accept all</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[s.actionBtn, s.dismissBtn, s.smallBtn]}
-                    onPress={() => handleDismissCountry(section.title)}
-                  >
-                    <Text style={[s.smallBtnText, { color: colors.textSecondary }]}>Ignore all</Text>
-                  </Pressable>
-                </View>
-              </View>
-            )}
-            renderItem={({ item: rg }) => (
-              <RegionSection
+                <Pressable onPress={(e) => e.stopPropagation()}>
+                  <Switch
+                    value={countryOn}
+                    onValueChange={(next) => toggleGroup(section.ids, next)}
+                    trackColor={{ true: colors.accent, false: colors.border }}
+                    thumbColor={countryOn ? colors.surface : colors.textMuted}
+                    style={s.rowSwitch}
+                  />
+                </Pressable>
+              </Pressable>
+            );
+          }}
+          renderItem={({ item: rg, section }) => {
+            const expanded = !expandedCountries.has(section.country);
+            if (!expanded) return null;
+            return (
+              <RegionBlock
                 key={rg.region}
                 rg={rg}
+                deselected={deselected}
+                onTogglePlace={togglePlace}
+                onToggleRegion={toggleGroup}
                 onPlacePress={(id) => router.push(`/staging/place/${id}` as any)}
-                onAcceptAll={handleAcceptPlace}
-                onDismissAll={handleDismissPlace}
-                onAcceptRegion={handleAcceptRegion}
-                onDismissRegion={handleDismissRegion}
+                colors={colors}
+                fonts={fonts}
+                s={s}
               />
-            )}
-          />
-        )
-      ) : (
-        <IgnoredSection hub={hub} dialog={dialog} />
+            );
+          }}
+        />
       )}
 
       <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
@@ -405,65 +408,73 @@ export default function StagingPlacesScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-function styles(colors: ReturnType<typeof useTheme>["colors"], fonts: ReturnType<typeof useTheme>["fonts"]) {
+function styles(
+  colors: ReturnType<typeof useTheme>["colors"],
+  fonts: ReturnType<typeof useTheme>["fonts"],
+) {
   return StyleSheet.create({
-    tabBar: {
-      flexDirection: "row",
-      backgroundColor: colors.surface,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderFaint,
+    // Commit bar
+    commitCard: {
+      margin: spacing.lg,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      padding: spacing.md,
     },
-    tab: {
-      flex: 1,
-      paddingVertical: spacing.md,
+    quickLinks: {
+      flexDirection: "row",
+      gap: spacing.base,
+      marginBottom: spacing.sm,
+    },
+    quickLink: {
+      fontSize: 12,
+      fontWeight: "600",
+    },
+    commitBtn: {
+      borderRadius: radius.lg,
+      paddingVertical: 13,
       alignItems: "center",
     },
-    tabActive: {
-      borderBottomWidth: 2,
-      borderBottomColor: colors.accent,
-    },
-    tabText: {
+    commitBtnDisabled: { opacity: 0.4 },
+    commitBtnText: {
       fontSize: 14,
-      color: colors.textMuted,
-      fontFamily: fonts.sans,
-    },
-    tabTextActive: {
-      color: colors.accent,
-      fontFamily: fonts.sansMedium ?? fonts.sans,
+      color: "#fff",
+      fontWeight: "700",
     },
 
+    // Country header
     countryHeader: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
       paddingHorizontal: spacing.lg,
-      paddingTop: spacing.xl,
+      paddingRight: spacing.md,
+      paddingTop: spacing.lg,
       paddingBottom: spacing.sm,
     },
     countryLeft: {
       flex: 1,
       flexDirection: "row",
       alignItems: "center",
-      gap: spacing.sm,
     },
     countryName: {
       fontFamily: fonts.serifSemiBold,
       fontSize: 16,
       color: colors.textBright,
+      marginRight: spacing.sm,
     },
     countryCount: {
       fontSize: 12,
       color: colors.textMuted,
     },
 
+    // Region block
     regionBlock: {
-      marginBottom: spacing.sm,
+      marginBottom: spacing.xs,
     },
     regionHeader: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
       paddingHorizontal: spacing.lg,
+      paddingRight: spacing.md,
       paddingVertical: spacing.sm,
       backgroundColor: colors.surfaceMuted,
     },
@@ -487,25 +498,12 @@ function styles(colors: ReturnType<typeof useTheme>["colors"], fonts: ReturnType
       paddingVertical: 2,
       fontFamily: fonts.sansMedium ?? fonts.sans,
     },
-    regionBatch: {
-      flexDirection: "row",
-      gap: spacing.xs,
-    },
-    smallBtn: {
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs,
-      borderRadius: radius.md,
-    },
-    smallBtnText: {
-      fontSize: 11,
-      color: colors.white,
-      fontFamily: fonts.sansMedium ?? fonts.sans,
-    },
 
+    // Place row
     placeRow: {
       flexDirection: "row",
       alignItems: "center",
-      paddingLeft: spacing.lg,
+      paddingLeft: spacing.lg + 20, // indent under region
       paddingRight: spacing.md,
       paddingVertical: spacing.md,
       borderBottomWidth: StyleSheet.hairlineWidth,
@@ -529,29 +527,13 @@ function styles(colors: ReturnType<typeof useTheme>["colors"], fonts: ReturnType
     },
     detailHint: {
       fontSize: 11,
-      color: colors.accent,
       marginTop: 2,
     },
     rowSwitch: {
       transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
     },
-    // Used by bin rows (no pressable wrapper needed there)
-    placeInfo: { flex: 1 },
-    // Used by region/country batch buttons and bin restore
-    actionBtn: {
-      height: 34,
-      borderRadius: radius.lg,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingHorizontal: spacing.sm,
-    },
-    acceptBtn: { backgroundColor: colors.accentBold },
-    dismissBtn: {
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
 
+    // Empty state
     empty: {
       flex: 1,
       alignItems: "center",
@@ -570,46 +552,6 @@ function styles(colors: ReturnType<typeof useTheme>["colors"], fonts: ReturnType
       color: colors.textMuted,
       textAlign: "center",
       lineHeight: 20,
-    },
-
-    binActions: {
-      flexDirection: "row",
-      padding: spacing.md,
-      gap: spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderFaint,
-      backgroundColor: colors.surface,
-    },
-    binActionBtn: {
-      flex: 1,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.md,
-      backgroundColor: colors.surfaceMuted,
-      alignItems: "center",
-    },
-    binActionText: {
-      fontSize: 13,
-      color: colors.textSecondary,
-      fontFamily: fonts.sansMedium ?? fonts.sans,
-    },
-    binRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.borderFaint,
-    },
-    restoreBtn: {
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      borderColor: colors.accent,
-      width: "auto",
-      paddingHorizontal: spacing.md,
-    },
-    restoreBtnText: {
-      fontSize: 13,
-      color: colors.accent,
     },
   });
 }
