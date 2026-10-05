@@ -7,14 +7,13 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { putMany, getState, allEntries } from "@chronicle/journal/db";
+import { putMany, getState } from "@chronicle/journal/db";
 import { resolveLocalDay } from "../../../../src/lib/journal/sources/exif/timeResolution";
 import { InMemoryLocalityCache, ResolvingLocalityResolver } from "../../../../src/lib/journal/sources/exif/localityResolver";
-import { buildPlaces } from "../../../../src/lib/journal/sources/exif/placeBuilder";
-import { mapToStagingBatch } from "../../../../src/lib/journal/sources/exif/stagingMapper";
-import { buildUpsertPlan } from "../../../../src/lib/journal/sources/exif/sync";
+import { buildPlaceEntries } from "../../../../src/lib/journal/sources/exif/entryBuilder";
 import type { ScanScope, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord } from "../../../../src/lib/journal/sources/exif/types";
-import type { PlaceEvent } from "@chronicle/journal/types";
+import type { Place, PlaceEntry, PhotoEvidenceRef } from "@chronicle/journal/types";
+import { uid } from "@chronicle/journal/types";
 
 // ─── Lazy device module loader ────────────────────────────────────────────────
 // expo-media-library requires native code not present in Expo Go.
@@ -129,25 +128,97 @@ export function useExifScan() {
         setState((s) => ({ ...s, pending: resolver.pendingCount }));
       }
 
-      // ── Steps 5–7: build → stage → upsert plan ────────────────────────────
+      // ── Step 5: build place entries (one per locality × day) ──────────────
       setState((s) => ({ ...s, phase: "building" }));
-      const trips = journal.trips;
-      const builtPlaces = buildPlaces(located, unlocated, trips, legs);
-      const existingEntries = new Map(allEntries(journal).map((e) => [e.dedupeKey, e]));
-      const batch = mapToStagingBatch(builtPlaces, trips, existingEntries);
-      const existingPlaces = (journal.placeEvents ?? []) as PlaceEvent[];
-      const candidates = batch.records
-        .filter((r) => r.selected && r.entry.kind === "place")
-        .map((r) => ({ entry: r.entry as PlaceEvent }));
-      const plan = buildUpsertPlan(candidates, existingPlaces);
+      const builtEntries = buildPlaceEntries(located, unlocated, legs);
 
-      // ── Step 8: commit ─────────────────────────────────────────────────────
+      // ── Step 6: dedup against existing data and produce new records ────────
+      //   For each BuiltPlaceEntry:
+      //     a. Skip if a PlaceEntry already exists with the same dedupeKey.
+      //     b. Find or create a Place container for the locality.
+      //     c. Create a new pending PlaceEntry.
+      //   Full staging logic (bin matching, batch actions, hints) is WP13.
+      const existingPlaces = journal.localityPlaces ?? [];
+      const existingEntryKeys = new Set(
+        (journal.placeEntries ?? []).map((e) => e.dedupeKey),
+      );
+
+      // Build a lookup from localityKey → Place (also from aliasKeys)
+      const placeByKey = new Map<string, Place>(
+        existingPlaces.flatMap((p): [string, Place][] => [
+          [p.localityKey, p],
+          ...((p.aliasKeys ?? []).map((ak) => [ak, p] as [string, Place])),
+        ]),
+      );
+
+      const MAX_EVIDENCE_REFS = 5;
+      const newPlaces: Place[]      = [];
+      const newEntries: PlaceEntry[] = [];
+
+      for (const built of builtEntries) {
+        const dedupeKey = `place-entry|${built.localityKey}|${built.localDay}`;
+        if (existingEntryKeys.has(dedupeKey)) continue; // already exists
+
+        // Find or create the Place container
+        let place = placeByKey.get(built.localityKey);
+        if (!place) {
+          place = {
+            id: uid(),
+            kind: "place",
+            localityKey: built.localityKey,
+            locality: built.locality,
+            region: built.region,
+            country: built.country,
+            createdAt: new Date().toISOString(),
+          };
+          placeByKey.set(built.localityKey, place);
+          newPlaces.push(place);
+        }
+
+        // Sample photo evidence (located first, then unlocated to fill up to cap)
+        const evidenceRefs: PhotoEvidenceRef[] = [
+          ...built.photos.slice(0, MAX_EVIDENCE_REFS).map((p) => ({
+            mediaId: p.mediaId,
+            localDay: p.localDay,
+            hasGps: true as const,
+            timingRule: p.timingRule,
+          })),
+          ...built.unlocatedPhotos
+            .slice(0, Math.max(0, MAX_EVIDENCE_REFS - built.photos.length))
+            .map((p) => ({
+              mediaId: p.mediaId,
+              localDay: p.localDay,
+              hasGps: false as const,
+              timingRule: p.timingRule,
+            })),
+        ];
+
+        const totalPhotos = built.photos.length + built.unlocatedPhotos.length;
+        const entry: PlaceEntry = {
+          id: uid(),
+          kind: "place-entry",
+          source: "photo-library",
+          tier: 2,
+          start: built.localDay,   // Base.start mirrors localDay
+          placeId: place.id,
+          localityKey: built.localityKey,
+          localDay: built.localDay,
+          photoEvidence: evidenceRefs,
+          photoCount: totalPhotos,
+          singlePhoto: totalPhotos === 1,
+          status: "pending",
+          dedupeKey,
+          createdAt: new Date().toISOString(),
+        };
+        newEntries.push(entry);
+      }
+
+      // ── Step 7: commit ─────────────────────────────────────────────────────
       setState((s) => ({ ...s, phase: "committing" }));
-      if (plan.toWrite.length > 0) await putMany("placeEvents", plan.toWrite);
+      if (newPlaces.length  > 0) await putMany("localityPlaces", newPlaces);
+      if (newEntries.length > 0) await putMany("placeEntries",   newEntries);
 
-      const created  = plan.actions.filter((a) => a.kind === "create").length;
-      const extended = plan.actions.filter((a) => a.kind === "extend").length;
-      setState((s) => ({ ...s, phase: "done", created, extended }));
+      setState((s) => ({ ...s, phase: "done", created: newEntries.length, extended: 0 }));
 
     } catch (err) {
       const msg = String(err);

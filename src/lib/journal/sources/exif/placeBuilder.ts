@@ -1,7 +1,12 @@
 /**
  * WP5 — Place builder (pure).
  *
- * Spec reference: docs/specs/Source spec_ Photo library (EXIF).md, section 9.
+ * @deprecated WP12 replaces this with entryBuilder.ts (buildPlaceEntries).
+ *   The run-based date-range model is replaced by a one-entry-per-day model.
+ *   This file is kept for the WP6 staging mapper tests until WP13 removes them.
+ *   New code should import from entryBuilder.ts instead.
+ *
+ * Spec reference: docs/specs/Source spec_ Photo library (EXIF).md, section 9 (draft 4).
  *
  * Inputs:
  *   - LocatedPhotoRecord[]   — photos with a resolved local day AND locality key
@@ -11,19 +16,6 @@
  *
  * Outputs:
  *   - BuiltPlace[]           — places with date ranges, photo evidence, and stable identity
- *
- * Algorithm (spec §9):
- *   1. Exclude photos taken during a known leg (spec §7).
- *   2. Group remaining located photos by locality key.
- *   3. Within each locality group, collect unique local days and sort them.
- *   4. Split into runs at gaps > MAX_GAP_DAYS (spec §9.4).
- *   5. Further split runs at trip boundaries (spec §9.3).
- *   6. Each run → one BuiltPlace (dateStart = first day, dateEnd = last day).
- *   7. Same-day overlaps (spec §9.5) arise naturally: each locality is built
- *      independently, so London Jul-14→15 and Windsor Jul-15→16 both include Jul-15.
- *   8. Attach unlocated photos to any place whose date range covers their day (spec §7).
- *
- * All open questions from the spec are captured as named constants below.
  *
  * No network calls, no device APIs, no React Native imports in this file.
  */

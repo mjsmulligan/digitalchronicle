@@ -158,16 +158,16 @@ export function makeEvidenceRef(overrides: Partial<PhotoEvidenceRef> = {}): Phot
  */
 const FAKE_LOCALITY_TABLE: Record<string, LocalityInfo> = {
   // London
-  "51.51,-0.13":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
-  "51.50,-0.12":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
-  "51.52,-0.13":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
-  "51.51,-0.08":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
+  "51.51,-0.13":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london", level: "locality" },
+  "51.50,-0.12":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london", level: "locality" },
+  "51.52,-0.13":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london", level: "locality" },
+  "51.51,-0.08":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london", level: "locality" },
   // Windsor
-  "51.48,-0.60":  { name: "Windsor", region: "Berkshire", country: "United Kingdom", key: "gb:windsor" },
+  "51.48,-0.60":  { name: "Windsor", region: "Berkshire", country: "United Kingdom", key: "gb:windsor", level: "locality" },
   // Dublin suburbs (all → Dublin)
-  "53.32,-6.26":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin" },
-  "53.33,-6.22":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin" },
-  "53.37,-6.21":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin" },
+  "53.32,-6.26":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin", level: "locality" },
+  "53.33,-6.22":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin", level: "locality" },
+  "53.37,-6.21":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin", level: "locality" },
 };
 
 function coarsen(lat: number, lon: number): string {
@@ -324,31 +324,35 @@ export const FIXTURE_PORTO_VENERE_SPELLING_B: TimedPhotoRecord[] = [
  */
 const FAKE_LOCALITY_TABLE_V2: Record<string, LocalityInfo> = {
   // ── From WP9 table ──
-  "51.51,-0.13":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
-  "51.50,-0.12":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
-  "51.52,-0.13":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
-  "51.51,-0.08":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
-  "51.48,-0.60":  { name: "Windsor", region: "Berkshire", country: "United Kingdom", key: "gb:windsor" },
-  "53.32,-6.26":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin" },
-  "53.33,-6.22":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin" },
-  "53.37,-6.21":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin" },
+  "51.51,-0.13":  { name: "London",  region: "England",   country: "United Kingdom", key: "gb:london",  level: "locality" },
+  "51.50,-0.12":  { name: "London",  region: "England",   country: "United Kingdom", key: "gb:london",  level: "locality" },
+  "51.52,-0.13":  { name: "London",  region: "England",   country: "United Kingdom", key: "gb:london",  level: "locality" },
+  "51.51,-0.08":  { name: "London",  region: "England",   country: "United Kingdom", key: "gb:london",  level: "locality" },
+  "51.48,-0.60":  { name: "Windsor", region: "Berkshire", country: "United Kingdom", key: "gb:windsor", level: "locality" },
+  "53.32,-6.26":  { name: "Dublin",  region: "Leinster",  country: "Ireland",        key: "ie:dublin",  level: "locality" },
+  "53.33,-6.22":  { name: "Dublin",  region: "Leinster",  country: "Ireland",        key: "ie:dublin",  level: "locality" },
+  "53.37,-6.21":  { name: "Dublin",  region: "Leinster",  country: "Ireland",        key: "ie:dublin",  level: "locality" },
   // ── Fixture E: London weekend (same cells as WP9) ──
-  "51.50,-0.08":  { name: "London", region: "England", country: "United Kingdom", key: "gb:london" },
+  "51.50,-0.08":  { name: "London",  region: "England",   country: "United Kingdom", key: "gb:london",  level: "locality" },
   // ── Fixture F: Home-area variants ──
-  "53.35,-6.26":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin" },       // urban Dublin (53.3498)
-  "53.34,-6.26":  { name: "Dublin", region: "Leinster", country: "Ireland", key: "ie:dublin" },       // urban Dublin (53.3389)
-  "53.45,-6.15":  { name: "County Dublin", region: "Leinster", country: "Ireland", key: "ie:county-dublin" }, // Malahide
-  "53.46,-6.22":  { name: "County Dublin", region: "Leinster", country: "Ireland", key: "ie:county-dublin" }, // Swords
+  // Urban Dublin → city level
+  "53.35,-6.26":  { name: "Dublin",         region: "Leinster", country: "Ireland", key: "ie:dublin",        level: "locality" },
+  "53.34,-6.26":  { name: "Dublin",         region: "Leinster", country: "Ireland", key: "ie:dublin",        level: "locality" },
+  // North County Dublin → subregion/county level (Android geocoder returns "County Dublin" when no city field)
+  "53.45,-6.15":  { name: "County Dublin",  region: "Leinster", country: "Ireland", key: "ie:county-dublin", level: "region" },
+  "53.46,-6.22":  { name: "County Dublin",  region: "Leinster", country: "Ireland", key: "ie:county-dublin", level: "region" },
   // ── Fixture G: Cinque Terre ──
-  "44.23,9.68":   { name: "Vernazza", region: "Liguria", country: "Italy", key: "it:vernazza" },
-  "44.15,9.65":   { name: "Monterosso", region: "Liguria", country: "Italy", key: "it:monterosso" },
-  "44.10,9.74":   { name: "Riomaggiore", region: "Liguria", country: "Italy", key: "it:riomaggiore" },
-  "44.17,9.72":   { name: "Corniglia", region: "Liguria", country: "Italy", key: "it:corniglia" },
-  "44.11,9.73":   { name: "Manarola", region: "Liguria", country: "Italy", key: "it:manarola" },
+  "44.23,9.68":   { name: "Vernazza",    region: "Liguria", country: "Italy", key: "it:vernazza",    level: "locality" },
+  "44.15,9.65":   { name: "Monterosso", region: "Liguria", country: "Italy", key: "it:monterosso",  level: "locality" },
+  "44.10,9.74":   { name: "Riomaggiore",region: "Liguria", country: "Italy", key: "it:riomaggiore", level: "locality" },
+  "44.17,9.72":   { name: "Corniglia",   region: "Liguria", country: "Italy", key: "it:corniglia",   level: "locality" },
+  "44.11,9.73":   { name: "Manarola",    region: "Liguria", country: "Italy", key: "it:manarola",    level: "locality" },
   // ── Fixture H: Porto Venere spelling variants ──
-  // Both point to the same coordinates; geocoder returns different name strings.
-  // After WP11 normalisation these should share one key; before WP11 they differ.
-  "44.05,9.84":   { name: "Porto Venere", region: "Liguria", country: "Italy", key: "it:porto-venere" },
+  // Both point to the same coordinates; the geocoder may return different name strings.
+  // "Porto Venere" normalises to "it:porto-venere"; "Portovenere" to "it:portovenere".
+  // These remain distinct keys after WP11 normalisation — different spellings, not just
+  // different capitalisation. User merges them via aliasKeys (acceptance check 14).
+  "44.05,9.84":   { name: "Porto Venere", region: "Liguria", country: "Italy", key: "it:porto-venere", level: "locality" },
 };
 
 /**
@@ -357,7 +361,7 @@ const FAKE_LOCALITY_TABLE_V2: Record<string, LocalityInfo> = {
  */
 const FAKE_LOCALITY_TABLE_V2_PORTOVENERE: Record<string, LocalityInfo> = {
   ...FAKE_LOCALITY_TABLE_V2,
-  "44.05,9.84": { name: "Portovenere", region: "Liguria", country: "Italy", key: "it:portovenere" },
+  "44.05,9.84": { name: "Portovenere", region: "Liguria", country: "Italy", key: "it:portovenere", level: "locality" },
 };
 
 function coarsenV2(lat: number, lon: number): string {

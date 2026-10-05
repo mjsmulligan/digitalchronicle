@@ -14,7 +14,7 @@
  *   WP14 + WP15  ← checks 8, 11, 12, 13
  */
 
-import { describe, it, expect, todo } from "vitest";
+import { describe, it, expect } from "vitest";
 
 import {
   FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP,
@@ -31,6 +31,8 @@ import {
   fakeLocalityResolverPortoVenereB,
   resolveFixtureV2,
 } from "./fixtures";
+import { normaliseLocalityKey } from "./localityResolver";
+import { buildPlaceEntries } from "./entryBuilder";
 
 // ─── Smoke: fixtures and factories compile ────────────────────────────────────
 
@@ -47,14 +49,18 @@ describe("WP16 smoke: fixtures and factories", () => {
     expect(keys.size).toBe(5);
   });
 
-  it("Porto Venere spelling variants resolve to different keys (before WP11 normalisation)", async () => {
+  it("Porto Venere spelling variants normalise to two distinct keys (cannot be merged algorithmically)", async () => {
     const { located: a } = await resolveFixtureV2(FIXTURE_PORTO_VENERE_SPELLING_A, fakeLocalityResolverV2);
     const { located: b } = await resolveFixtureV2(FIXTURE_PORTO_VENERE_SPELLING_B, fakeLocalityResolverPortoVenereB);
     const keyA = a[0]?.locality.key;
     const keyB = b[0]?.locality.key;
-    // Before WP11: different keys. After WP11 normalisation they will share one key.
+    // WP11 normalisation: spaces → hyphens, so "Porto Venere" → "it:porto-venere"
+    // but "Portovenere" → "it:portovenere" (no space to convert).
+    // These are different spellings, not just different capitalisation — normalisation
+    // cannot merge them. The user merges them via aliasKeys in the staging UI (check 14).
     expect(keyA).toBe("it:porto-venere");
     expect(keyB).toBe("it:portovenere");
+    expect(keyA).not.toBe(keyB); // explicitly document the expected difference
   });
 
   it("makePlace, makePlaceEntry, makePlaceBinMarker produce valid objects", () => {
@@ -82,10 +88,38 @@ describe("Check 1: London weekend + day trip → one place, three entries, two v
    *
    * Depends on: WP12 (entry builder).
    */
-  it.todo("produces one London Place with three PlaceEntries");
-  it.todo("entries have localDay 2025-07-05, 2025-07-06 and 2025-07-19");
-  it.todo("derives two visits: [05–06] and [19]");
-  it.todo("no Base.end is set on any PlaceEntry");
+  it("produces three BuiltPlaceEntries for London, one per day", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const entries = buildPlaceEntries(located, unlocated, []);
+
+    // All entries should be for London
+    expect(entries.every((e) => e.localityKey === "gb:london")).toBe(true);
+    // Three distinct days — one entry per day
+    expect(entries).toHaveLength(3);
+    const days = entries.map((e) => e.localDay).sort();
+    expect(days).toEqual(["2025-07-05", "2025-07-06", "2025-07-19"]);
+  });
+
+  it("each entry carries the photos taken on that day", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const entries = buildPlaceEntries(located, unlocated, []);
+
+    const byDay = new Map(entries.map((e) => [e.localDay, e]));
+    // Weekend days have 2 photos each; day trip has 2 photos
+    expect(byDay.get("2025-07-05")?.photos).toHaveLength(2);
+    expect(byDay.get("2025-07-06")?.photos).toHaveLength(2);
+    expect(byDay.get("2025-07-19")?.photos).toHaveLength(2);
+  });
+
+  it("no BuiltPlaceEntry has a dateEnd field — visits are derived, not stored", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const entries = buildPlaceEntries(located, unlocated, []);
+
+    // BuiltPlaceEntry has localDay (single day) — no dateEnd in the shape
+    for (const entry of entries) {
+      expect("dateEnd" in entry).toBe(false);
+    }
+  });
 });
 
 // ─── Acceptance check 2 ───────────────────────────────────────────────────────
@@ -98,9 +132,42 @@ describe("Check 2: Photos with no GPS never create an entry", () => {
    *
    * Depends on: WP12 (entry builder).
    */
-  it.todo("no-GPS photos do not create a PlaceEntry");
-  it.todo("no-GPS photos attach to the day's entry when exactly one place has an entry that day");
-  it.todo("no-GPS photos are held as unlocated evidence when multiple places exist for the day");
+  it("no-GPS photos alone produce zero BuiltPlaceEntries", async () => {
+    // FIXTURE_NO_GPS has no lat/lon — all go to unlocated; no entries created
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_NO_GPS);
+    const entries = buildPlaceEntries(located, unlocated, []);
+
+    expect(entries).toHaveLength(0);
+  });
+
+  it("no-GPS photos attach to the day's entry when exactly one place resolves that day", async () => {
+    // Combine London multi-day (has GPS) with no-GPS photos on the same day (2025-07-14)
+    const combined = [...FIXTURE_LONDON_MULTI_DAY, ...FIXTURE_NO_GPS];
+    const { located, unlocated } = await resolveFixtureV2(combined);
+    const entries = buildPlaceEntries(located, unlocated, []);
+
+    // Still only London entries (no-GPS creates no new places)
+    expect(entries.every((e) => e.localityKey === "gb:london")).toBe(true);
+
+    // No-GPS photos are on 2025-07-14 — exactly one locality (London) has an entry that day
+    const jul14 = entries.find((e) => e.localDay === "2025-07-14");
+    expect(jul14?.unlocatedPhotos.length).toBe(FIXTURE_NO_GPS.length);
+  });
+
+  it("no-GPS photos on a day with two different localities are not attached (ambiguous)", async () => {
+    // Use Cinque Terre: Vernazza and Monterosso both have photos on 2025-08-10
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_CINQUE_TERRE);
+    // Inject an unlocated photo on 2025-08-10 (same day as Vernazza + Monterosso)
+    const noGpsOnSharedDay = [{ ...FIXTURE_NO_GPS[0], localDay: "2025-08-10", mediaId: "no-gps-ct" }];
+    const allUnlocated = [...unlocated, ...noGpsOnSharedDay.map((p) => ({ ...p, locality: null as null }))];
+    const entries = buildPlaceEntries(located, allUnlocated, []);
+
+    // Two localities on 2025-08-10 → no-GPS photo is not attached to either
+    const aug10 = entries.filter((e) => e.localDay === "2025-08-10");
+    expect(aug10.length).toBe(2); // Vernazza + Monterosso
+    const totalUnlocated = aug10.reduce((n, e) => n + e.unlocatedPhotos.length, 0);
+    expect(totalUnlocated).toBe(0); // not attached — ambiguous
+  });
 });
 
 // ─── Acceptance check 3 ───────────────────────────────────────────────────────
@@ -205,10 +272,62 @@ describe("Check 9: Suburbs under one parent; Cinque Terre villages under their r
    *
    * Depends on: WP11 (locality hierarchy), WP12 (entry builder).
    */
-  it.todo("Dublin suburbs resolve under one Dublin parent Place");
-  it.todo("County Dublin entries appear under a Leinster or Ireland parent, separate from Dublin city");
-  it.todo("five Cinque Terre villages each have their own Place under Liguria");
-  it.todo("Vernazza and Monterosso on the same day are two entries, not one merged entry");
+  it("normaliseLocalityKey produces consistent lowercase-hyphenated keys", () => {
+    expect(normaliseLocalityKey("GB", "London")).toBe("gb:london");
+    expect(normaliseLocalityKey("IE", "Dublin")).toBe("ie:dublin");
+    expect(normaliseLocalityKey("IE", "County Dublin")).toBe("ie:county-dublin");
+    expect(normaliseLocalityKey("IT", "Vernazza")).toBe("it:vernazza");
+    expect(normaliseLocalityKey("IT", "Monterosso")).toBe("it:monterosso");
+    expect(normaliseLocalityKey("IT", "Porto Venere")).toBe("it:porto-venere");
+    expect(normaliseLocalityKey("IT", "Portovenere")).toBe("it:portovenere");
+    expect(normaliseLocalityKey("DE", "München")).toBe("de:munchen");
+    expect(normaliseLocalityKey("BR", "São Paulo")).toBe("br:sao-paulo");
+  });
+
+  it("County Dublin has level 'region'; Dublin city has level 'locality'", async () => {
+    const { located } = await resolveFixtureV2(FIXTURE_HOME_AREA_VARIANTS);
+    const dublinEntries = located.filter((p) => p.locality.key === "ie:dublin");
+    const countyEntries = located.filter((p) => p.locality.key === "ie:county-dublin");
+
+    expect(dublinEntries.length).toBeGreaterThan(0);
+    expect(countyEntries.length).toBeGreaterThan(0);
+
+    expect(dublinEntries.every((p) => p.locality.level === "locality")).toBe(true);
+    expect(countyEntries.every((p) => p.locality.level === "region")).toBe(true);
+  });
+
+  it("five Cinque Terre villages produce five distinct BuiltPlaceEntries", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_CINQUE_TERRE);
+    const entries = buildPlaceEntries(located, unlocated, []);
+
+    const keys = new Set(entries.map((e) => e.localityKey));
+    expect(keys).toContain("it:vernazza");
+    expect(keys).toContain("it:monterosso");
+    expect(keys).toContain("it:riomaggiore");
+    expect(keys).toContain("it:corniglia");
+    expect(keys).toContain("it:manarola");
+    expect(keys.size).toBe(5); // all five are separate — no merging
+  });
+
+  it("Vernazza and Monterosso on the same day are two separate entries, not one merged entry", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_CINQUE_TERRE);
+    const entries = buildPlaceEntries(located, unlocated, []);
+
+    // 2025-08-10: photos in both Vernazza and Monterosso
+    const aug10 = entries.filter((e) => e.localDay === "2025-08-10");
+    expect(aug10).toHaveLength(2);
+    const keys10 = new Set(aug10.map((e) => e.localityKey));
+    expect(keys10).toContain("it:vernazza");
+    expect(keys10).toContain("it:monterosso");
+  });
+
+  it("all Cinque Terre village entries carry the Liguria region", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_CINQUE_TERRE);
+    const entries = buildPlaceEntries(located, unlocated, []);
+
+    expect(entries.every((e) => e.region === "Liguria")).toBe(true);
+    expect(entries.every((e) => e.country === "Italy")).toBe(true);
+  });
 });
 
 // ─── Acceptance check 10 ─────────────────────────────────────────────────────

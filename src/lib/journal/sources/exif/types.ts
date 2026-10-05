@@ -70,6 +70,18 @@ export interface LocalityInfo {
   country?: string;
   /** Stable opaque key for deduplication — matches across runs for the same city */
   key: LocalityKey;
+  /**
+   * Hierarchy level returned by the geocoder.
+   *
+   * "locality" — a city, town, suburb, or village (the usual case).
+   * "region"   — a county, province, or administrative region (e.g. "County Dublin"
+   *              when no finer city level is available).
+   * "country"  — used as a last resort when only the country resolves.
+   *
+   * WP11: added to support the parent-place hierarchy in the staging UI.
+   * Absent on pre-WP11 cached entries.
+   */
+  level?: "locality" | "region" | "country";
 }
 
 /**
@@ -114,6 +126,32 @@ export interface BuiltPlace {
   /** All photo records that contributed to this place (before sampling for evidence refs) */
   photos: LocatedPhotoRecord[];
   /** Photos with no GPS that were attached by day */
+  unlocatedPhotos: UnlocatedPhotoRecord[];
+}
+
+// ─── Entry builder output (WP12) ─────────────────────────────────────────────
+
+/**
+ * An intermediate per-day place record produced by buildPlaceEntries() (WP12).
+ * One BuiltPlaceEntry per (localityKey, localDay) pair.
+ * Replaces BuiltPlace's date-range model with the one-entry-per-day model.
+ * WP13 maps these to Place containers + PlaceEntry journal records.
+ */
+export interface BuiltPlaceEntry {
+  localityKey: LocalityKey;
+  locality: string;
+  region?: string;
+  country?: string;
+  /** Hierarchy level from the geocoder — see LocalityInfo.level. */
+  level?: "locality" | "region" | "country";
+  /** YYYY-MM-DD — the local day all photos in this group were taken. */
+  localDay: string;
+  /** All located photos for this locality on this day. */
+  photos: LocatedPhotoRecord[];
+  /**
+   * Unlocated photos attached to this entry.
+   * Only populated when exactly one place exists for the day (spec §7).
+   */
   unlocatedPhotos: UnlocatedPhotoRecord[];
 }
 
