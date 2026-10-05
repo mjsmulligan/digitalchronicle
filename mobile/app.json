@@ -59,6 +59,12 @@
           "contactsPermission": "Chronicle reads your contacts on this device so you can tag companions on journal entries. Nothing leaves your phone."
         }
       ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Chronicle reads events from your calendars so you can review and add them to your journal. Nothing is written back and nothing leaves your phone."
+        }
+      ],
       "./plugins/withEdgeToEdge"
     ],
     "experiments": {
