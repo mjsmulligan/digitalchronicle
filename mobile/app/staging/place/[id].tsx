@@ -6,17 +6,18 @@
  *   - Routine days collapsed below in a "Show N routine days" group.
  *   - Single-photo days are never routine.
  *
- * Per-day actions: Accept / Dismiss individual entries.
- * Header actions: Accept all / Dismiss all.
+ * Each row has a Switch (deferred — no immediate commit) and tapping expands
+ * a horizontal photo strip from the entry's photoEvidence refs.
  *
- * Merge action: lets the user type a search to find a second Place and merge
- * it into this one (absorbing its key as an alias).
+ * Header: "Select all · Deselect all" quick links + "Accept X days" commit btn.
  */
 
 import React, { useState, useMemo } from "react";
 import {
   FlatList,
+  Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -43,59 +44,90 @@ function fmtDay(iso: string): string {
 
 // ─── Entry row ────────────────────────────────────────────────────────────────
 //
-// Compact row with a Switch on the right — mirrors the per-record pattern in
-// the file-import review screen. All pending entries start ON (pre-approved);
-// toggling OFF dismisses to the bin.
+// Controlled row — parent owns selected state (deselected set pattern so new
+// entries start ON without needing a useEffect). Tap anywhere on the row body
+// to expand/collapse a horizontal photo strip.
 
 function EntryRow({
   entry,
   unusual,
-  onAccept,
-  onDismiss,
+  selected,
+  onToggle,
+  expanded,
+  onExpandToggle,
 }: {
   entry: PlaceEntry;
   unusual: boolean;
-  onAccept: () => void;
-  onDismiss: () => void;
+  selected: boolean;
+  onToggle: (next: boolean) => void;
+  expanded: boolean;
+  onExpandToggle: () => void;
 }) {
   const { colors, fonts } = useTheme();
   const s = useMemo(() => rowStyles(colors, fonts), [colors, fonts]);
 
-  // Pending entries start ON (pre-approved). User toggles off to dismiss.
-  const [value, setValue] = useState(true);
-
-  const handleChange = (next: boolean) => {
-    setValue(next);
-    if (next) onAccept();
-    else      onDismiss();
-  };
+  const photos = entry.photoEvidence.filter((r) => r.uri && !r.missing);
 
   return (
     <View style={[s.row, unusual && s.rowUnusual]}>
-      <View style={s.body}>
-        <View style={s.titleRow}>
-          <Text style={s.dateText}>{fmtDay(entry.localDay)}</Text>
-          {unusual && (
-            <View style={s.unusualBadge}>
-              <Text style={s.unusualBadgeText}>Unusual</Text>
-            </View>
-          )}
-        </View>
-        <View style={s.metaRow}>
-          <Ionicons name="images-outline" size={12} color={colors.textMuted} style={{ marginRight: 3 }} />
-          <Text style={s.metaText}>
-            {entry.photoCount} photo{entry.photoCount !== 1 ? "s" : ""}
-            {entry.singlePhoto ? " · Transit?" : ""}
-          </Text>
-        </View>
+      {/* Main row: tap body to expand photo strip, Switch on the right */}
+      <View style={s.mainRow}>
+        <Pressable style={s.body} onPress={onExpandToggle}>
+          <View style={s.titleRow}>
+            <Text style={s.dateText}>{fmtDay(entry.localDay)}</Text>
+            {unusual && (
+              <View style={s.unusualBadge}>
+                <Text style={s.unusualBadgeText}>Unusual</Text>
+              </View>
+            )}
+          </View>
+          <View style={s.metaRow}>
+            <Ionicons name="images-outline" size={12} color={colors.textMuted} style={{ marginRight: 3 }} />
+            <Text style={s.metaText}>
+              {entry.photoCount} photo{entry.photoCount !== 1 ? "s" : ""}
+              {entry.singlePhoto ? " · Transit?" : ""}
+            </Text>
+            {photos.length > 0 && (
+              <Ionicons
+                name={expanded ? "chevron-up" : "chevron-down"}
+                size={11}
+                color={colors.textMuted}
+                style={{ marginLeft: 4 }}
+              />
+            )}
+          </View>
+        </Pressable>
+
+        {/* Prevent Switch tap from toggling the expand */}
+        <Pressable onPress={(e) => e.stopPropagation()}>
+          <Switch
+            value={selected}
+            onValueChange={onToggle}
+            trackColor={{ true: colors.accent, false: colors.border }}
+            thumbColor={selected ? colors.surface : colors.textMuted}
+            style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
+          />
+        </Pressable>
       </View>
-      <Switch
-        value={value}
-        onValueChange={handleChange}
-        trackColor={{ true: colors.accent, false: colors.border }}
-        thumbColor={value ? colors.accentSubtle : colors.textMuted}
-        style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-      />
+
+      {/* Photo strip — shown when expanded and we have URIs */}
+      {expanded && photos.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={s.stripScroll}
+          contentContainerStyle={s.stripContent}
+        >
+          {photos.map((ref, i) => (
+            <Image
+              key={ref.mediaId ?? i}
+              source={{ uri: ref.uri }}
+              style={s.thumb}
+              resizeMode="cover"
+            />
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -103,21 +135,24 @@ function EntryRow({
 function rowStyles(colors: any, fonts: any) {
   return StyleSheet.create({
     row: {
-      flexDirection: "row",
-      alignItems: "center",
       marginHorizontal: spacing.lg,
       marginBottom: spacing.xs,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
       backgroundColor: colors.surface,
       borderRadius: radius.lg,
       borderWidth: 1,
       borderColor: colors.borderFaint,
-      gap: spacing.md,
+      overflow: "hidden",
     },
     rowUnusual: {
       borderColor: colors.accent,
       borderLeftWidth: 3,
+    },
+    mainRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      gap: spacing.md,
     },
     body: { flex: 1 },
     titleRow: {
@@ -132,7 +167,8 @@ function rowStyles(colors: any, fonts: any) {
       color: colors.textPrimary,
     },
     unusualBadge: {
-      backgroundColor: colors.accentSubtle,
+      // surfaceAccent = warm cream — passes contrast AA with accent text
+      backgroundColor: colors.surfaceAccent,
       borderRadius: 8,
       paddingHorizontal: 6,
       paddingVertical: 2,
@@ -148,6 +184,20 @@ function rowStyles(colors: any, fonts: any) {
     metaText: {
       fontSize: 12,
       color: colors.textMuted,
+    },
+    stripScroll: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderFaint,
+    },
+    stripContent: {
+      padding: spacing.sm,
+      gap: spacing.xs,
+    },
+    thumb: {
+      width: 64,
+      height: 64,
+      borderRadius: radius.sm,
+      backgroundColor: colors.borderFaint,
     },
   });
 }
@@ -286,6 +336,11 @@ export default function PlaceDetailScreen() {
   const [showRoutine, setShowRoutine] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
 
+  // Deferred selection: starts empty = all ON. Add id to deselect.
+  const [deselected, setDeselected] = useState<Set<string>>(new Set());
+  // Expanded rows for photo strips
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
   const place = hub.places.find((p) => p.id === id);
 
   const placeGroup = useMemo(() => {
@@ -305,35 +360,61 @@ export default function PlaceDetailScreen() {
   }
 
   const { unusual, routine } = placeGroup;
-  const displayedRoutine = showRoutine ? routine : [];
+  const pending = placeGroup.pending;
+
+  const allPendingIds = useMemo(
+    () => new Set(pending.map((e) => e.id)),
+    [pending],
+  );
+
+  const selectedCount = pending.filter((e) => !deselected.has(e.id)).length;
+
+  const toggleEntry = (entryId: string, next: boolean) => {
+    setDeselected((prev) => {
+      const s = new Set(prev);
+      if (next) s.delete(entryId);
+      else      s.add(entryId);
+      return s;
+    });
+  };
+
+  const toggleExpand = (entryId: string) => {
+    setExpandedIds((prev) => {
+      const s = new Set(prev);
+      if (s.has(entryId)) s.delete(entryId);
+      else                 s.add(entryId);
+      return s;
+    });
+  };
+
+  const handleSelectAll   = () => setDeselected(new Set());
+  const handleDeselectAll = () => setDeselected(new Set(allPendingIds));
+
+  const handleCommit = () => {
+    const toAccept  = pending.filter((e) => !deselected.has(e.id));
+    const toDismiss = pending.filter((e) =>  deselected.has(e.id));
+    Promise.all([
+      ...toAccept.map((e)  => hub.acceptSingleEntry(e)),
+      ...toDismiss.map((e) => hub.dismissSingleEntry(e)),
+    ]).then(() => router.back());
+  };
 
   // Merge candidates: all OTHER places
   const mergeCandidates = hub.places
     .filter((p) => p.id !== id)
     .map((p) => ({ id: p.id, locality: p.locality, localityKey: p.localityKey }));
 
-  const handleAcceptEntry = (entry: PlaceEntry) => hub.acceptSingleEntry(entry);
-  const handleDismissEntry = (entry: PlaceEntry) => hub.dismissSingleEntry(entry);
-
-  const handleAcceptAll = () => {
-    dialog.confirm(
-      `Accept all of ${place.locality}`,
-      `Accept all ${placeGroup.pending.length} pending days?`,
-      "Accept all",
-      () => hub.acceptPlace(id),
-    );
-  };
-
-  const handleDismissAll = () => {
-    dialog.confirm(
-      `Ignore all of ${place.locality}`,
-      `Ignore all ${placeGroup.pending.length} pending days for this place?`,
-      "Ignore all",
-      () => hub.dismissPlace(id),
-    );
-  };
-
   const headerSubtitle = [place.region, place.country].filter(Boolean).join(", ");
+
+  const listData = [
+    ...unusual.map((e) => ({ entry: e, type: "unusual" as const })),
+    ...(routine.length > 0
+      ? [{ entry: null as null, type: "routine-toggle" as const }]
+      : []),
+    ...(showRoutine
+      ? routine.map((e) => ({ entry: e, type: "routine" as const }))
+      : []),
+  ];
 
   return (
     <>
@@ -361,22 +442,34 @@ export default function PlaceDetailScreen() {
             <View style={s.header}>
               <Text style={s.subtitle}>{headerSubtitle}</Text>
               <Text style={s.metaLine}>
-                {placeGroup.pending.length} pending · {placeGroup.accepted.length} accepted
+                {pending.length} pending · {placeGroup.accepted.length} accepted
               </Text>
               {place.aliasKeys && place.aliasKeys.length > 0 && (
                 <Text style={s.aliasLine}>
                   Also known as: {place.aliasKeys.join(", ")}
                 </Text>
               )}
-              {/* Batch actions */}
-              <View style={s.batchRow}>
-                <Pressable style={[s.batchBtn, s.acceptBatch]} onPress={handleAcceptAll}>
-                  <Text style={s.batchBtnText}>Accept all</Text>
+
+              {/* Quick links — Select all · Deselect all */}
+              <View style={s.quickRow}>
+                <Pressable onPress={handleSelectAll}>
+                  <Text style={s.quickLink}>Select all</Text>
                 </Pressable>
-                <Pressable style={[s.batchBtn, s.dismissBatch]} onPress={handleDismissAll}>
-                  <Text style={[s.batchBtnText, { color: colors.textSecondary }]}>Ignore all</Text>
+                <Text style={s.quickSep}>·</Text>
+                <Pressable onPress={handleDeselectAll}>
+                  <Text style={s.quickLink}>Deselect all</Text>
                 </Pressable>
               </View>
+
+              {/* Commit button */}
+              <Pressable
+                style={[s.commitBtn, selectedCount === 0 && s.commitBtnDisabled]}
+                onPress={selectedCount > 0 ? handleCommit : undefined}
+              >
+                <Text style={s.commitBtnText}>
+                  Accept {selectedCount} day{selectedCount !== 1 ? "s" : ""} to journal
+                </Text>
+              </Pressable>
             </View>
 
             {/* Unusual section label */}
@@ -385,17 +478,7 @@ export default function PlaceDetailScreen() {
             )}
           </View>
         }
-        data={[
-          ...unusual.map((e) => ({ entry: e, type: "unusual" as const })),
-          // Routine toggle row
-          ...(routine.length > 0
-            ? [{ entry: null as null, type: "routine-toggle" as const }]
-            : []),
-          // Routine entries when expanded
-          ...(showRoutine
-            ? routine.map((e) => ({ entry: e, type: "routine" as const }))
-            : []),
-        ]}
+        data={listData}
         keyExtractor={(item) =>
           item.type === "routine-toggle" ? "routine-toggle" : item.entry!.id
         }
@@ -419,17 +502,20 @@ export default function PlaceDetailScreen() {
               </Pressable>
             );
           }
+          const entry = item.entry!;
           return (
             <EntryRow
-              entry={item.entry!}
+              entry={entry}
               unusual={item.type === "unusual"}
-              onAccept={() => handleAcceptEntry(item.entry!)}
-              onDismiss={() => handleDismissEntry(item.entry!)}
+              selected={!deselected.has(entry.id)}
+              onToggle={(next) => toggleEntry(entry.id, next)}
+              expanded={expandedIds.has(entry.id)}
+              onExpandToggle={() => toggleExpand(entry.id)}
             />
           );
         }}
         ListEmptyComponent={
-          placeGroup.pending.length === 0 ? (
+          pending.length === 0 ? (
             <View style={s.empty}>
               <Text style={s.emptyText}>No pending days for {place.locality}</Text>
             </View>
@@ -484,26 +570,36 @@ function screenStyles(colors: any, fonts: any) {
       marginBottom: spacing.sm,
       fontStyle: "italic",
     },
-    batchRow: {
+    // Quick links: "Select all · Deselect all"
+    quickRow: {
       flexDirection: "row",
-      gap: spacing.sm,
+      alignItems: "center",
+      gap: spacing.xs,
+      marginBottom: spacing.sm,
     },
-    batchBtn: {
-      flex: 1,
-      paddingVertical: spacing.sm,
+    quickLink: {
+      fontSize: 13,
+      color: colors.accent,
+    },
+    quickSep: {
+      fontSize: 13,
+      color: colors.textMuted,
+    },
+    // Single commit button
+    commitBtn: {
+      backgroundColor: colors.accentBold,
       borderRadius: radius.md,
+      paddingVertical: spacing.sm + 2,
       alignItems: "center",
     },
-    acceptBatch: { backgroundColor: colors.accentBold },
-    dismissBatch: {
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      borderColor: colors.border,
+    commitBtnDisabled: {
+      opacity: 0.4,
     },
-    batchBtnText: {
-      fontSize: 13,
+    commitBtnText: {
+      fontSize: 14,
       color: colors.white,
       fontFamily: fonts.sansMedium ?? fonts.sans,
+      fontWeight: "600",
     },
     sectionLabel: {
       fontSize: 11,
