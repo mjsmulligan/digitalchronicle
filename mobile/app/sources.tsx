@@ -459,7 +459,7 @@ function SourceCard({
       ]}
     >
       <View style={sc.header}>
-        <View style={[sc.iconWrap, { backgroundColor: colors.accentSubtle }]}>
+        <View style={[sc.iconWrap, { backgroundColor: colors.surfaceAccent }]}>
           <Ionicons name={icon} size={20} color={colors.accent} />
         </View>
         <View style={sc.info}>

@@ -186,7 +186,7 @@ export function PhotoSourceEntry({ onReviewSuggestions }: PhotoSourceEntryProps)
 
   return (
     <View style={s.card}>
-      {/* Header row */}
+      {/* Header row — icon · title/status · action button (inline, matches other source cards) */}
       <View style={s.header}>
         <View style={s.iconWrap}>
           <Ionicons name="images-outline" size={20} color={colors.accent} />
@@ -196,19 +196,21 @@ export function PhotoSourceEntry({ onReviewSuggestions }: PhotoSourceEntryProps)
           <Text style={[s.status, { color: statusColor }]}>{statusLine}</Text>
         </View>
 
-        {/* Pending badge */}
-        {pendingCount > 0 && (
-          <Pressable
-            style={s.pendingBadge}
-            onPress={onReviewSuggestions}
-            accessibilityLabel={`${pendingCount} pending suggestions — tap to review`}
-          >
-            <Text style={s.pendingBadgeText}>{pendingCount}</Text>
+        {/* Primary action — inline right, same position as Sync / Connect / Choose file */}
+        {isActive ? (
+          <Pressable style={[s.actionBtn, s.cancelBtn]} onPress={cancelScan}>
+            <Text style={[s.actionBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={[s.actionBtn, s.scanBtn]} onPress={handleScan}>
+            <Text style={s.actionBtnText}>
+              {scan.phase === "done" || lastScannedAt ? "Re-scan" : "Scan now"}
+            </Text>
           </Pressable>
         )}
       </View>
 
-      {/* Progress card — shown while active, same visual style as file-import commit */}
+      {/* Progress bar — shown while active or just finished */}
       {(isActive || scan.phase === "done") && (
         <View style={s.progressCard}>
           {isActive && (
@@ -282,31 +284,15 @@ export function PhotoSourceEntry({ onReviewSuggestions }: PhotoSourceEntryProps)
         </View>
       )}
 
-      {/* Action buttons */}
-      <View style={s.actions}>
-        {isActive ? (
-          <Pressable style={[s.btn, s.cancelBtn]} onPress={cancelScan}>
-            <Ionicons name="stop-circle-outline" size={16} color={colors.textSecondary} />
-            <Text style={[s.btnText, { color: colors.textSecondary }]}>Cancel</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={[s.btn, s.scanBtn]} onPress={handleScan}>
-            <Ionicons name="refresh-outline" size={16} color={colors.white} />
-            <Text style={s.btnText}>
-              {scan.phase === "done" || lastScannedAt ? "Re-scan" : "Scan now"}
-            </Text>
-          </Pressable>
-        )}
-
-        {pendingCount > 0 && onReviewSuggestions && (
-          <Pressable style={[s.btn, s.reviewBtn]} onPress={onReviewSuggestions}>
-            <Text style={[s.btnText, { color: colors.accent }]}>
-              Review {pendingCount} suggestion{pendingCount !== 1 ? "s" : ""}
-            </Text>
-            <Ionicons name="chevron-forward" size={14} color={colors.accent} />
-          </Pressable>
-        )}
-      </View>
+      {/* Review link — shown when there are pending suggestions */}
+      {pendingCount > 0 && onReviewSuggestions && (
+        <Pressable style={s.reviewRow} onPress={onReviewSuggestions}>
+          <Text style={[s.reviewText, { color: colors.accent }]}>
+            Review {pendingCount} suggestion{pendingCount !== 1 ? "s" : ""}
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+        </Pressable>
+      )}
 
       {/* Privacy note */}
       <Text style={s.privacyNote}>
@@ -331,17 +317,19 @@ function styles(colors: any, fonts: any) {
     },
     header: {
       flexDirection: "row",
-      alignItems: "flex-start",
+      alignItems: "center",
       marginBottom: spacing.sm,
     },
     iconWrap: {
       width: 36,
       height: 36,
       borderRadius: radius.lg,
-      backgroundColor: colors.accentSubtle,
+      // surfaceAccent is a light warm cream — gives readable contrast with accentBold icon
+      backgroundColor: colors.surfaceAccent,
       alignItems: "center",
       justifyContent: "center",
       marginRight: spacing.md,
+      flexShrink: 0,
     },
     headerText: { flex: 1 },
     title: {
@@ -354,19 +342,29 @@ function styles(colors: any, fonts: any) {
       fontSize: 12,
       lineHeight: 17,
     },
-    pendingBadge: {
-      backgroundColor: colors.accentBold,
-      borderRadius: 12,
-      minWidth: 24,
-      height: 24,
+    // Inline action button — same size/style as Sync / Connect / Choose file
+    actionBtn: {
+      paddingVertical: spacing.xs + 1,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.md,
       alignItems: "center",
       justifyContent: "center",
-      paddingHorizontal: 6,
+      flexShrink: 0,
+      marginLeft: spacing.sm,
     },
-    pendingBadgeText: {
-      fontSize: 12,
+    scanBtn: {
+      backgroundColor: colors.accentBold,
+    },
+    cancelBtn: {
+      backgroundColor: "transparent",
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    actionBtnText: {
+      fontSize: 13,
       color: colors.white,
       fontFamily: fonts.sansMedium ?? fonts.sans,
+      fontWeight: "600",
     },
     progressCard: {
       gap: spacing.xs,
@@ -427,38 +425,16 @@ function styles(colors: any, fonts: any) {
     scopeOptionTextActive: {
       color: colors.accent,
     },
-    actions: {
-      flexDirection: "row",
-      gap: spacing.sm,
-      marginTop: spacing.sm,
-    },
-    btn: {
+    reviewRow: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
       gap: 4,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      borderRadius: radius.md,
+      paddingVertical: spacing.xs,
+      marginTop: spacing.xs,
     },
-    scanBtn: {
-      backgroundColor: colors.accentBold,
-    },
-    cancelBtn: {
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    reviewBtn: {
-      flex: 1,
-      backgroundColor: "transparent",
-      borderWidth: 1,
-      borderColor: colors.accent,
-    },
-    btnText: {
+    reviewText: {
       fontSize: 13,
-      color: colors.white,
-      fontFamily: fonts.sansMedium ?? fonts.sans,
+      fontWeight: "600",
     },
     privacyNote: {
       fontSize: 11,
