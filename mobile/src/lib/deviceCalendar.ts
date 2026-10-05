@@ -6,7 +6,7 @@
  *
  * Read-only and fully on-device: nothing is written back, nothing leaves the phone.
  */
-import * as Calendar from "expo-calendar";
+import * as Calendar from "expo-calendar/legacy";
 
 export type DeviceCalendarResult =
   | { status: "ok"; ics: string; count: number }
