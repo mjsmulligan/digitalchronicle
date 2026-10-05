@@ -23,7 +23,7 @@
         "backgroundColor": "#F9F3E6"
       },
       "predictiveBackGestureEnabled": true,
-      "permissions": ["android.permission.READ_CONTACTS"],
+      "permissions": ["android.permission.READ_CONTACTS", "android.permission.READ_CALENDAR"],
       "intentFilters": [
         {
           "action": "VIEW",
