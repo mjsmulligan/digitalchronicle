@@ -150,6 +150,7 @@ export function buildStagingPlan(
     const evidenceRefs: PhotoEvidenceRef[] = [
       ...b.photos.slice(0, MAX_EVIDENCE_REFS).map((p) => ({
         mediaId: p.mediaId,
+        uri: p.uri,
         localDay: p.localDay,
         hasGps: true as const,
         timingRule: p.timingRule,
@@ -158,6 +159,7 @@ export function buildStagingPlan(
         .slice(0, Math.max(0, MAX_EVIDENCE_REFS - b.photos.length))
         .map((p) => ({
           mediaId: p.mediaId,
+          uri: p.uri,
           localDay: p.localDay,
           hasGps: false as const,
           timingRule: p.timingRule,
@@ -199,6 +201,7 @@ function addEvidence(entry: PlaceEntry, newPhotos: LocatedPhotoRecord[]): PlaceE
   }
   const newRefs: PhotoEvidenceRef[] = newPhotos.slice(0, slots).map((p) => ({
     mediaId: p.mediaId,
+    uri: p.uri,
     localDay: p.localDay,
     hasGps: true as const,
     timingRule: p.timingRule,
