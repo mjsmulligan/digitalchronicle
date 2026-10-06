@@ -1,6 +1,7 @@
 import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor } from "./db";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations } from "./geo";
+import { mergeEvaluation, sourceLocks } from "./evaluation";
 import {
   uid, view, type Entry, type Leg, type StagedRecord, type StagingBatch,
 } from "./types";

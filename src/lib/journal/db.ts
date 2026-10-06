@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { STORES, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch } from "./types";
+import { STORES, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
+import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
 import type { StorageAdapter, Row } from "./storage";
 
