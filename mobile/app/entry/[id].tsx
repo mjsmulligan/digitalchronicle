@@ -15,6 +15,7 @@ import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { SourceMark } from "../../src/components/SourceMark";
 import { useDialog, Dialog } from "../../src/components/Dialog";
+import { Ionicons } from "@expo/vector-icons";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -383,10 +384,8 @@ export default function EntryDetailScreen() {
     notFoundText: { ...text.lg, color: colors.textTertiary },
 
     // header actions
-    headerActions: { flexDirection: "row" as const, alignItems: "center" as const, gap: 4, marginRight: 4 },
+    headerActions: { flexDirection: "row" as const, alignItems: "center" as const, gap: 2, marginRight: 4 },
     headerBtn:     { padding: 8 },
-    headerBtnText: { ...text.base, color: colors.accentSoft, fontWeight: "600" as const },
-    headerMergeText: { ...text.base, color: colors.textTertiary, fontWeight: "600" as const },
 
     // merge modal
     modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" as const },
@@ -511,7 +510,7 @@ export default function EntryDetailScreen() {
             <View style={styles.headerActions}>
               {sameDayEntries.length > 0 && (
                 <Pressable style={styles.headerBtn} onPress={() => setMergeVisible(true)}>
-                  <Text style={styles.headerMergeText}>Merge</Text>
+                  <Ionicons name="git-merge-outline" size={22} color={colors.textTertiary} />
                 </Pressable>
               )}
               {isEditable && (
@@ -519,7 +518,7 @@ export default function EntryDetailScreen() {
                   style={styles.headerBtn}
                   onPress={() => router.push({ pathname: "/entry/edit/[id]", params: { id: entry.id } })}
                 >
-                  <Text style={styles.headerBtnText}>Edit</Text>
+                  <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
                 </Pressable>
               )}
             </View>
