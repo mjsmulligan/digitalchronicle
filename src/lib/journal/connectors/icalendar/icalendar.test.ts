@@ -93,8 +93,8 @@ describe("icalendar connector", () => {
       expect(entry.reflection).toContain("Incredible energy");
     });
 
-    it("dedupeKey starts with icalendar|event|", () => {
-      expect(r.entries[0].entry.dedupeKey).toMatch(/^icalendar\|event\|/);
+    it("dedupeKey starts with event|", () => {
+      expect(r.entries[0].entry.dedupeKey).toMatch(/^event\|/);
     });
   });
 
@@ -329,11 +329,11 @@ describe("icalendar connector", () => {
       );
     });
 
-    it("dedupeKey format: icalendar|event|date|artist", () => {
+    it("dedupeKey format: event|date|artist", () => {
       const ics = `BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20260601\nDTEND:20260602\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR`;
       const r = connector.parse({ name: "test.ics", text: ics });
       if (r instanceof Promise) throw new Error("sync expected");
-      expect(r.entries[0].entry.dedupeKey).toBe("icalendar|event|2026-06-01|test event");
+      expect(r.entries[0].entry.dedupeKey).toBe("event|2026-06-01|test event");
     });
   });
 });

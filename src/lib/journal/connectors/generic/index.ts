@@ -155,7 +155,7 @@ function parseGeneric(text: string): ParseResult {
         endTz: end ? tz : undefined,
         endUTC: end ? localToUTC(end, tz) : undefined,
       };
-      e.dedupeKey = eventKey(e, "generic");
+      e.dedupeKey = eventKey(e);
       out.entries.push({ entry: e, warnings: [], sourceRow });
     } else
       out.errors.push(

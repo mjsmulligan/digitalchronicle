@@ -391,7 +391,7 @@ function parseIcs(text: string): ParseResult {
       startUTC: localToUTC(startStr, tz),
       dedupeKey: "",
     };
-    e.dedupeKey = eventKey(e, SOURCE);
+    e.dedupeKey = eventKey(e);
     out.entries.push({ entry: e, warnings: [], sourceRow });
   });
 

@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
+import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
 import { KIND_REGISTRY } from "./kinds";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
@@ -211,6 +211,68 @@ async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
 }
 
 /**
+ * Recomputes JEvent dedupeKeys from source-namespaced format
+ * (e.g. "setlistfm|event|...") to source-agnostic format ("event|...").
+ * No-op on subsequent boots once all keys already start with "event|".
+ * If the key change reveals true duplicates (same date+artist from two sources),
+ * the higher-precedence record (lower tier, then reflection present, then
+ * earlier createdAt) is kept.
+ */
+async function migrateEventKeys(data: Partial<State>): Promise<void> {
+  const events = (data.events ?? []) as JEvent[];
+
+  const staleIds = new Set(
+    events
+      .filter((e) => e.dedupeKey.includes("|event|") && !e.dedupeKey.startsWith("event|"))
+      .map((e) => e.id),
+  );
+
+  if (staleIds.size === 0) return;
+
+  const updatedEvents = events.map((e) =>
+    staleIds.has(e.id)
+      ? { ...e, dedupeKey: `event|${e.start.slice(0, 10)}|${e.artist.toLowerCase()}` }
+      : e,
+  );
+
+  function pickBest<T extends { id: string; tier: number; reflection?: string; createdAt: string }>(
+    items: T[],
+  ): { keep: T; discard: T[] } {
+    if (items.length === 1) return { keep: items[0], discard: [] };
+    const sorted = [...items].sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier;
+      const aHasRef = !!a.reflection;
+      const bHasRef = !!b.reflection;
+      if (aHasRef !== bHasRef) return aHasRef ? -1 : 1;
+      return a.createdAt < b.createdAt ? -1 : 1;
+    });
+    return { keep: sorted[0], discard: sorted.slice(1) };
+  }
+
+  const byKey = new Map<string, JEvent[]>();
+  for (const e of updatedEvents) {
+    (byKey.get(e.dedupeKey) ?? byKey.set(e.dedupeKey, []).get(e.dedupeKey)!).push(e);
+  }
+
+  const writes: JEvent[] = [];
+  const removeIds: string[] = [];
+  for (const group of byKey.values()) {
+    const hasStale = group.some((e) => staleIds.has(e.id));
+    if (!hasStale) continue;
+    const { keep, discard } = pickBest(group);
+    writes.push(keep);
+    removeIds.push(...discard.map((e) => e.id));
+  }
+
+  if (writes.length) await adapter.putMany("events", writes);
+  if (removeIds.length) await adapter.removeMany("events", removeIds);
+
+  const discardSet = new Set(removeIds);
+  const writeMap = new Map(writes.map((e) => [e.id, e]));
+  data.events = updatedEvents.filter((e) => !discardSet.has(e.id)).map((e) => writeMap.get(e.id) ?? e);
+}
+
+/**
  * Rating + reflection are the universal evaluation fields. Folds legacy
  * `journal` into `reflection`, `Trip.notes` into `Trip.reflection`, and infers
  * source locks. Idempotent: no writes once every record is normalised.
@@ -253,6 +315,7 @@ export function initJournal(): Promise<void> {
       await loadStations();
     }
     await migrateLegStayKeys(data);
+    await migrateEventKeys(data);
     await migrateEvaluationFields(data);
     emit({ ...data, ready: true });
   })().catch((error: unknown) => {

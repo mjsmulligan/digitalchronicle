@@ -93,7 +93,7 @@ function parseSetlist(text: string): ParseResult {
       startUTC: localToUTC(start, tz),
       raw,
     };
-    ev.dedupeKey = eventKey(ev, "setlistfm");
+    ev.dedupeKey = eventKey(ev);
     const w: string[] = [];
     if (!ev.setlist) w.push("No setlist details");
     if (!locate(ev.city)) w.push(`City "${ev.city || "?"}" not on map`);
