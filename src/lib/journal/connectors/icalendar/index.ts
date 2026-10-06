@@ -293,7 +293,7 @@ function parseIcs(text: string): ParseResult {
       source: SOURCE,
       tier: 3 as const,
       createdAt: now(),
-      reflection: description,
+      review: description,
     };
 
     // --- Classify: multi-day all-day → Stay ---

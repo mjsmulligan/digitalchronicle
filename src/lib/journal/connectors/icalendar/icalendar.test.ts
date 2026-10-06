@@ -88,9 +88,9 @@ describe("icalendar connector", () => {
       expect(entry.start).toBe("2026-03-14T20:00");
     });
 
-    it("maps DESCRIPTION to reflection", () => {
+    it("maps DESCRIPTION to review", () => {
       const entry = r.entries[0].entry as JEvent;
-      expect(entry.reflection).toContain("Incredible energy");
+      expect(entry.review).toContain("Incredible energy");
     });
 
     it("dedupeKey starts with event|", () => {

@@ -35,15 +35,21 @@ interface Base {
   endUTC?: string;
   tripId?: string;
   dedupeKey: string;
-  /** Universal qualitative field: personal reflection or the source's review. */
+  /** User's own prose reflection. Never overwritten by connectors or supersede. */
   reflection?: string;
+  /**
+   * Source-supplied review text (e.g. a Letterboxd review, Goodreads review,
+   * or calendar description). Written only by connectors. Read-only in the UI.
+   * See evaluation.ts — D8.
+   */
+  review?: string;
   /** Universal quantitative field: rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
   /**
-   * Which evaluation fields are provenance-locked (supplied by an external source
-   * and not user-editable). See `isLocked()` in evaluation.ts.
+   * Tracks rating provenance — whether the rating came from an external source.
+   * See `isLocked()` in evaluation.ts.
    */
-  sourceLocked?: ("rating" | "reflection")[];
+  sourceLocked?: ("rating")[];
   /**
    * How precisely the date is known.
    * "day"     — full YYYY-MM-DD known (default assumed when omitted)

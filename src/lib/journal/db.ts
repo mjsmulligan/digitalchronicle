@@ -273,6 +273,36 @@ async function migrateEventKeys(data: Partial<State>): Promise<void> {
 }
 
 /**
+ * Migrate old `sourceLocked: ["reflection"]` entries: move `reflection` → `review`,
+ * clear `reflection`, remove `"reflection"` from `sourceLocked`.
+ * Idempotent — entries without the old "reflection" lock are untouched.
+ */
+async function migrateReviewReflection(data: Partial<State>): Promise<void> {
+  const entryStores = ["legs", "stays", "events", "films", "episodes", "books", "placeEvents", "placeEntries"] as const;
+  for (const store of entryStores) {
+    const rows = (data[store] ?? []) as Entry[];
+    const changed: Entry[] = [];
+    const next = rows.map((e) => {
+      const locked = (e.sourceLocked as string[] | undefined) ?? [];
+      if (!locked.includes("reflection")) return e;
+      const updated = {
+        ...e,
+        review: e.review ?? e.reflection,
+        reflection: undefined,
+        sourceLocked: locked.filter((f) => f !== "reflection") as ("rating")[],
+      };
+      if (updated.sourceLocked.length === 0) updated.sourceLocked = undefined as unknown as ("rating")[];
+      changed.push(updated as Entry);
+      return updated as Entry;
+    });
+    if (changed.length) {
+      await adapter.putMany(store, changed);
+      (data as Record<string, unknown>)[store] = next;
+    }
+  }
+}
+
+/**
  * Rating + reflection are the universal evaluation fields. Folds legacy
  * `journal` into `reflection`, `Trip.notes` into `Trip.reflection`, and infers
  * source locks. Idempotent: no writes once every record is normalised.
@@ -316,6 +346,7 @@ export function initJournal(): Promise<void> {
     }
     await migrateLegStayKeys(data);
     await migrateEventKeys(data);
+    await migrateReviewReflection(data);
     await migrateEvaluationFields(data);
     emit({ ...data, ready: true });
   })().catch((error: unknown) => {

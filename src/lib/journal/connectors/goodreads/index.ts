@@ -106,8 +106,8 @@ function parseGoodreads(text: string): ParseResult {
     const rawRating = parseFloat((r["My Rating"] as string | undefined) ?? "0");
     const rating = rawRating > 0 ? rawRating * 2 : undefined;
 
-    // Reflection: My Review column
-    const reflection = ((r["My Review"] as string | undefined) ?? "").trim() || undefined;
+    // Source review: My Review column — stored as `review`, not `reflection`.
+    const review = ((r["My Review"] as string | undefined) ?? "").trim() || undefined;
 
     // Year: Original Publication Year preferred, fall back to Year Published
     const rawOrigYear = ((r["Original Publication Year"] as string | undefined) ?? "").trim();
@@ -130,7 +130,7 @@ function parseGoodreads(text: string): ParseResult {
       author: rawAuthor,
       ...(year !== undefined && { year }),
       ...(rating !== undefined && { rating }),
-      ...(reflection && { reflection }),
+      ...(review && { review }),
       ...(goodreadsId && { goodreadsId }),
       ...(series && { series }),
       ...(seriesNumber !== undefined && { seriesNumber }),
