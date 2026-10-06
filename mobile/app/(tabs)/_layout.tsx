@@ -110,7 +110,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Journal",
+          title: "Chronicle",
           tabBarLabel: "Chronicle",
           tabBarIcon: ({ focused }) => tabIcon(focused, "book", "book-outline"),
         }}

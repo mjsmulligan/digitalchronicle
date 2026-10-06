@@ -23,10 +23,9 @@
  * Accepts `colors` and `fonts` as props so it is safe inside FlatList
  * renderItem without calling useTheme() per row.
  */
-import React, { useState } from "react";
-import { StyleSheet, Text, TextInput, View, Pressable } from "react-native";
-import { type Entry, type Note, uid } from "@chronicle/journal/types";
-import { putMany } from "@chronicle/journal/db";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
+import { type Entry, type Note } from "@chronicle/journal/types";
 import { type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "./ThemeProvider";
 import { EntryRow } from "./EntryRow";
 
@@ -113,13 +112,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       backgroundColor: colors.border,
     },
 
-    // Reflection line
-    reflectPrompt: {
-      ...textScale.sm,
-      fontFamily: fonts.sans,
-      color: colors.textTertiary,
-      paddingVertical: spacingScale.md,
-    },
+    // Legacy day-level note display (read-only; no new composition)
     reflectText: {
       ...textScale.base,
       fontFamily: fonts.serifMedium,
@@ -130,47 +123,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       borderLeftWidth: 2,
       borderLeftColor: colors.accentSoft,
       paddingLeft: spacingScale.md,
-    },
-
-    // Inline reflection editor
-    reflectInput: {
-      ...textScale.base,
-      fontFamily: fonts.serifMedium,
-      fontStyle: "italic",
-      color: colors.textPrimary,
-      borderLeftWidth: 2,
-      borderLeftColor: colors.accent,
-      paddingLeft: spacingScale.md,
-      paddingTop: spacingScale.md,
-      paddingBottom: spacingScale.sm,
-      minHeight: 60,
-      textAlignVertical: "top" as const,
-    },
-    reflectActions: {
-      flexDirection: "row" as const,
-      gap: spacingScale.sm,
-      paddingBottom: spacingScale.sm,
-    },
-    reflectSave: {
-      paddingHorizontal: spacingScale.md,
-      paddingVertical: spacingScale.sm2,
-      backgroundColor: colors.accent,
-      borderRadius: 6,
-    },
-    reflectSaveText: {
-      ...textScale.sm,
-      fontFamily: fonts.sansMedium ?? fonts.sans,
-      fontWeight: "600",
-      color: colors.accentBadge,
-    },
-    reflectCancel: {
-      paddingHorizontal: spacingScale.md,
-      paddingVertical: spacingScale.sm2,
-    },
-    reflectCancelText: {
-      ...textScale.sm,
-      fontFamily: fonts.sans,
-      color: colors.textTertiary,
     },
   });
 }
@@ -191,10 +143,8 @@ export interface DayGroupProps {
   colors: ThemeColors;
   fonts: ThemeFonts;
   onEntryPress: (entry: Entry) => void;
-  /** Called when the user taps the reflection prompt. Wired up in WP1.10. */
-  onReflectionPress?: (iso: string) => void;
   /**
-   * Whether to show the reflection note / "+ reflection for this day" prompt.
+   * Whether to show any legacy day-level note text (read-only).
    * Default `true` — Chronicle shows it. Culture, Trips, People pass `false`.
    */
   showReflection?: boolean;
@@ -204,41 +154,9 @@ export interface DayGroupProps {
  * Renders one day in the journal feed.
  * Designed to be the renderItem of a FlatList where each item is one day.
  */
-export function DayGroup({ group, colors, fonts, onEntryPress, onReflectionPress, showReflection = true }: DayGroupProps) {
+export function DayGroup({ group, colors, fonts, onEntryPress, showReflection = true }: DayGroupProps) {
   const { num, day, month, year } = parseDay(group.iso);
   const styles = createStyles(colors, fonts);
-
-  // ── inline reflection editor state ────────────────────────────────────────
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-
-  function startEditing() {
-    setDraft(group.note?.text ?? "");
-    setEditing(true);
-    onReflectionPress?.(group.iso);
-  }
-
-  async function saveReflection() {
-    const trimmed = draft.trim();
-    if (!trimmed) {
-      setEditing(false);
-      return;
-    }
-    const t = new Date().toISOString();
-    await putMany("notes", [{
-      id: group.note?.id ?? uid(),
-      date: group.iso,
-      text: trimmed,
-      createdAt: group.note?.createdAt ?? t,
-      updatedAt: t,
-    }]);
-    setEditing(false);
-  }
-
-  function cancelEditing() {
-    setEditing(false);
-    setDraft("");
-  }
 
   return (
     <View style={styles.outer}>
@@ -273,38 +191,10 @@ export function DayGroup({ group, colors, fonts, onEntryPress, onReflectionPress
           </React.Fragment>
         ))}
 
-        {/* Reflection: inline editor, existing note, or "+ reflection" prompt.
-            Culture / Trips / People pass showReflection=false to hide entirely. */}
-        {showReflection && (
-          editing ? (
-            <>
-              <TextInput
-                multiline
-                autoFocus
-                value={draft}
-                onChangeText={setDraft}
-                style={styles.reflectInput}
-                placeholder="How was the day?"
-                placeholderTextColor={colors.textTertiary}
-              />
-              <View style={styles.reflectActions}>
-                <Pressable onPress={saveReflection} style={styles.reflectSave}>
-                  <Text style={styles.reflectSaveText}>Save</Text>
-                </Pressable>
-                <Pressable onPress={cancelEditing} style={styles.reflectCancel}>
-                  <Text style={styles.reflectCancelText}>Cancel</Text>
-                </Pressable>
-              </View>
-            </>
-          ) : group.note ? (
-            <Pressable onPress={startEditing}>
-              <Text style={styles.reflectText}>{group.note.text}</Text>
-            </Pressable>
-          ) : (
-            <Pressable onPress={startEditing}>
-              <Text style={styles.reflectPrompt}>+ reflection for this day</Text>
-            </Pressable>
-          )
+        {/* Legacy day-level note — read-only display only (no new composition).
+            Reflections now belong to entries, not calendar days. */}
+        {showReflection && group.note && (
+          <Text style={styles.reflectText}>{group.note.text}</Text>
         )}
       </View>
     </View>

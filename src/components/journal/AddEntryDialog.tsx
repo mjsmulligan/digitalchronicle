@@ -35,7 +35,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
     const base = {
       id: uid(), source: "manual" as const, tier: 1 as const, confidence: "confirmed" as const,
       start: f.time ? `${date}T${f.time}` : date, createdAt: new Date().toISOString(),
-      journal: f.journal || undefined, purpose, companions,
+      reflection: f.reflection || undefined, purpose, companions,
       tripId: (f.tripId || tripId) || undefined,
     };
     let e: Entry;
@@ -182,7 +182,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
             </select>
           )}
         </div>
-        <Textarea placeholder="Reflection…" className="font-serif" value={f.journal ?? ""} onChange={set("journal")} />
+        <Textarea placeholder="Reflection…" className="font-serif" value={f.reflection ?? ""} onChange={set("reflection")} />
         <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : "Save entry"}</Button>
         <p className="text-xs text-muted-foreground">Tag people from the entry card after saving.</p>
       </DialogContent>

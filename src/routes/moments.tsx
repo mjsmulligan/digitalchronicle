@@ -65,7 +65,7 @@ function Moments() {
     return moments.filter((e) => {
       if (cat !== "all" && e.category !== cat) return false;
       if (ql) {
-        const hay = [field(e, "artist"), field(e, "venue"), field(e, "city"), e.tour ?? "", (e.people ?? []).join(" "), (e.companions ?? []).join(" "), e.reflection ?? "", e.journal ?? ""].join(" ").toLowerCase();
+        const hay = [field(e, "artist"), field(e, "venue"), field(e, "city"), e.tour ?? "", (e.people ?? []).join(" "), (e.companions ?? []).join(" "), e.reflection ?? ""].join(" ").toLowerCase();
         if (!hay.includes(ql)) return false;
       }
       if (activePerson && !entryHasPerson(e, activePerson)) return false;

@@ -22,6 +22,9 @@
       ],
       "@chronicle/journal/contacts": [
         "../src/lib/journal/contacts"
+      ],
+      "@chronicle/journal/evaluation": [
+        "../src/lib/journal/evaluation"
       ]
     }
   },
