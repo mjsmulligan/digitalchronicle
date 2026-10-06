@@ -7,55 +7,22 @@ import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Stack } from "expo-router";
 import { clearAll, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
-import { useExifScan } from "../src/lib/exif/useExifScan";
+// useExifScan removed — scan has moved to Sources page (WP15)
 
 export default function SettingsScreen() {
   const journal = useJournal();
   const router = useRouter();
-  const { top } = useSafeAreaInsets();
   const [clearing, setClearing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const dialog = useDialog();
   const { colors, fonts, text, spacing, radius, themeId, setThemeId } = useTheme();
-  const { state: scan, start: startScan, cancel: cancelScan, reset: resetScan } = useExifScan();
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
     content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
-
-    dragHandle: {
-      width: 36,
-      height: 4,
-      backgroundColor: colors.border,
-      borderRadius: 2,
-      alignSelf: "center",
-      marginBottom: spacing.lg,
-    },
-    modalHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: spacing.xl,
-    },
-    modalTitle: {
-      fontSize: 22,
-      fontFamily: fonts.serifSemiBold,
-      fontWeight: "600",
-      color: colors.textBright,
-    },
-    closeBtn: {
-      width: 32,
-      height: 32,
-      backgroundColor: colors.surface,
-      borderRadius: 9999,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
 
     sectionTitle: { ...text.label, color: colors.textTertiary, marginBottom: 10 },
 
@@ -276,21 +243,22 @@ export default function SettingsScreen() {
 
   return (
     <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTitle: "Settings",
+          headerStyle: { backgroundColor: colors.surface },
+          headerTitleStyle: {
+            fontFamily: fonts.serifSemiBold,
+            color: colors.textBright,
+          },
+          headerTintColor: colors.accent,
+        }}
+      />
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
+      contentContainerStyle={styles.content}
     >
-      <View style={styles.dragHandle} />
-      <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>Settings</Text>
-        <Pressable
-          onPress={() => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")}
-          hitSlop={8}
-          style={styles.closeBtn}
-        >
-          <Ionicons name="close" size={18} color={colors.textSecondary} />
-        </Pressable>
-      </View>
 
       {/* ── Appearance ─────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Appearance</Text>
@@ -344,64 +312,19 @@ export default function SettingsScreen() {
       </View>
 
       {/* ── Photo library ───────────────────────────────────────────────── */}
-      <Text style={styles.sectionTitle}>Photo library</Text>
+      {/* Moved to Sources page (WP15). Settings keeps only a navigation link. */}
+      <Text style={styles.sectionTitle}>Sources</Text>
 
-      {/* Scan progress / status */}
-      {(scan.phase === "scanning" || scan.phase === "geocoding" || scan.phase === "building" || scan.phase === "committing") && (
-        <View style={styles.progressRow}>
-          <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={styles.progressText}>
-            {scan.phase === "scanning" && `Scanning… ${scan.scanned} photos`}
-            {scan.phase === "geocoding" && `Looking up locations… ${scan.scanned} photos`}
-            {scan.phase === "building" && "Building places…"}
-            {scan.phase === "committing" && "Saving…"}
-          </Text>
-        </View>
-      )}
-
-      {scan.phase === "done" && (
-        <Text style={[styles.scanStatus, styles.scanStatusDone]}>
-          Done — {scan.created} new place{scan.created !== 1 ? "s" : ""}{scan.extended > 0 ? `, ${scan.extended} extended` : ""}
+      <Pressable
+        style={[styles.card, { flexDirection: "row", alignItems: "center", marginBottom: spacing.xl }]}
+        onPress={() => router.push("/sources" as any)}
+      >
+        <Ionicons name="images-outline" size={18} color={colors.accent} style={{ marginRight: spacing.md }} />
+        <Text style={{ ...styles.resetHint, color: colors.textSecondary, flex: 1, marginBottom: 0 }}>
+          Photo library · manage scan and review suggestions
         </Text>
-      )}
-      {scan.phase === "error" && (
-        <Text style={[styles.scanStatus, styles.scanStatusError]}>
-          Error: {scan.error}
-        </Text>
-      )}
-      {scan.phase === "permission-denied" && (
-        <Text style={[styles.scanStatus, styles.scanStatusError]}>
-          Photo library access was denied. Enable it in Settings → Privacy → Photos.
-        </Text>
-      )}
-      {scan.phase === "cancelled" && (
-        <Text style={styles.scanStatus}>Scan cancelled.</Text>
-      )}
-
-      {/* Scan / Cancel button */}
-      {(scan.phase === "scanning" || scan.phase === "geocoding" || scan.phase === "building" || scan.phase === "committing") ? (
-        <Pressable style={styles.cancelBtn} onPress={cancelScan}>
-          <Ionicons name="stop-circle-outline" size={18} color={colors.textPrimary} />
-          <Text style={styles.cancelBtnText}>Cancel scan</Text>
-        </Pressable>
-      ) : (
-        <Pressable
-          style={[styles.scanBtn, scan.phase === "requesting-permissions" && styles.scanBtnDisabled]}
-          disabled={scan.phase === "requesting-permissions"}
-          onPress={() => startScan({ kind: "all" })}
-        >
-          <Ionicons name="images-outline" size={18} color={colors.white} />
-          <Text style={styles.scanBtnText}>
-            {scan.phase === "done" ? "Re-scan photo library" : "Scan photo library"}
-          </Text>
-        </Pressable>
-      )}
-
-      <Text style={styles.resetHint}>
-        Reads photo locations from your library to generate place entries. Runs on-device — no photos leave your phone.
-      </Text>
-
-      <View style={{ marginBottom: spacing.xl }} />
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
 
       {/* ── Database ────────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Database</Text>

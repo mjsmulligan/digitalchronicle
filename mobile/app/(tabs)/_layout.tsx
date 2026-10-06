@@ -8,18 +8,29 @@ import { useJournal } from "@chronicle/journal/db";
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
 /**
- * Shared top-bar right side: Sources icon (with dot when staged items are
- * pending) + Settings icon. Rendered on every tab via screenOptions.headerRight.
+ * Shared top-bar right side: Import icon (staging dot) + Sources icon
+ * (pending place suggestions dot) + Settings icon.
+ * Rendered on every tab via screenOptions.headerRight.
  */
-function HeaderRight({ stagingCount }: { stagingCount: number }) {
+/**
+ * Shared top-bar right side: Sources icon (dot when anything is pending —
+ * staged import batches OR pending place suggestions) + Settings icon.
+ * Rendered on every tab via screenOptions.headerRight.
+ */
+function HeaderRight({
+  pendingCount,
+}: {
+  pendingCount: number;
+}) {
   const { colors } = useTheme();
   return (
     <View style={{ flexDirection: "row", gap: 4, marginRight: 8 }}>
-      <Link href="/import" asChild>
+      {/* Sources — covers file imports + photo library suggestions */}
+      <Link href="/sources" push asChild>
         <Pressable style={{ padding: 8 }}>
           <View>
-            <Ionicons name="cloud-upload-outline" size={22} color={colors.accentSoft} />
-            {stagingCount > 0 && (
+            <Ionicons name="layers-outline" size={22} color={colors.accentSoft} />
+            {pendingCount > 0 && (
               <View
                 style={{
                   position: "absolute",
@@ -35,6 +46,7 @@ function HeaderRight({ stagingCount }: { stagingCount: number }) {
           </View>
         </Pressable>
       </Link>
+      {/* Settings */}
       <Link href="/settings" asChild>
         <Pressable style={{ padding: 8 }}>
           <Ionicons name="settings-outline" size={22} color={colors.textMuted} />
@@ -49,7 +61,10 @@ export default function TabLayout() {
   const pathname = usePathname();
   const { colors, fonts } = useTheme();
   const journal = useJournal();
-  const stagingCount = journal.staging.length;
+  // Single dot covers file-import batches AND pending place suggestions
+  const pendingCount =
+    journal.staging.length +
+    (journal.placeEntries ?? []).filter((e) => e.status === "pending").length;
 
   // Derive active tab from current path so FloatingNavBar stays in sync
   // without needing the non-existent onIndexChange prop on Tabs.
@@ -89,7 +104,7 @@ export default function TabLayout() {
           },
           tabBarStyle: { display: "none" },
           // Shared top-bar right side on every tab (spec 6.2)
-          headerRight: () => <HeaderRight stagingCount={stagingCount} />,
+          headerRight: () => <HeaderRight pendingCount={pendingCount} />,
         }}
       >
       <Tabs.Screen

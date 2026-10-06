@@ -6,7 +6,7 @@ import type { StorageAdapter, Row } from "./storage";
 // ─── IndexedDB implementation ─────────────────────────────────────────────────
 
 const DB_NAME = "waypoint-journal";
-const DB_VERSION = 6; // v6: added placeEvents store (EXIF photo source WP1)
+const DB_VERSION = 7; // v7: WP10 — added localityPlaces, placeEntries, placeBinMarkers stores
 
 class IDBAdapter implements StorageAdapter {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -67,7 +67,7 @@ class IDBAdapter implements StorageAdapter {
   }
 
   async clearAll(): Promise<void> {
-    await this.replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [] });
+    await this.replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [], localityPlaces: [], placeEntries: [], placeBinMarkers: [] });
   }
 }
 
@@ -99,7 +99,7 @@ export interface State extends JournalData {
   ready: boolean;
   commitProgress: CommitProgress | null;
 }
-const empty = (): State => ({ ready: false, commitProgress: null, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [] });
+const empty = (): State => ({ ready: false, commitProgress: null, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [], localityPlaces: [], placeEntries: [], placeBinMarkers: [] });
 const SERVER = empty();
 let state: State = empty();
 const listeners = new Set<() => void>();
@@ -112,9 +112,12 @@ function emit(next: Partial<State>) {
 
 function hasPlace(e: Entry): boolean {
   if (e.kind === "leg") return !!(e.from || e.to || e.overrides?.from || e.overrides?.to);
-  if (e.kind === "place") return true; // PlaceEvents are always city-level — always load geocoder
+  if (e.kind === "place") return true;        // legacy PlaceEvent — always city-level
+  if (e.kind === "place-entry") return false; // WP10: locality resolved at scan time, no geocoder needed here
   if (e.kind === "film" || e.kind === "episode" || e.kind === "book") return false;
-  return !!(e.city || e.overrides?.city || (e.kind === "stay" && (e.place || e.overrides?.place)));
+  if (e.kind === "stay") return !!(e.place || e.overrides?.place || e.city || e.overrides?.city);
+  // event / JEvent
+  return !!(e.city || e.overrides?.city);
 }
 
 function hasJournalPlaces(data: Partial<JournalData>): boolean {
@@ -273,7 +276,12 @@ export async function replaceAll(data: JournalData) {
 }
 
 export async function clearAll() {
-  await replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [] });
+  await replaceAll({
+    trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [],
+    series: [], notes: [], staging: [], people: [], places: [],
+    placeEvents: [],
+    localityPlaces: [], placeEntries: [], placeBinMarkers: [],
+  });
 }
 
 export type { PlaceRecord };
@@ -281,7 +289,8 @@ export type { PlaceRecord };
 export function storeFor(e: Entry): StoreName {
   if (e.kind === "leg") return "legs";
   if (e.kind === "stay") return "stays";
-  if (e.kind === "place") return "placeEvents";
+  if (e.kind === "place") return "placeEvents";       // legacy PlaceEvent
+  if (e.kind === "place-entry") return "placeEntries"; // WP10
   if (e.kind === "film") return "films";
   if (e.kind === "episode") return "episodes";
   if (e.kind === "book") return "books";
@@ -289,5 +298,9 @@ export function storeFor(e: Entry): StoreName {
 }
 
 export function allEntries(s: JournalData): Entry[] {
-  return [...s.legs, ...s.stays, ...s.events, ...s.films, ...s.episodes, ...s.books, ...(s.placeEvents ?? [])];
+  return [
+    ...s.legs, ...s.stays, ...s.events, ...s.films, ...s.episodes, ...s.books,
+    ...(s.placeEvents ?? []),                                          // legacy
+    ...(s.placeEntries ?? []).filter((e) => e.status === "accepted"), // WP10: pending/dismissed are staging items, not journal entries
+  ];
 }

@@ -54,8 +54,11 @@ interface Base {
   /** Tier 1 manual overrides layered on top of source data */
   overrides?: Record<string, string>;
   createdAt: string;
-  /** How sure we are this fact (not just this record) is right. Not the same as Tier. */
-  confidence: Confidence;
+  /**
+   * How sure we are this fact (not just this record) is right. Not the same as Tier.
+   * Optional: PlaceEntry does not use confidence (staging hints replace it — see WP10).
+   */
+  confidence?: Confidence;
   purpose?: Purpose;
   /** Person ids or free-text names of who was there */
   companions?: string[];
@@ -205,15 +208,11 @@ export interface PhotoEvidenceRef {
 }
 
 /**
+ * @deprecated Superseded by PlaceEntry (WP10). Kept only to avoid breaking
+ * the existing scan pipeline until WP12/WP13 replace it. Do not use in new code.
+ *
  * A city-level place event derived from evidence (photos, calendar, receipts, …).
- *
- * Not a reuse of `stay` (which implies lodging/check-in) and not photo-specific —
- * any source can produce a `place`. Represents presence in a city over a date range.
- *
- * Base.start = dateStart (first day, YYYY-MM-DD)
- * Base.end   = dateEnd   (last day,  YYYY-MM-DD)
- *
- * dedupeKey: `place|{localityKey}|{start}` — same city, same first day = same place.
+ * Represents presence in a city over a date range (ranges removed in WP10 spec).
  */
 export interface PlaceEvent extends Base {
   kind: "place";
@@ -221,23 +220,111 @@ export interface PlaceEvent extends Base {
   locality: string;
   region?: string;
   country?: string;
-  /**
-   * Stable opaque key from the device geocoder identifying this locality.
-   * Used for grouping, deduplication, and run identity.
-   */
   localityKey: LocalityKey;
-  /**
-   * Representative sample of photo references that produced this place.
-   * Not exhaustive — full count is in photoCount.
-   */
   photoEvidence: PhotoEvidenceRef[];
-  /** Total number of photos that contributed to this place (before sampling) */
   photoCount: number;
-  /** True when this place was created from a single photo (reduced confidence) */
   singlePhoto?: boolean;
 }
 
-export type Entry = Leg | Stay | JEvent | Film | Episode | Book | PlaceEvent;
+// ─── WP10: Place container and one-day entry ──────────────────────────────────
+
+/**
+ * User-decision state for a PlaceEntry.
+ *   pending   — arrived from a scan, waiting for the user to accept or dismiss.
+ *   accepted  — the user confirmed this day at this place.
+ *   dismissed — the user rejected it; lives in the bin until the bin is emptied,
+ *               then a PlaceBinMarker is kept so re-scan still skips it.
+ */
+export type PlaceStatus = "pending" | "accepted" | "dismissed";
+
+/**
+ * A locality place container. Like Trip or Series, this is not an Entry — it is
+ * a grouping record that holds PlaceEntry children.
+ *
+ * Places are created when the first PlaceEntry for a locality is confirmed.
+ * A place knows its geographic parents (region, country) so the Staging Hub
+ * can browse the full hierarchy.
+ *
+ * dedupeKey is not used here; uniqueness is by localityKey (+ aliasKeys).
+ */
+export interface Place {
+  id: string;
+  kind: "place";
+  /** Normalised locality key from the geocoder (e.g. "ie:dublin") */
+  localityKey: LocalityKey;
+  /**
+   * Keys of places that have been merged into this one (spelling variants).
+   * Re-scan maps photos matching any alias key to this place.
+   */
+  aliasKeys?: LocalityKey[];
+  /** Human-readable city / town name (e.g. "Dublin") */
+  locality: string;
+  region?: string;
+  country?: string;
+  /**
+   * Id of the parent Place (the region-level or country-level container).
+   * Undefined for top-level country places.
+   */
+  parentId?: string;
+  createdAt: string;
+}
+
+/**
+ * A single-day place fact: this locality, this calendar day, this evidence.
+ *
+ * A two-day stay in London is one Place with two PlaceEntries.
+ * A weekend in London plus a day trip two weeks later is one Place with three entries.
+ * There are no date ranges; visits (consecutive entries) are derived for display.
+ *
+ * Base.start = localDay (YYYY-MM-DD). Base.end is not used.
+ *
+ * dedupeKey: `place-entry|{localityKey}|{localDay}` — same place, same day = same entry.
+ */
+export interface PlaceEntry extends Base {
+  kind: "place-entry";
+  /** Id of the Place container this entry belongs to */
+  placeId: string;
+  /**
+   * Locality key (denormalised from the Place container for quick lookup
+   * without a join, e.g. in deduplication).
+   */
+  localityKey: LocalityKey;
+  /**
+   * The local calendar day this entry covers. Same value as Base.start —
+   * kept as an explicit field so callers don't need to know the Base convention.
+   */
+  localDay: string; // YYYY-MM-DD
+  /** Photo evidence sampled from this day (up to 10 refs) */
+  photoEvidence: PhotoEvidenceRef[];
+  /** Total number of photos that produced this entry (before the 10-ref sample) */
+  photoCount: number;
+  /** True when this entry was produced from a single photo */
+  singlePhoto?: boolean;
+  /** User decision on this entry */
+  status: PlaceStatus;
+}
+
+/**
+ * Minimal record kept after the bin is emptied for a dismissed PlaceEntry.
+ * The full PlaceEntry is deleted; this marker survives so a re-scan can
+ * still recognise and skip the same photos.
+ *
+ * A "reset decisions" action removes these markers, allowing the entry to be
+ * offered again on the next scan.
+ */
+export interface PlaceBinMarker {
+  /** Stable id for IndexedDB keyPath */
+  id: string;
+  localityKey: LocalityKey;
+  /** Keys of any merged place that also maps to this locality */
+  aliasKeys?: LocalityKey[];
+  /** The day that was dismissed (YYYY-MM-DD) */
+  localDay: string;
+  /** Media IDs of the photos that were in the dismissed entry */
+  photoIds: string[];
+}
+
+export type Entry = Leg | Stay | JEvent | Film | Episode | Book | PlaceEvent | PlaceEntry;
 
 /**
  * A person who appears in journal entries.
@@ -319,12 +406,30 @@ export interface JournalData {
   notes: Note[];
   staging: StagingBatch[];
   people: Person[];
+  /** Transit place records (airports, stations) used for geo lookup — NOT locality places */
   places: PlaceRecord[];
-  /** City-level place events from the EXIF photo library source and other evidence sources */
+  /**
+   * @deprecated Superseded by localityPlaces + placeEntries (WP10).
+   * Kept for the existing scan pipeline until WP12/WP13 replace it.
+   * Will be removed once the migration is complete.
+   */
   placeEvents: PlaceEvent[];
+  /** WP10: Place containers (one per locality, like Trip / Series) */
+  localityPlaces: Place[];
+  /** WP10: One-day place facts (one per locality+day) */
+  placeEntries: PlaceEntry[];
+  /** WP10: Minimal markers kept after the bin is emptied, so re-scan still skips dismissed photos */
+  placeBinMarkers: PlaceBinMarker[];
 }
 
-export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging", "people", "places", "placeEvents"] as const;
+export const STORES = [
+  "trips", "legs", "stays", "events", "films", "episodes", "books",
+  "series", "notes", "staging", "people", "places",
+  // Legacy (WP1–WP9)
+  "placeEvents",
+  // WP10
+  "localityPlaces", "placeEntries", "placeBinMarkers",
+] as const;
 export type StoreName = (typeof STORES)[number];
 
 /**
@@ -369,6 +474,16 @@ export function entryTitle(e: Entry): string {
   if (v.kind === "leg") return `${v.from} → ${v.to}`;
   if (v.kind === "stay") return v.place;
   if (v.kind === "place") return v.country ? `${v.locality}, ${v.country}` : v.locality;
+  if (v.kind === "place-entry") {
+    // Derive a human-readable name from localityKey ("gb:london" → "London",
+    // "it:porto-venere" → "Porto Venere"). The Place container carries the
+    // canonical name but entryTitle can't access the store, so we parse the key.
+    const slug = v.localityKey.slice(v.localityKey.indexOf(":") + 1);
+    return slug
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
   if (v.kind === "film") return v.year ? `${v.title} (${v.year})` : v.title;
   if (v.kind === "episode") return v.episodeTitle ? `${v.showTitle}: ${v.episodeTitle}` : v.showTitle;
   if (v.kind === "book") return v.author ? `${v.title} — ${v.author}` : v.title;

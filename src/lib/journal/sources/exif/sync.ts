@@ -161,7 +161,8 @@ export function buildUpsertPlan(
     for (const existing of sameLocality) {
       // Use the already-extended version if we merged it earlier this run
       const current = extended.get(existing.id) ?? existing;
-      if (rangesOverlapOrAdjacent(current.start, current.end, candidate.start, candidate.end)) {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      if (rangesOverlapOrAdjacent(current.start, current.end!, candidate.start, candidate.end!)) {
         matched = current;
         break;
       }
@@ -180,7 +181,8 @@ export function buildUpsertPlan(
     }
 
     // Subsumed: candidate range fully contained in existing → no-op
-    if (candidate.start >= matched.start && candidate.end <= matched.end) {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    if (candidate.start >= matched.start && candidate.end! <= matched.end!) {
       actions.push({ kind: "no-op", existing: matched, reason: "subsumed" });
       continue;
     }
@@ -189,7 +191,8 @@ export function buildUpsertPlan(
     const merged: PlaceEvent = {
       ...matched,
       start: minDay(matched.start, candidate.start),
-      end: maxDay(matched.end, candidate.end),
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      end: maxDay(matched.end!, candidate.end!),
       photoEvidence: mergeEvidence(matched.photoEvidence, candidate.photoEvidence),
       photoCount: matched.photoCount + candidate.photoCount,
     };

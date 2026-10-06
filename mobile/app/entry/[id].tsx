@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent } from "@chronicle/journal/types";
+import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "@chronicle/journal/types";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { SourceMark } from "../../src/components/SourceMark";
@@ -236,6 +236,65 @@ function PlaceDetail({ e, styles, ic }: { e: PlaceEvent; styles: DetailStyles; i
   );
 }
 
+function PlaceEntryDetail({
+  e, place, styles, ic,
+}: {
+  e: PlaceEntry;
+  place?: { locality: string; region?: string; country?: string };
+  styles: DetailStyles;
+  ic: IconColors;
+}) {
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const evidence = e.photoEvidence.filter((r) => !r.missing && r.uri);
+
+  // Derive a readable name from localityKey as fallback ("gb:county-donegal" → "County Donegal")
+  const fallbackName = e.localityKey
+    .slice(e.localityKey.indexOf(":") + 1)
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+  const locality = place?.locality ?? fallbackName;
+  const country  = place?.country;
+  const region   = place?.region;
+
+  return (
+    <>
+      <Text style={styles.title}>{locality}{country ? `, ${country}` : ""}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="place" size={15} color={ic.secondary} />
+        <Text style={styles.subtitle}>Place{region ? ` · ${region}` : ""}</Text>
+      </View>
+      <Divider styles={styles} />
+      <Field label="Date"    value={e.localDay}                                   styles={styles} />
+      <Field label="Region"  value={region}                                        styles={styles} />
+      <Field label="Country" value={country}                                       styles={styles} />
+      <Field label="Photos"  value={e.photoCount ? String(e.photoCount) : undefined} styles={styles} />
+      {evidence.length > 0 && (
+        <>
+          <Divider styles={styles} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
+            {evidence.map((ref) => (
+              <Pressable
+                key={ref.mediaId}
+                onPress={() => ref.uri && setPreviewUri(ref.uri)}
+                style={{ borderRadius: 8, overflow: "hidden" }}
+              >
+                <Image source={{ uri: ref.uri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      )}
+      <Modal visible={!!previewUri} transparent animationType="fade" onRequestClose={() => setPreviewUri(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center" }} onPress={() => setPreviewUri(null)}>
+          <Image source={{ uri: previewUri ?? "" }} style={{ width: "100%", height: "80%" }} resizeMode="contain" />
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 function EventDetail({ e, styles, ic }: { e: JEvent; styles: DetailStyles; ic: IconColors }) {
   const v = view(e);
   if (v.kind !== "event") return null;
@@ -321,6 +380,12 @@ export default function EntryDetailScreen() {
     [journal, id]
   );
 
+  // For place-entry kind, look up the Place container for canonical name/region/country
+  const placeContainer = useMemo(() => {
+    if (!entry || entry.kind !== "place-entry") return undefined;
+    return (journal.localityPlaces ?? []).find((p) => p.id === (entry as PlaceEntry).placeId);
+  }, [entry, journal.localityPlaces]);
+
   if (!entry) {
     return (
       <View style={styles.notFound}>
@@ -341,13 +406,14 @@ export default function EntryDetailScreen() {
       <Stack.Screen options={{ title: "", ...common.header }} />
 
       <View style={styles.card}>
-        {entry.kind === "leg"     && <LegDetail     e={entry as Leg}        styles={styles} ic={ic} />}
-        {entry.kind === "stay"    && <StayDetail    e={entry as Stay}       styles={styles} ic={ic} />}
-        {entry.kind === "place"   && <PlaceDetail   e={entry as PlaceEvent} styles={styles} ic={ic} />}
-        {entry.kind === "film"    && <FilmDetail    e={entry as Film}       styles={styles} ic={ic} />}
-        {entry.kind === "episode" && <EpisodeDetail e={entry as Episode}    styles={styles} ic={ic} />}
-        {entry.kind === "book"    && <BookDetail    e={entry as Book}       styles={styles} ic={ic} />}
-        {entry.kind === "event"   && <EventDetail   e={entry as JEvent}     styles={styles} ic={ic} />}
+        {entry.kind === "leg"         && <LegDetail         e={entry as Leg}        styles={styles} ic={ic} />}
+        {entry.kind === "stay"        && <StayDetail        e={entry as Stay}       styles={styles} ic={ic} />}
+        {entry.kind === "place"       && <PlaceDetail       e={entry as PlaceEvent} styles={styles} ic={ic} />}
+        {entry.kind === "place-entry" && <PlaceEntryDetail  e={entry as PlaceEntry} place={placeContainer} styles={styles} ic={ic} />}
+        {entry.kind === "film"        && <FilmDetail        e={entry as Film}       styles={styles} ic={ic} />}
+        {entry.kind === "episode"     && <EpisodeDetail     e={entry as Episode}    styles={styles} ic={ic} />}
+        {entry.kind === "book"        && <BookDetail        e={entry as Book}       styles={styles} ic={ic} />}
+        {entry.kind === "event"       && <EventDetail       e={entry as JEvent}     styles={styles} ic={ic} />}
       </View>
 
       {/* Reflection */}

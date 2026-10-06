@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { connector } from "./index";
 import sampleText from "./fixtures/sample.ics?raw";
-import type { JEvent, Stay } from "../../types";
+import type { JEvent, Stay, Leg } from "../../types";
 
 describe("icalendar connector", () => {
   it("has correct metadata", () => {
@@ -167,6 +167,138 @@ describe("icalendar connector", () => {
     it("sets startTz to UTC", () => {
       const entry = r.entries[3].entry as JEvent;
       expect(entry.startTz).toBe("UTC");
+    });
+  });
+
+  describe("flight detection → Leg", () => {
+    function parseFlight(summary: string, dtstart = "20261015T060000Z", dtend = "20261015T080000Z") {
+      const ics = [
+        "BEGIN:VCALENDAR",
+        "BEGIN:VEVENT",
+        `DTSTART:${dtstart}`,
+        `DTEND:${dtend}`,
+        `SUMMARY:${summary}`,
+        "END:VEVENT",
+        "END:VCALENDAR",
+      ].join("\n");
+      const r = connector.parse({ name: "test.ics", text: ics });
+      if (r instanceof Promise) throw new Error("sync expected");
+      return r;
+    }
+
+    it("'Flight LHR-CDG' → Leg with from/to", () => {
+      const { entries } = parseFlight("Flight LHR-CDG");
+      expect(entries).toHaveLength(1);
+      const leg = entries[0].entry as Leg;
+      expect(leg.kind).toBe("leg");
+      expect(leg.mode).toBe("air");
+      expect(leg.from).toBe("LHR");
+      expect(leg.to).toBe("CDG");
+    });
+
+    it("'BA123 LHR → CDG' → Leg with flightNumber", () => {
+      const { entries } = parseFlight("BA123 LHR → CDG");
+      const leg = entries[0].entry as Leg;
+      expect(leg.kind).toBe("leg");
+      expect(leg.from).toBe("LHR");
+      expect(leg.to).toBe("CDG");
+      expect(leg.flightNumber).toBe("BA123");
+    });
+
+    it("'Flight to Paris' → Leg with ??? placeholders and warning", () => {
+      const { entries } = parseFlight("Flight to Paris");
+      const leg = entries[0].entry as Leg;
+      expect(leg.kind).toBe("leg");
+      expect(leg.from).toBe("???");
+      expect(leg.to).toBe("???");
+      expect(entries[0].warnings.length).toBeGreaterThan(0);
+    });
+
+    it("'EI204 DUB ORD' → Leg without 'flight' keyword", () => {
+      const { entries } = parseFlight("EI204 DUB ORD");
+      const leg = entries[0].entry as Leg;
+      expect(leg.kind).toBe("leg");
+      expect(leg.from).toBe("DUB");
+      expect(leg.to).toBe("ORD");
+      expect(leg.flightNumber).toBe("EI204");
+    });
+
+    it("dedupeKey starts with leg|", () => {
+      const { entries } = parseFlight("Flight LHR-CDG");
+      expect(entries[0].entry.dedupeKey).toMatch(/^leg\|/);
+    });
+
+    it("end date set from DTEND", () => {
+      const { entries } = parseFlight("Flight LHR-CDG", "20261015T060000Z", "20261015T085500Z");
+      const leg = entries[0].entry as Leg;
+      expect(leg.end).toBeDefined();
+    });
+  });
+
+  describe("train detection → Leg", () => {
+    function parseTrain(summary: string, dtstart = "20261015T090000Z", dtend = "20261015T120000Z") {
+      const ics = [
+        "BEGIN:VCALENDAR",
+        "BEGIN:VEVENT",
+        `DTSTART:${dtstart}`,
+        `DTEND:${dtend}`,
+        `SUMMARY:${summary}`,
+        "END:VEVENT",
+        "END:VCALENDAR",
+      ].join("\n");
+      const r = connector.parse({ name: "test.ics", text: ics });
+      if (r instanceof Promise) throw new Error("sync expected");
+      return r;
+    }
+
+    it("'Train London to Edinburgh' → Leg mode rail", () => {
+      const { entries } = parseTrain("Train London to Edinburgh");
+      expect(entries).toHaveLength(1);
+      const leg = entries[0].entry as Leg;
+      expect(leg.kind).toBe("leg");
+      expect(leg.mode).toBe("rail");
+      expect(leg.from).toBe("London");
+      expect(leg.to).toBe("Edinburgh");
+    });
+
+    it("'Eurostar London → Paris' → Leg with arrow extraction", () => {
+      const { entries } = parseTrain("Eurostar London → Paris");
+      const leg = entries[0].entry as Leg;
+      expect(leg.kind).toBe("leg");
+      expect(leg.mode).toBe("rail");
+      expect(leg.from).toBe("London");
+      expect(leg.to).toBe("Paris");
+    });
+
+    it("'ICE123 Hamburg → Berlin' → Leg with trainNumber", () => {
+      const { entries } = parseTrain("ICE123 Hamburg → Berlin");
+      const leg = entries[0].entry as Leg;
+      expect(leg.kind).toBe("leg");
+      expect(leg.mode).toBe("rail");
+      expect(leg.from).toBe("ICE123 Hamburg");
+      expect(leg.to).toBe("Berlin");
+      expect(leg.trainNumber).toBeDefined();
+    });
+
+    it("'Train to Cork' → Leg with ??? placeholders and warning", () => {
+      const { entries } = parseTrain("Train to Cork");
+      const leg = entries[0].entry as Leg;
+      expect(leg.kind).toBe("leg");
+      expect(leg.mode).toBe("rail");
+      expect(leg.from).toBe("???");
+      expect(entries[0].warnings.length).toBeGreaterThan(0);
+      expect(entries[0].warnings[0]).toMatch(/station names/i);
+    });
+
+    it("train does not set flightNumber", () => {
+      const { entries } = parseTrain("Train London → Edinburgh");
+      const leg = entries[0].entry as Leg;
+      expect(leg.flightNumber).toBeUndefined();
+    });
+
+    it("dedupeKey starts with leg|", () => {
+      const { entries } = parseTrain("Train London → Edinburgh");
+      expect(entries[0].entry.dedupeKey).toMatch(/^leg\|/);
     });
   });
 

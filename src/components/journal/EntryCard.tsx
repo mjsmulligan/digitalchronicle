@@ -24,14 +24,15 @@ export function entryIcon(e: Entry) {
   if (e.kind === "episode") return Tv;
   if (e.kind === "book") return BookOpen;
   if (e.kind === "place") return MapPin;
-  return CAT_ICON[e.category ?? "activity"];
+  if (e.kind === "place-entry") return MapPin;
+  return CAT_ICON[(e as Extract<typeof e, { category?: string }>).category ?? "activity"];
 }
 export function entryColor(e: Entry) {
   if (e.kind === "leg") return e.mode === "air" ? "text-air" : e.mode === "rail" ? "text-rail" : "text-road";
   if (e.kind === "stay") return "text-stay";
   if (e.kind === "film" || e.kind === "episode" || e.kind === "book") return "text-muted-foreground";
-  if (e.kind === "place") return "text-muted-foreground";
-  return e.category === "milestone" ? "text-primary" : "text-gig";
+  if (e.kind === "place" || e.kind === "place-entry") return "text-muted-foreground";
+  return (e as Extract<typeof e, { category?: string }>).category === "milestone" ? "text-primary" : "text-gig";
 }
 export function entryLabel(e: Entry) {
   if (e.kind === "leg") return e.mode === "air" ? "Flight" : e.mode === "rail" ? "Train" : "Road";
@@ -40,7 +41,8 @@ export function entryLabel(e: Entry) {
   if (e.kind === "episode") return "Episode";
   if (e.kind === "book") return e.series ? "Series" : "Book";
   if (e.kind === "place") return "Place";
-  return CATEGORY_LABEL[e.category ?? "activity"];
+  if (e.kind === "place-entry") return "Place";
+  return CATEGORY_LABEL[(e as Extract<typeof e, { category?: EventCategory }>).category ?? "activity"];
 }
 
 const time = (s?: string) => (s && s.includes("T") ? s.slice(11, 16) : "");
@@ -53,6 +55,7 @@ const OVERRIDE_FIELDS: Record<Entry["kind"], string[]> = {
   episode: ["showTitle", "season", "episodeTitle", "start"],
   book: ["title", "author", "year", "series", "start"],
   place: ["locality", "region", "country", "start", "end"],
+  "place-entry": [], // WP10: PlaceEntry fields are not user-editable via override UI
 };
 
 // ---------------------------------------------------------------------------
@@ -280,7 +283,9 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
               ? [v.series && `${v.series}${v.seriesNumber ? ` #${v.seriesNumber}` : ""}`, v.year && String(v.year)].filter(Boolean).join(" · ")
               : v.kind === "place"
                 ? [v.region, v.country].filter(Boolean).join(", ")
-                : [v.category === "concert" ? v.venue : v.venue, v.city, v.people?.join(", ")].filter(Boolean).join(" · ");
+                : v.kind === "place-entry"
+                  ? [v.localDay, `${v.photoCount} photo${v.photoCount === 1 ? "" : "s"}`].filter(Boolean).join(" · ")
+                  : [v.category === "concert" ? v.venue : v.venue, v.city, (v as Extract<typeof v, { people?: string[] }>).people?.join(", ")].filter(Boolean).join(" · ");
 
   return (
     <div className="rounded-md border border-border bg-card">

@@ -2,7 +2,7 @@ import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor 
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations } from "./geo";
 import {
-  uid, view, type Entry, type StagedRecord, type StagingBatch,
+  uid, view, type Entry, type Leg, type StagedRecord, type StagingBatch,
 } from "./types";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
@@ -21,9 +21,11 @@ export function placeLabel(e: Entry): string {
   if (v.kind === "leg") return v.toName ?? v.to;
   if (v.kind === "stay") return v.city ?? v.place;
   if (v.kind === "place") return v.locality;
+  if (v.kind === "place-entry") return v.localDay;
   if (v.kind === "film") return v.title;
   if (v.kind === "episode") return v.showTitle;
   if (v.kind === "book") return v.title;
+  // JEvent
   return v.city || v.venue;
 }
 
@@ -52,6 +54,17 @@ export async function stageFile(filename: string, text: string, forced?: string)
   const existing = new Map(allEntries(getState()).map((e) => [e.dedupeKey, e]));
   const seen = new Set<string>();
 
+  // Secondary index: date → existing legs, for fuzzy flight dedup (see below).
+  const legsByDate = new Map<string, Entry[]>();
+  for (const e of existing.values()) {
+    if (e.kind === "leg") {
+      const day = e.start.slice(0, 10);
+      const bucket = legsByDate.get(day);
+      if (bucket) bucket.push(e);
+      else legsByDate.set(day, [e]);
+    }
+  }
+
   // Chunk the classify loop so the UI thread isn't starved on large imports
   // (e.g. 4000-row Netflix history). Yield every 200 entries.
   const CLASSIFY_CHUNK = 200;
@@ -60,9 +73,30 @@ export async function stageFile(filename: string, text: string, forced?: string)
     if (i > 0 && i % CLASSIFY_CHUNK === 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
-    const { entry, warnings, sourceRow } = res.entries[i];
+    const { entry, sourceRow } = res.entries[i];
+    let { warnings } = res.entries[i];
     entry.sourceRef = `${filename}#row${sourceRow}`;
-    const c = classify(entry, existing, seen);
+    let c = classify(entry, existing, seen);
+
+    // Fuzzy flight dedup: a leg with ??? placeholder codes (airport codes
+    // couldn't be parsed from the calendar summary) won't match any real leg by
+    // dedupeKey. If another leg already exists on the same date, flag it as a
+    // likely duplicate so the user reviews it rather than auto-committing.
+    if (
+      c.status === "new" &&
+      entry.kind === "leg" &&
+      (entry as Leg).from === "???"
+    ) {
+      const sameDayLegs = legsByDate.get(entry.start.slice(0, 10)) ?? [];
+      if (sameDayLegs.length > 0) {
+        c = { status: "duplicate", matchId: sameDayLegs[0].id };
+        warnings = [
+          ...warnings,
+          "Airport codes couldn't be parsed — possible duplicate of an existing flight on this date. Verify before committing.",
+        ];
+      }
+    }
+
     records.push({ entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" });
   }
   const batch: StagingBatch = { id: uid(), source, filename, createdAt: new Date().toISOString(), records, errors: res.errors };
@@ -79,7 +113,7 @@ const COMMIT_CHUNK = 100;
 export async function commitBatch(b: StagingBatch) {
   const s = getState();
   const byId = new Map(allEntries(s).map((e) => [e.id, e]));
-  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [], films: [], episodes: [], books: [], placeEvents: [] };
+  const writes: Record<string, Entry[]> = { legs: [], stays: [], events: [], films: [], episodes: [], books: [], placeEvents: [], placeEntries: [] };
   let count = 0;
   for (const r of b.records) {
     if (!r.selected) continue;
@@ -96,7 +130,7 @@ export async function commitBatch(b: StagingBatch) {
 
   // Flatten all entries to write so we can report progress across store types.
   const allWrites: { store: keyof typeof writes; entry: Entry }[] = [];
-  for (const store of ["legs", "stays", "events", "films", "episodes", "books", "placeEvents"] as const) {
+  for (const store of ["legs", "stays", "events", "films", "episodes", "books", "placeEvents", "placeEntries"] as const) {
     for (const entry of writes[store]) allWrites.push({ store, entry });
   }
 

@@ -19,6 +19,44 @@
 import type { LocalityKey } from "../../types";
 import type { LocalityInfo, LocalityResolver } from "./types";
 
+// ─── Key normalisation (WP11) ─────────────────────────────────────────────────
+
+/**
+ * Derive a stable, normalised LocalityKey from a geocoder result.
+ *
+ * Algorithm (spec §8 WP11):
+ *   1. NFD decompose so accented characters become base + combining accent.
+ *   2. Strip all combining diacritics (U+0300–U+036F).
+ *   3. Lowercase and trim.
+ *   4. Replace runs of whitespace, hyphens, en-dashes, or em-dashes with a
+ *      single ASCII hyphen.
+ *   5. Remove any remaining characters that are not a–z, 0–9, or hyphen.
+ *   6. Prefix with the lowercase ISO 3166-1 alpha-2 country code.
+ *
+ * Examples:
+ *   normaliseLocalityKey("GB", "London")       → "gb:london"
+ *   normaliseLocalityKey("IT", "Porto Venere") → "it:porto-venere"
+ *   normaliseLocalityKey("IT", "Portovenere")  → "it:portovenere"   // different spelling
+ *   normaliseLocalityKey("DE", "München")      → "de:munchen"
+ *   normaliseLocalityKey("BR", "São Paulo")    → "br:sao-paulo"
+ *
+ * Note: "Porto Venere" and "Portovenere" remain distinct after normalisation
+ * (different number of hyphens in the name). They are merged by the user via
+ * aliasKeys in the staging UI (acceptance check 14).
+ */
+export function normaliseLocalityKey(isoCode: string, name: string): LocalityKey {
+  const normName = name
+    .normalize("NFD")                              // decompose: é → e + U+0301
+    .replace(/[̀-ͯ]/g, "")              // drop combining diacritics
+    .toLowerCase()
+    .trim()
+    .replace(/[-\s–—]+/g, "-")          // space / hyphen / en-dash / em-dash → "-"
+    .replace(/-+/g, "-")                           // collapse consecutive hyphens
+    .replace(/[^a-z0-9-]/g, "");                  // strip anything else
+  const normIso = isoCode.toLowerCase().trim();
+  return `${normIso}:${normName}` as LocalityKey;
+}
+
 // ─── Coordinate coarsening ────────────────────────────────────────────────────
 
 /**

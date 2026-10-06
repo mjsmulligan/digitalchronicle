@@ -19,34 +19,30 @@
  */
 
 import * as Location from "expo-location";
+import { normaliseLocalityKey } from "../../../../src/lib/journal/sources/exif/localityResolver";
 import type { LocalityResolver, LocalityInfo } from "../../../../src/lib/journal/sources/exif/types";
 
 /**
- * Derive a stable, lowercase locality key from the geocoder output.
- * Format: "{iso2}:{city}" — e.g. "gb:london", "ie:dublin", "de:berlin".
- * Lowercase + trimmed to be consistent across platform capitalisation differences.
- */
-function deriveKey(isoCountryCode: string, cityName: string): string {
-  return `${isoCountryCode.toLowerCase().trim()}:${cityName.toLowerCase().trim().replace(/\s+/g, "-")}`;
-}
-
-/**
- * Pick the best "city-level" locality name from an Address object.
+ * Pick the best locality name from an Address object, along with its hierarchy level.
  *
- * Preference (spec §8): locality → city → district → subregion → region.
+ * Preference (spec §8, WP11): city/district → subregion → region.
  * The exact fields present differ between iOS (uses "city", "district") and
  * Android (uses "city", "subregion", "region"). This function is robust to either.
+ *
+ * Returns the name and the level at which it was found so callers can set
+ * LocalityInfo.level accordingly.
  */
-function pickCityName(addr: Location.LocationGeocodedAddress): string | null {
+function pickLocality(
+  addr: Location.LocationGeocodedAddress,
+): { name: string; level: "locality" | "region" | "country" } | null {
   // "city" is the most consistently named field across platforms.
-  // "district" (iOS) and "name" can resolve to a suburb — we try city first.
-  return (
-    addr.city ??
-    addr.district ??
-    addr.subregion ??
-    addr.region ??
-    null
-  );
+  // "district" (iOS) can resolve to a suburb — we try city first.
+  if (addr.city)      return { name: addr.city,      level: "locality" };
+  if (addr.district)  return { name: addr.district,  level: "locality" };
+  // Subregion / region returns county-level results (e.g. "County Dublin").
+  if (addr.subregion) return { name: addr.subregion, level: "region" };
+  if (addr.region)    return { name: addr.region,    level: "region" };
+  return null;
 }
 
 /**
@@ -76,18 +72,19 @@ export const deviceGeocoder: LocalityResolver = {
     if (!results.length) return null;
 
     const addr = results[0];
-    const city = pickCityName(addr);
+    const picked = pickLocality(addr);
     const isoCode = addr.isoCountryCode;
 
-    if (!city || !isoCode) return null;
+    if (!picked || !isoCode) return null;
 
-    const key = deriveKey(isoCode, city);
+    const key = normaliseLocalityKey(isoCode, picked.name);
 
     return {
-      name: city,
+      name: picked.name,
       region: addr.region ?? undefined,
       country: addr.country ?? undefined,
       key,
+      level: picked.level,
     };
   },
 };

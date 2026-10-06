@@ -6,17 +6,19 @@
  *
  * Classification rules:
  *   - All-day DTSTART + DTEND spanning ≥ 2 days → Stay (hotel, Airbnb, trip)
+ *   - Summary contains "flight"/"fly" or two IATA codes → Leg (mode: air)
+ *   - Summary contains "train"/"rail"/"eurostar"/etc. → Leg (mode: rail)
  *   - All-day single-day or timed event → JEvent
  *   - Events with RRULE (recurring) → skipped, warning emitted
  *
  * Tier 3: calendar files are secondary evidence — confirm or enrich in staging.
  */
 import { uid } from "../../types";
-import type { JEvent, Stay, EventCategory } from "../../types";
+import type { JEvent, Stay, Leg, EventCategory } from "../../types";
 import { timezoneFor } from "../../geo";
 import { localToUTC } from "../../tz";
 import type { Connector, ParseResult } from "../types";
-import { eventKey, stayKey } from "../keys";
+import { eventKey, stayKey, legKey } from "../keys";
 
 const SOURCE = "icalendar" as const;
 const now = () => new Date().toISOString();
@@ -131,7 +133,106 @@ function inferCategory(summary: string, cats: string): EventCategory {
   for (const [kw, cat] of CATEGORY_MAP) {
     if (text.includes(kw)) return cat;
   }
-  return "memory";
+  return "activity";
+}
+
+// ---------------------------------------------------------------------------
+// Transport detection (flight + train → Leg)
+// ---------------------------------------------------------------------------
+
+/** IATA airport code — exactly 3 uppercase letters. */
+const IATA_RE = /\b([A-Z]{3})\b/g;
+
+/** Flight number — 1–3 letter airline code + 1–4 digits (e.g. BA123, LH4567). */
+const FLIGHT_NUM_RE = /\b([A-Z]{1,3}\s?\d{1,4})\b/;
+
+/** Common false-positive IATA-shaped words to ignore. */
+const IATA_IGNORE = new Set([
+  "MON","TUE","WED","THU","FRI","SAT","SUN",
+  "JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC",
+  "THE","AND","FOR","VIA","UTC","GMT",
+]);
+
+/**
+ * Try to extract departure/arrival IATA codes from a summary.
+ * "BA123 LHR → CDG"  |  "Flight LHR-CDG"  |  "LHR to CDG"
+ * Returns null if fewer than two valid codes are found.
+ */
+function extractIata(summary: string): { from: string; to: string; serviceNumber?: string } | null {
+  const upper = summary.toUpperCase();
+  const codes: string[] = [];
+  let m: RegExpExecArray | null;
+  IATA_RE.lastIndex = 0;
+  while ((m = IATA_RE.exec(upper)) !== null) {
+    if (!IATA_IGNORE.has(m[1])) codes.push(m[1]);
+  }
+  if (codes.length < 2) return null;
+  const fnMatch = FLIGHT_NUM_RE.exec(upper);
+  const serviceNumber = fnMatch ? fnMatch[1].replace(/\s/, "") : undefined;
+  return { from: codes[0], to: codes[1], serviceNumber };
+}
+
+/** Train keywords that unambiguously signal a rail leg. */
+const TRAIN_KW_RE = /\b(train|rail|eurostar|tgv|intercity|amtrak|sprinter|sleeper)\b/i;
+
+/** Common train service number prefixes (IC, ICE, RE, TGV, etc.). */
+const TRAIN_NUM_RE = /\b(IC|ICE|EC|EN|RE|RB|TER|TGV|AVE|ITA|Amtrak|Eurostar)\s*\d+\b/i;
+
+/**
+ * Try to extract free-text from/to for trains using arrow or keyword-anchored
+ * "to" patterns (trains lack IATA-style codes):
+ *   "Eurostar London → Paris"
+ *   "Train London Paddington to Bristol Temple Meads"
+ */
+function extractTrainFromTo(summary: string): { from: string; to: string } | null {
+  // Arrow patterns: "X → Y" or "X -> Y"
+  const arrowMatch = /^(.*?)\s*(?:→|->)\s*(.+)$/.exec(summary.trim());
+  if (arrowMatch) {
+    const rawFrom = arrowMatch[1].trim().replace(TRAIN_KW_RE, "").trim();
+    const to = arrowMatch[2].trim();
+    if (rawFrom && to) return { from: rawFrom, to };
+  }
+  // Keyword-anchored "to": "Train London to Edinburgh"
+  const toMatch = /^(?:.*\b(?:train|rail|eurostar|tgv|intercity|amtrak|sprinter|sleeper)\b\s*)(.+?)\s+to\s+(.+)$/i.exec(summary.trim());
+  if (toMatch) return { from: toMatch[1].trim(), to: toMatch[2].trim() };
+  return null;
+}
+
+interface TransportInfo {
+  mode: "air" | "rail";
+  from: string;
+  to: string;
+  /** Flight or train service number, if parseable. */
+  serviceNumber?: string;
+}
+
+/**
+ * Return transport info if the event summary looks like a flight or train,
+ * otherwise null (→ falls through to JEvent classification).
+ */
+function detectTransport(summary: string): TransportInfo | null {
+  const lower = summary.toLowerCase();
+
+  // --- Flight: keyword or two IATA codes ---
+  const isFlightKw = /\bfl(ight|y)\b/.test(lower);
+  const iata = extractIata(summary);
+  if (isFlightKw || iata) {
+    return { mode: "air", from: iata?.from ?? "???", to: iata?.to ?? "???", serviceNumber: iata?.serviceNumber };
+  }
+
+  // --- Train: keyword or recognisable service number (IC, ICE, TGV, etc.) ---
+  if (TRAIN_KW_RE.test(lower) || TRAIN_NUM_RE.test(summary)) {
+    const fromTo = extractTrainFromTo(summary);
+    const numMatch = TRAIN_NUM_RE.exec(summary);
+    return {
+      mode: "rail",
+      from: fromTo?.from ?? "???",
+      to:   fromTo?.to   ?? "???",
+      serviceNumber: numMatch ? numMatch[0].replace(/\s+/, "") : undefined,
+    };
+  }
+
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +327,43 @@ function parseIcs(text: string): ParseResult {
         warnings: city ? [] : ["No city detected in LOCATION — check the place name"],
         sourceRow,
       });
+      return;
+    }
+
+    // --- Transport detection (flight or train) → Leg ---
+    const transport = detectTransport(summary);
+    if (transport) {
+      const startStr = dtstart.timeStr
+        ? `${dtstart.dateStr}T${dtstart.timeStr}`
+        : dtstart.dateStr;
+      const endStr = dtend
+        ? dtend.timeStr ? `${dtend.dateStr}T${dtend.timeStr}` : dtend.dateStr
+        : undefined;
+      const tzFrom = timezoneFor(transport.from) || undefined;
+      const tzTo   = timezoneFor(transport.to)   || undefined;
+      const leg: Leg = {
+        ...base,
+        kind: "leg",
+        mode: transport.mode,
+        from: transport.from,
+        to:   transport.to,
+        flightNumber: transport.mode === "air"  ? transport.serviceNumber : undefined,
+        trainNumber:  transport.mode === "rail" ? transport.serviceNumber : undefined,
+        start:    startStr,
+        end:      endStr,
+        startTz:  dtstart.tz ?? tzFrom,
+        endTz:    dtend?.tz  ?? tzTo,
+        startUTC: localToUTC(startStr, dtstart.tz ?? tzFrom),
+        endUTC:   endStr ? localToUTC(endStr, dtend?.tz ?? tzTo) : undefined,
+        dedupeKey: "",
+      };
+      leg.dedupeKey = legKey(leg);
+      const warnings: string[] = [];
+      if (transport.from === "???") {
+        const label = transport.mode === "air" ? "airport codes" : "station names";
+        warnings.push(`No ${label} found — fill in From/To before confirming`);
+      }
+      out.entries.push({ entry: leg, warnings, sourceRow });
       return;
     }
 

@@ -14,6 +14,25 @@ import type { StorageAdapter, Row } from "@chronicle/journal/storage";
 
 export class SQLiteAdapter implements StorageAdapter {
   private db: SQLite.SQLiteDatabase;
+  /**
+   * JS-level serial queue — ensures only one async DB operation runs at a time.
+   *
+   * expo-sqlite's withExclusiveTransactionAsync acquires a SQLite EXCLUSIVE lock,
+   * but it does not internally queue concurrent callers: a second call that arrives
+   * while the first holds the lock receives "database is locked" immediately.
+   * Serialising at the JS level before handing off to SQLite prevents that race.
+   *
+   * Pattern: each new operation appends to the chain; the chain always resolves to
+   * void (errors are swallowed on the chain itself) so a failed op doesn't stall
+   * subsequent ones, while the returned promise still rejects to the caller.
+   */
+  private _queue: Promise<void> = Promise.resolve();
+
+  private enqueue<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this._queue.then(fn);
+    this._queue = result.then(() => undefined, () => undefined);
+    return result;
+  }
 
   private constructor(db: SQLite.SQLiteDatabase) {
     this.db = db;
@@ -50,53 +69,60 @@ export class SQLiteAdapter implements StorageAdapter {
   // ── StorageAdapter implementation ────────────────────────────────────────
 
   async getAll<T extends Row>(store: StoreName): Promise<T[]> {
-    const rows = await this.db.getAllAsync<{ data: string }>(
-      `SELECT data FROM "${store}"`
-    );
-    return rows.map((r) => JSON.parse(r.data) as T);
+    return this.enqueue(async () => {
+      const rows = await this.db.getAllAsync<{ data: string }>(
+        `SELECT data FROM "${store}"`
+      );
+      return rows.map((r) => JSON.parse(r.data) as T);
+    });
   }
 
   async putMany<T extends Row>(store: StoreName, items: T[]): Promise<void> {
     if (!items.length) return;
-    // withExclusiveTransactionAsync serialises writes and passes a txn object,
-    // preventing "NativeDatabase is null" races under concurrent async re-renders.
-    // Use a prepared statement so SQL is parsed once rather than once per row —
-    // significant speedup for large batches (e.g. 4000 Netflix entries).
-    await this.db.withExclusiveTransactionAsync(async (txn) => {
-      const stmt = await txn.prepareAsync(
-        `INSERT OR REPLACE INTO "${store}" (id, data) VALUES (?, ?)`
-      );
-      try {
-        for (const item of items) {
-          await stmt.executeAsync([item.id, JSON.stringify(item)]);
+    return this.enqueue(async () => {
+      // withExclusiveTransactionAsync serialises writes and passes a txn object.
+      // Use a prepared statement so SQL is parsed once rather than once per row —
+      // significant speedup for large batches (e.g. 4000 Netflix entries).
+      await this.db.withExclusiveTransactionAsync(async (txn) => {
+        const stmt = await txn.prepareAsync(
+          `INSERT OR REPLACE INTO "${store}" (id, data) VALUES (?, ?)`
+        );
+        try {
+          for (const item of items) {
+            await stmt.executeAsync([item.id, JSON.stringify(item)]);
+          }
+        } finally {
+          await stmt.finalizeAsync();
         }
-      } finally {
-        await stmt.finalizeAsync();
-      }
+      });
     });
   }
 
   async removeMany(store: StoreName, ids: string[]): Promise<void> {
     if (!ids.length) return;
-    await this.db.withExclusiveTransactionAsync(async (txn) => {
-      for (const id of ids) {
-        await txn.runAsync(`DELETE FROM "${store}" WHERE id = ?`, [id]);
-      }
+    return this.enqueue(async () => {
+      await this.db.withExclusiveTransactionAsync(async (txn) => {
+        for (const id of ids) {
+          await txn.runAsync(`DELETE FROM "${store}" WHERE id = ?`, [id]);
+        }
+      });
     });
   }
 
   async replaceAll(data: JournalData): Promise<void> {
-    await this.db.withExclusiveTransactionAsync(async (txn) => {
-      for (const store of STORES) {
-        await txn.runAsync(`DELETE FROM "${store}"`);
-        const items = (data[store] ?? []) as Row[];
-        for (const item of items) {
-          await txn.runAsync(
-            `INSERT INTO "${store}" (id, data) VALUES (?, ?)`,
-            [item.id, JSON.stringify(item)]
-          );
+    return this.enqueue(async () => {
+      await this.db.withExclusiveTransactionAsync(async (txn) => {
+        for (const store of STORES) {
+          await txn.runAsync(`DELETE FROM "${store}"`);
+          const items = (data[store] ?? []) as Row[];
+          for (const item of items) {
+            await txn.runAsync(
+              `INSERT INTO "${store}" (id, data) VALUES (?, ?)`,
+              [item.id, JSON.stringify(item)]
+            );
+          }
         }
-      }
+      });
     });
   }
 
@@ -114,6 +140,10 @@ export class SQLiteAdapter implements StorageAdapter {
       staging: [],
       people: [],
       places: [],
+      placeEvents: [],
+      localityPlaces: [],
+      placeEntries: [],
+      placeBinMarkers: [],
     });
   }
 }

@@ -7,14 +7,12 @@
  */
 
 import { useCallback, useRef, useState } from "react";
-import { putMany, getState, allEntries } from "@chronicle/journal/db";
+import { putMany, getState } from "@chronicle/journal/db";
 import { resolveLocalDay } from "../../../../src/lib/journal/sources/exif/timeResolution";
 import { InMemoryLocalityCache, ResolvingLocalityResolver } from "../../../../src/lib/journal/sources/exif/localityResolver";
-import { buildPlaces } from "../../../../src/lib/journal/sources/exif/placeBuilder";
-import { mapToStagingBatch } from "../../../../src/lib/journal/sources/exif/stagingMapper";
-import { buildUpsertPlan } from "../../../../src/lib/journal/sources/exif/sync";
+import { buildPlaceEntries } from "../../../../src/lib/journal/sources/exif/entryBuilder";
+import { buildStagingPlan } from "../../../../src/lib/journal/sources/exif/stagingService";
 import type { ScanScope, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord } from "../../../../src/lib/journal/sources/exif/types";
-import type { PlaceEvent } from "@chronicle/journal/types";
 
 // ─── Lazy device module loader ────────────────────────────────────────────────
 // expo-media-library requires native code not present in Expo Go.
@@ -129,25 +127,30 @@ export function useExifScan() {
         setState((s) => ({ ...s, pending: resolver.pendingCount }));
       }
 
-      // ── Steps 5–7: build → stage → upsert plan ────────────────────────────
+      // ── Step 5: build place entries (one per locality × day) ──────────────
       setState((s) => ({ ...s, phase: "building" }));
-      const trips = journal.trips;
-      const builtPlaces = buildPlaces(located, unlocated, trips, legs);
-      const existingEntries = new Map(allEntries(journal).map((e) => [e.dedupeKey, e]));
-      const batch = mapToStagingBatch(builtPlaces, trips, existingEntries);
-      const existingPlaces = (journal.placeEvents ?? []) as PlaceEvent[];
-      const candidates = batch.records
-        .filter((r) => r.selected && r.entry.kind === "place")
-        .map((r) => ({ entry: r.entry as PlaceEvent }));
-      const plan = buildUpsertPlan(candidates, existingPlaces);
+      const builtEntries = buildPlaceEntries(located, unlocated, legs);
 
-      // ── Step 8: commit ─────────────────────────────────────────────────────
+      // ── Step 6: staging plan (dedup, bin match, evidence update) ──────────
+      const plan = buildStagingPlan(
+        builtEntries,
+        journal.localityPlaces  ?? [],
+        journal.placeEntries    ?? [],
+        journal.placeBinMarkers ?? [],
+      );
+
+      // ── Step 7: commit ─────────────────────────────────────────────────────
       setState((s) => ({ ...s, phase: "committing" }));
-      if (plan.toWrite.length > 0) await putMany("placeEvents", plan.toWrite);
+      if (plan.newPlaces.length      > 0) await putMany("localityPlaces", plan.newPlaces);
+      if (plan.newEntries.length     > 0) await putMany("placeEntries",   plan.newEntries);
+      if (plan.updatedEntries.length > 0) await putMany("placeEntries",   plan.updatedEntries);
 
-      const created  = plan.actions.filter((a) => a.kind === "create").length;
-      const extended = plan.actions.filter((a) => a.kind === "extend").length;
-      setState((s) => ({ ...s, phase: "done", created, extended }));
+      setState((s) => ({
+        ...s,
+        phase: "done",
+        created:  plan.newEntries.length,
+        extended: plan.updatedEntries.length,
+      }));
 
     } catch (err) {
       const msg = String(err);

@@ -41,7 +41,8 @@ import {
   InMemoryLocalityCache,
   ResolvingLocalityResolver,
 } from "./localityResolver";
-import { buildPlaces, DEFAULT_MAX_GAP_DAYS, daysDiff, isDuringLeg } from "./placeBuilder";
+import { buildPlaces, DEFAULT_MAX_GAP_DAYS } from "./placeBuilder";
+import { daysDiff, isDuringLeg } from "./entryBuilder";
 import {
   mapToStagingBatch,
   placeConfidence,
