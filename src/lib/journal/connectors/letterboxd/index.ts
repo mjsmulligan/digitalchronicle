@@ -99,7 +99,6 @@ function parseLetterboxd(text: string): ParseResult {
       sourceRef: letterboxdUri || `letterboxd:row:${sourceRow}`,
       dedupeKey: filmKey(title, year, watchedDate),
       createdAt: now(),
-      confidence: "confirmed",
       raw: r as Record<string, unknown>,
     };
 

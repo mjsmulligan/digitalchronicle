@@ -5,7 +5,6 @@ import { allEntries, putMany, removeMany, useJournal, storeFor } from "@/lib/jou
 import { EntryCard } from "@/components/journal/EntryCard";
 import { AddTripDialog } from "@/components/journal/AddTripDialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -60,7 +59,6 @@ function TripCard({ trip }: { trip: Trip }) {
           <p className="font-mono text-xs text-muted-foreground">{trip.start} → {trip.end} · {nights} nights</p>
           <div className="mt-1 flex flex-wrap items-baseline gap-2">
             <h2 className="text-2xl">{trip.title}</h2>
-            {trip.purpose && <Badge variant="secondary" className="capitalize">{trip.purpose}</Badge>}
             {trip.rating !== undefined && <StarRating rating={trip.rating} className="self-center" />}
           </div>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs">

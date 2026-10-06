@@ -137,7 +137,6 @@ function parseGoodreads(text: string): ParseResult {
       dedupeKey: dedupeKey(norm(title), norm(rawAuthor), dateRead ?? ""),
       sourceRef: `goodreads:row:${sourceRow}`,
       createdAt: now(),
-      confidence: "confirmed",
       raw: { ...r, ...(isbn13 && { isbn13 }) } as Record<string, unknown>,
     };
 

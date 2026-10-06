@@ -292,7 +292,6 @@ function parseIcs(text: string): ParseResult {
       id: uid(),
       source: SOURCE,
       tier: 3 as const,
-      confidence: "inferred" as const,
       createdAt: now(),
       reflection: description,
     };

@@ -9,7 +9,7 @@ import { localToUTC } from "../../tz";
 import type { Connector, ParseResult } from "../types";
 import { csvRows } from "../csv";
 import { normDate } from "../dates";
-import { pick, confidenceFrom, purposeFrom, companionsFrom } from "../fields";
+import { pick, purposeFrom, companionsFrom } from "../fields";
 import { eventKey } from "../keys";
 
 const now = () => new Date().toISOString();
@@ -87,8 +87,6 @@ function parseSetlist(text: string): ParseResult {
       setlist: songs.length ? songs : undefined,
       dedupeKey: "",
       createdAt: now(),
-      // Your own attendance log, so treated as confirmed rather than merely a purchase.
-      confidence: confidenceFrom(r, "confirmed"),
       purpose: purposeFrom(r),
       companions: companionsFrom(r),
       startTz: tz,

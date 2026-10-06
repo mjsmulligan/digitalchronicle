@@ -47,7 +47,6 @@ describe("icalendar connector", () => {
       for (const { entry } of r.entries) {
         expect(entry.source).toBe("icalendar");
         expect(entry.tier).toBe(3);
-        expect(entry.confidence).toBe("inferred");
       }
     });
 

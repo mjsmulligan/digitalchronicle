@@ -6,10 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { putMany } from "@/lib/journal/db";
-import { uid, type Purpose, type Trip } from "@/lib/journal/types";
+import { uid, type Trip } from "@/lib/journal/types";
 import { StarRating } from "@/components/journal/StarRating";
-
-const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
 
 export function AddTripDialog({ trip }: { trip?: Trip }) {
   const [open, setOpen] = useState(false);
@@ -17,7 +15,7 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
   const today = new Date().toISOString().slice(0, 10);
   const blank = (): Record<string, string> =>
     trip
-      ? { title: trip.title, start: trip.start, end: trip.end, purpose: trip.purpose ?? "", reflection: trip.reflection ?? trip.notes ?? "" }
+      ? { title: trip.title, start: trip.start, end: trip.end, reflection: trip.reflection ?? trip.notes ?? "" }
       : {};
   const [f, setF] = useState<Record<string, string>>(blank);
   const [rating, setRating] = useState<number | undefined>(trip?.rating);
@@ -41,7 +39,6 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
         end,
         cover: trip?.cover ?? "",
         createdAt: trip?.createdAt ?? new Date().toISOString(),
-        purpose: (f.purpose as Purpose) || undefined,
         reflection: f.reflection?.trim() || undefined,
         rating,
       };
@@ -77,14 +74,6 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
           <Input className="col-span-2" placeholder="Trip title" value={f.title ?? ""} onChange={set("title")} />
           <label className="text-xs text-muted-foreground">Start<Input type="date" value={f.start ?? today} onChange={set("start")} /></label>
           <label className="text-xs text-muted-foreground">End<Input type="date" value={f.end ?? ""} onChange={set("end")} /></label>
-          <select
-            className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm capitalize"
-            value={f.purpose ?? ""}
-            onChange={(e) => setF({ ...f, purpose: e.target.value })}
-          >
-            <option value="">Purpose (optional)</option>
-            {PURPOSES.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}
-          </select>
         </div>
         <div className="flex items-center gap-2">
           <p className="text-xs text-muted-foreground">Rating</p>

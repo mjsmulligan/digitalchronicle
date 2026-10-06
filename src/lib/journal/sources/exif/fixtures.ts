@@ -122,7 +122,6 @@ export function makePlaceEvent(overrides: Partial<PlaceEvent> = {}): PlaceEvent 
     tier: 2,
     start: dateStart,
     end: dateEnd,
-    confidence: "inferred",
     locality: overrides.locality ?? "London",
     region: overrides.region ?? "England",
     country: overrides.country ?? "United Kingdom",

@@ -11,8 +11,6 @@ export type Source = string;
 export type Tier = 1 | 2 | 3;
 export type Mode = "air" | "rail" | "road";
 
-/** How sure we are this fact is right, independent of Tier (which is precedence, not quality). */
-export type Confidence = "confirmed" | "inferred" | "approximate";
 export type Purpose = "work" | "family" | "leisure" | "other";
 
 interface Base {
@@ -41,8 +39,6 @@ interface Base {
   reflection?: string;
   /** Universal quantitative field: rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
-  /** Evaluation fields supplied by the import source — read-only in the UI (see evaluation.ts). */
-  sourceLocked?: ("rating" | "reflection")[];
   /**
    * Which evaluation fields are provenance-locked (supplied by an external source
    * and not user-editable). See `isLocked()` in evaluation.ts.
@@ -59,11 +55,6 @@ interface Base {
   /** Tier 1 manual overrides layered on top of source data */
   overrides?: Record<string, string>;
   createdAt: string;
-  /**
-   * How sure we are this fact (not just this record) is right. Not the same as Tier.
-   * Optional: PlaceEntry does not use confidence (staging hints replace it — see WP10).
-   */
-  confidence?: Confidence;
   purpose?: Purpose;
   /** Person ids or free-text names of who was there */
   companions?: string[];
@@ -172,10 +163,6 @@ export interface Series {
   /** Container-level reflection prose. */
   reflection?: string;
   createdAt: string;
-  /** Universal rating 0–10 for the whole series */
-  rating?: number;
-  /** Universal reflection on the whole series */
-  reflection?: string;
 }
 
 /**
@@ -385,7 +372,6 @@ export interface Trip {
   end: string;
   cover: string;
   createdAt: string;
-  purpose?: Purpose;
   /** Universal rating 0–10 for the whole trip */
   rating?: number;
   /** Universal reflection on the whole trip */
