@@ -37,12 +37,12 @@ interface Base {
   endUTC?: string;
   tripId?: string;
   dedupeKey: string;
-  /** Free-text personal reflection on this entry. Stored in IndexedDB; never exported. */
+  /** Universal qualitative field: personal reflection or the source's review. */
   reflection?: string;
-  /** @deprecated Legacy name for `reflection`; still written by existing UI and parsers. */
-  journal?: string;
-  /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
+  /** Universal quantitative field: rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
+  /** Evaluation fields supplied by the import source — read-only in the UI (see evaluation.ts). */
+  sourceLocked?: ("rating" | "reflection")[];
   /**
    * How precisely the date is known.
    * "day"     — full YYYY-MM-DD known (default assumed when omitted)
@@ -154,6 +154,10 @@ export interface Series {
   /** "tv" for television shows; "book" for book series */
   mediaType?: "tv" | "book";
   createdAt: string;
+  /** Universal rating 0–10 for the whole series */
+  rating?: number;
+  /** Universal reflection on the whole series */
+  reflection?: string;
 }
 
 /**
@@ -342,6 +346,10 @@ export interface Person {
   createdAt: string;
 }
 
+/**
+ * @deprecated Day-level notes are no longer part of the model: reflections belong
+ * to entries and containers only. The store is kept so existing data survives in backups.
+ */
 export interface Note {
   id: string;
   /** YYYY-MM-DD day note, or attached to a trip */
@@ -357,10 +365,15 @@ export interface Trip {
   title: string;
   start: string;
   end: string;
-  notes: string;
   cover: string;
   createdAt: string;
   purpose?: Purpose;
+  /** Universal rating 0–10 for the whole trip */
+  rating?: number;
+  /** Universal reflection on the whole trip */
+  reflection?: string;
+  /** @deprecated Folded into `reflection` on boot. */
+  notes?: string;
 }
 
 export type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-duplicate";
