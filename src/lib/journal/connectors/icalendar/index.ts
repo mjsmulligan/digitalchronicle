@@ -131,7 +131,7 @@ function inferCategory(summary: string, cats: string): EventCategory {
   for (const [kw, cat] of CATEGORY_MAP) {
     if (text.includes(kw)) return cat;
   }
-  return "memory";
+  return "activity";
 }
 
 // ---------------------------------------------------------------------------
