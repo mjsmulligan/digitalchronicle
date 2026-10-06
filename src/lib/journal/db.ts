@@ -10,6 +10,16 @@ import type { StorageAdapter, Row } from "./storage";
 const DB_NAME = "waypoint-journal";
 const DB_VERSION = 7; // v7: WP10 — added localityPlaces, placeEntries, placeBinMarkers stores
 
+/**
+ * MIGRATION RULE (DM10 — go-live gate)
+ * Every change to a stored record shape after this point requires a migration:
+ *   1. Bump DB_VERSION
+ *   2. Add an onupgradeneeded handler in IDBAdapter for the new version
+ *   3. Add a boot migration function (pattern: migrateLegStayKeys, migrateEventKeys, etc.)
+ *   4. Add a corresponding migration in SQLiteAdapter
+ *   5. Add a test that the migration is idempotent
+ */
+
 class IDBAdapter implements StorageAdapter {
   private dbPromise: Promise<IDBDatabase> | null = null;
 

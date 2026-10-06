@@ -475,6 +475,14 @@ export function emptyJournalData(): JournalData {
   return Object.fromEntries(STORES.map((s) => [s, []])) as unknown as JournalData;
 }
 
+/** The top-level shape of a Chronicle backup file. */
+export interface BackupFile {
+  app: "chronicle";
+  schemaVersion: 1;
+  exportedAt: string;
+  data: JournalData;
+}
+
 /**
  * @deprecated Use sourceLabel(id) from connectors/registry.ts instead.
  * Kept temporarily for any code that hasn't been migrated yet.
