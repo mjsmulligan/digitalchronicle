@@ -736,6 +736,11 @@ export default function EditEntryScreen() {
           participants: entry.participants,
           dedupeKey: `${selectedKind}|manual|${uid()}`,
           createdAt: new Date().toISOString(),
+          // Preserve authored data across kind change (DM6)
+          ...(entry.rating    !== undefined ? { rating:     entry.rating    } : {}),
+          ...(entry.reflection               ? { reflection: entry.reflection } : {}),
+          ...(entry.review                   ? { review:     entry.review    } : {}),
+          ...(entry.overrides                ? { overrides:  entry.overrides } : {}),
         };
 
         let newEntry: Entry | null = null;
