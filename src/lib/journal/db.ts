@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
+import { KIND_REGISTRY } from "./kinds";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
 import type { StorageAdapter, Row } from "./storage";
@@ -112,13 +113,7 @@ function emit(next: Partial<State>) {
 // ─── Geo helpers ─────────────────────────────────────────────────────────────
 
 function hasPlace(e: Entry): boolean {
-  if (e.kind === "leg") return !!(e.from || e.to || e.overrides?.from || e.overrides?.to);
-  if (e.kind === "place") return true;        // legacy PlaceEvent — always city-level
-  if (e.kind === "place-entry") return false; // WP10: locality resolved at scan time, no geocoder needed here
-  if (e.kind === "film" || e.kind === "episode" || e.kind === "book") return false;
-  if (e.kind === "stay") return !!(e.place || e.overrides?.place || e.city || e.overrides?.city);
-  // event / JEvent
-  return !!(e.city || e.overrides?.city);
+  return KIND_REGISTRY[e.kind].hasPlace(e);
 }
 
 function hasJournalPlaces(data: Partial<JournalData>): boolean {
@@ -341,14 +336,7 @@ export async function clearAll() {
 export type { PlaceRecord };
 
 export function storeFor(e: Entry): StoreName {
-  if (e.kind === "leg") return "legs";
-  if (e.kind === "stay") return "stays";
-  if (e.kind === "place") return "placeEvents";       // legacy PlaceEvent
-  if (e.kind === "place-entry") return "placeEntries"; // WP10
-  if (e.kind === "film") return "films";
-  if (e.kind === "episode") return "episodes";
-  if (e.kind === "book") return "books";
-  return "events";
+  return KIND_REGISTRY[e.kind].store;
 }
 
 export function allEntries(s: JournalData): Entry[] {

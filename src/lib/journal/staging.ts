@@ -2,8 +2,9 @@ import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor 
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations } from "./geo";
 import { mergeEvaluation, sourceLocks } from "./evaluation";
+import { KIND_REGISTRY } from "./kinds";
 import {
-  uid, view, type Entry, type Leg, type StagedRecord, type StagingBatch,
+  uid, type Entry, type Leg, type StagedRecord, type StagingBatch,
 } from "./types";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
@@ -18,16 +19,7 @@ function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>)
 }
 
 export function placeLabel(e: Entry): string {
-  const v = view(e);
-  if (v.kind === "leg") return v.toName ?? v.to;
-  if (v.kind === "stay") return v.city ?? v.place;
-  if (v.kind === "place") return v.locality;
-  if (v.kind === "place-entry") return v.localDay;
-  if (v.kind === "film") return v.title;
-  if (v.kind === "episode") return v.showTitle;
-  if (v.kind === "book") return v.title;
-  // JEvent
-  return v.city || v.venue;
+  return KIND_REGISTRY[e.kind].placeLabel(e);
 }
 
 export async function stageFile(filename: string, text: string, forced?: string) {
