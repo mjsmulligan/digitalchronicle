@@ -480,6 +480,23 @@ export default function EntryDetailScreen() {
     );
   };
 
+  const handleHide = () => {
+    if (!entry) return;
+    dialog.confirm(
+      "Hide entry",
+      `"${entryTitle(entry)}" will be hidden from your journal. You can restore it from Settings → Hidden Entries.`,
+      "Hide",
+      async () => {
+        try {
+          await hideMany(storeFor(entry), [entry.id]);
+          router.back();
+        } catch (err) {
+          dialog.alert("Could not hide entry", String(err));
+        }
+      },
+    );
+  };
+
   if (!entry) {
     return (
       <View style={styles.notFound}>
@@ -521,6 +538,9 @@ export default function EntryDetailScreen() {
                   <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
                 </Pressable>
               )}
+              <Pressable style={styles.headerBtn} onPress={handleHide}>
+                <Ionicons name="trash-outline" size={22} color={colors.textTertiary} />
+              </Pressable>
             </View>
           ),
         }}
