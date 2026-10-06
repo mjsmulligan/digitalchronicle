@@ -462,12 +462,26 @@ export default function EntryDetailScreen() {
             ...(entry.participants ?? []),
             ...(other.participants ?? []),
           ]));
+          // Collect all sources from both sides, deduped
+          const existingAdditional = entry.additionalSources ?? [];
+          const loserSources: Array<{ source: string; sourceRef?: string }> = [
+            { source: other.source, sourceRef: other.sourceRef },
+            ...(other.additionalSources ?? []),
+          ];
+          const allSources = [
+            ...existingAdditional,
+            ...loserSources.filter(
+              (ls) => ls.source !== entry.source &&
+                !existingAdditional.some((s) => s.source === ls.source),
+            ),
+          ];
           const updated = {
             ...entry,
             tier: 1 as Tier,
             source: "manual",
             tripId: winnerTripId,
             participants: winnerParts.length ? winnerParts : undefined,
+            additionalSources: allSources.length ? allSources : undefined,
           };
           await putMany(storeFor(entry), [updated]);
           await hideMany(storeFor(other), [other.id]);
@@ -589,6 +603,18 @@ export default function EntryDetailScreen() {
           </View>
         </View>
         {entry.sourceRef && <Field label="Ref" value={entry.sourceRef} styles={styles} />}
+        {entry.additionalSources?.map((s, i) => (
+          <View key={i}>
+            <View style={styles.sourceFieldRow}>
+              <Text style={styles.fieldLabel} />
+              <View style={styles.sourceValue}>
+                <SourceMark source={s.source} size={18} />
+                <Text style={styles.fieldValue} numberOfLines={1}>{sourceLabel(s.source)}</Text>
+              </View>
+            </View>
+            {s.sourceRef && <Field label="Ref" value={s.sourceRef} styles={styles} />}
+          </View>
+        ))}
       </View>
     </ScrollView>
 

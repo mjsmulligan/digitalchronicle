@@ -71,6 +71,8 @@ interface Base {
   raw?: Record<string, unknown>;
   /** Where this fact came from: filename and row/index within it. */
   sourceRef?: string;
+  /** Extra sources absorbed when two entries were merged. */
+  additionalSources?: Array<{ source: string; sourceRef?: string }>;
   /**
    * Soft-delete flag. When `true` the entry is excluded from all normal views
    * and helpers (allEntries, feeds, trip linking, etc.) but remains in the
