@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { putMany, removeMany, hideMany, storeFor, useJournal } from "@/lib/journal/db";
-import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person } from "@/lib/journal/types";
+import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person, type AnyOverrides } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { operatorMarkId } from "@/lib/journal/connectors/icons";
 import { isLocked } from "@/lib/journal/evaluation";
@@ -236,7 +236,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   const [reflection, setReflection] = useState(entry.reflection ?? "");
   const [rating, setRating] = useState<number | undefined>(entry.rating);
   const [dateStarted, setDateStarted] = useState(entry.kind === "book" ? (entry.dateStarted ?? "") : "");
-  const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
+  const [ov, setOv] = useState<Record<string, string>>((entry.overrides as Record<string, string>) ?? {});
   const [participants, setParticipants] = useState<string[] | undefined>(entry.participants);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -261,7 +261,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
         ...entry, ...extra,
         reflection: reflectionVal,
         rating: ratingVal,
-        overrides: Object.keys(clean).length ? clean : undefined,
+        overrides: Object.keys(clean).length ? (clean as AnyOverrides) : undefined,
         participants,
       }]);
       toast.success("Entry saved");

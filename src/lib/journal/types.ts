@@ -13,6 +13,21 @@ export type Mode = "air" | "rail" | "road";
 
 export type Purpose = "work" | "family" | "leisure" | "other";
 
+// Per-kind override shapes — defined before Base to avoid circular references.
+// Fields mirror the corresponding kind interfaces; kept in sync manually.
+export type LegOverrides = Partial<{
+  start: string; end: string; from: string; to: string;
+  fromName: string; toName: string; mode: string;
+  flightNumber: string; trainNumber: string; operator: string; seat: string;
+}>;
+export type StayOverrides    = Partial<{ start: string; end: string; place: string; city: string; notes: string }>;
+export type EventOverrides   = Partial<{ start: string; end: string; artist: string; venue: string; city: string; country: string; category: string; tour: string }>;
+export type FilmOverrides    = Partial<{ start: string; title: string; year: number; director: string }>;
+export type EpisodeOverrides = Partial<{ start: string; showTitle: string; season: string; episodeTitle: string; episodeNumber: number }>;
+export type BookOverrides    = Partial<{ start: string; title: string; author: string; year: number; dateStarted: string }>;
+
+export type AnyOverrides = LegOverrides | StayOverrides | EventOverrides | FilmOverrides | EpisodeOverrides | BookOverrides;
+
 interface Base {
   id: string;
   source: Source;
@@ -59,7 +74,7 @@ interface Base {
    */
   datePrecision?: "day" | "month" | "year" | "unknown";
   /** Tier 1 manual overrides layered on top of source data */
-  overrides?: Record<string, string>;
+  overrides?: AnyOverrides;
   createdAt: string;
   purpose?: Purpose;
   /** Person ids or free-text names of who was there */

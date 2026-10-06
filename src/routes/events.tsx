@@ -27,7 +27,7 @@ const CATEGORY_PLURAL: Record<EventCategory, string> = {
 };
 
 function field(e: JEvent, key: "artist" | "venue" | "city") {
-  return e.overrides?.[key] ?? e[key] ?? "";
+  return (e.overrides as Record<string, unknown> | undefined)?.[key] ?? e[key] ?? "";
 }
 
 function Events() {

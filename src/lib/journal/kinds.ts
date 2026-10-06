@@ -35,7 +35,8 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
     },
     hasPlace: (e) => {
       const l = e as Leg;
-      return !!(l.from || l.to || l.overrides?.from || l.overrides?.to);
+      const ov = l.overrides as Record<string, unknown> | undefined;
+      return !!(l.from || l.to || ov?.from || ov?.to);
     },
     buildKey: (e) => {
       const l = e as Leg;
@@ -57,7 +58,8 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
     },
     hasPlace: (e) => {
       const s = e as Stay;
-      return !!(s.place || s.overrides?.place || s.city || s.overrides?.city);
+      const ov = s.overrides as Record<string, unknown> | undefined;
+      return !!(s.place || ov?.place || s.city || ov?.city);
     },
     buildKey: (e) => {
       const s = e as Stay;
@@ -121,7 +123,8 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
     },
     hasPlace: (e) => {
       const j = e as JEvent;
-      return !!(j.city || j.overrides?.city);
+      const ov = j.overrides as Record<string, unknown> | undefined;
+      return !!(j.city || ov?.city);
     },
     buildKey: (e) => {
       const j = e as JEvent;
