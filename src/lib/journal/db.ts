@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { STORES, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
+import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
 import type { StorageAdapter, Row } from "./storage";
@@ -68,7 +68,7 @@ class IDBAdapter implements StorageAdapter {
   }
 
   async clearAll(): Promise<void> {
-    await this.replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [], localityPlaces: [], placeEntries: [], placeBinMarkers: [] });
+    await this.replaceAll(emptyJournalData());
   }
 }
 
@@ -100,7 +100,7 @@ export interface State extends JournalData {
   ready: boolean;
   commitProgress: CommitProgress | null;
 }
-const empty = (): State => ({ ready: false, commitProgress: null, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [], localityPlaces: [], placeEntries: [], placeBinMarkers: [] });
+const empty = (): State => ({ ready: false, commitProgress: null, ...emptyJournalData() });
 const SERVER = empty();
 let state: State = empty();
 const listeners = new Set<() => void>();
@@ -335,12 +335,7 @@ export async function replaceAll(data: JournalData) {
 }
 
 export async function clearAll() {
-  await replaceAll({
-    trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [],
-    series: [], notes: [], staging: [], people: [], places: [],
-    placeEvents: [],
-    localityPlaces: [], placeEntries: [], placeBinMarkers: [],
-  });
+  await replaceAll(emptyJournalData());
 }
 
 export type { PlaceRecord };

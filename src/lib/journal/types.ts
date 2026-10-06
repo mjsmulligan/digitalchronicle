@@ -449,6 +449,11 @@ export const STORES = [
 ] as const;
 export type StoreName = (typeof STORES)[number];
 
+/** Returns an empty JournalData with every store initialised to an empty array. */
+export function emptyJournalData(): JournalData {
+  return Object.fromEntries(STORES.map((s) => [s, []])) as unknown as JournalData;
+}
+
 /**
  * @deprecated Use sourceLabel(id) from connectors/registry.ts instead.
  * Kept temporarily for any code that hasn't been migrated yet.
