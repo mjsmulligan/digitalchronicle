@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { connector as viaductConnector } from "@/lib/journal/connectors/viaduct/index";
 import { connector as setlistConnector } from "@/lib/journal/connectors/setlistfm/index";
 import { connector as genericConnector } from "@/lib/journal/connectors/generic/index";
-import { detectConnector } from "@/lib/journal/connectors/registry";
+import { detectConnector, UNSUPPORTED_FORMATS } from "@/lib/journal/connectors/registry";
 import { eventKey } from "@/lib/journal/connectors/keys";
 import type { ParseResult } from "@/lib/journal/connectors/types";
 import { stageFile } from "@/lib/journal/staging";
@@ -225,5 +225,38 @@ describe("eventKey (connectors/keys)", () => {
     expect(setlistResult.entries[0].entry.dedupeKey).toBe(
       genericResult.entries[0].entry.dedupeKey,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Contacts export rejection
+// ---------------------------------------------------------------------------
+describe("stageFile – contacts export rejection", () => {
+  const EXPECTED_MSG =
+    "Contacts exports are not supported. Chronicle imports travel, events, films, books and TV — not address books.";
+
+  it("rejects Google Contacts CSV (Given Name / Family Name)", async () => {
+    const google =
+      "Name,Given Name,Additional Name,Family Name,Yomi Name,Email 1 - Value,Phone 1 - Value\nJohn Doe,John,,Doe,,john@example.com,+1 555 0100\n";
+    await expect(stageFile("contacts.csv", google)).rejects.toThrow(EXPECTED_MSG);
+  });
+
+  it("rejects iOS/generic contacts CSV (First Name / Last Name)", async () => {
+    const ios =
+      "First Name,Last Name,Email,Phone\nJane,Smith,jane@example.com,+1 555 0101\n";
+    await expect(stageFile("contacts.csv", ios)).rejects.toThrow(EXPECTED_MSG);
+  });
+
+  it("rejects quoted-header contacts CSV", async () => {
+    const quoted =
+      '"First Name","Last Name","Email Address","Phone"\n"Alice","Jones","alice@example.com","555-0102"\n';
+    await expect(stageFile("contacts.csv", quoted)).rejects.toThrow(EXPECTED_MSG);
+  });
+
+  it("does NOT flag a normal travel CSV that happens to have a name column", () => {
+    // Test detect() directly — stageFile would hit IndexedDB in the test env
+    const contactsFmt = UNSUPPORTED_FORMATS.find((f) => f.name === "Contacts export")!;
+    const travelHeader = "date,type,from,to,name";
+    expect(contactsFmt.detect(travelHeader)).toBe(false);
   });
 });

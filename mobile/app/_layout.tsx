@@ -44,7 +44,8 @@ import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
 
 SplashScreen.preventAutoHideAsync();
 
-const FILE_EXTENSIONS = [".csv", ".ics", ".vcf", ".json"];
+const JOURNAL_EXTENSIONS = [".csv", ".ics", ".json"];
+const CONTACTS_EXTENSIONS = [".vcf", ".vcard"];
 
 /**
  * Returns true only for real OS-level share-intent URIs.
@@ -57,7 +58,13 @@ const FILE_EXTENSIONS = [".csv", ".ics", ".vcf", ".json"];
 function looksLikeImportUri(url: string): boolean {
   const lower = url.toLowerCase();
   const isFileUri = lower.startsWith("file://") || lower.startsWith("content://");
-  return isFileUri && FILE_EXTENSIONS.some((ext) => lower.includes(ext));
+  return isFileUri && [...JOURNAL_EXTENSIONS, ...CONTACTS_EXTENSIONS].some((ext) => lower.includes(ext));
+}
+
+/** VCF / vCard files belong on the People import screen, not Sources. */
+function looksLikeContactsUri(url: string): boolean {
+  const lower = url.toLowerCase();
+  return CONTACTS_EXTENSIONS.some((ext) => lower.includes(ext));
 }
 
 // Modal-only screens that should never be the initial route on app boot.
@@ -110,7 +117,8 @@ function RootLayoutInner() {
         // Handle initial URL (app opened via share intent before JS was running)
         const initial = await Linking.getInitialURL();
         if (initial && looksLikeImportUri(initial)) {
-          router.push(`/import?uri=${encodeURIComponent(initial)}`);
+          const dest = looksLikeContactsUri(initial) ? "/import-people" : "/import";
+          router.push(`${dest}?uri=${encodeURIComponent(initial)}`);
         }
       } catch (err) {
         console.error("[Chronicle] Boot failed:", err);
@@ -142,7 +150,8 @@ function RootLayoutInner() {
   useEffect(() => {
     const sub = Linking.addEventListener("url", ({ url }) => {
       if (url && looksLikeImportUri(url)) {
-        router.push(`/import?uri=${encodeURIComponent(url)}`);
+        const dest = looksLikeContactsUri(url) ? "/import-people" : "/import";
+        router.push(`${dest}?uri=${encodeURIComponent(url)}`);
       }
     });
     return () => sub.remove();
