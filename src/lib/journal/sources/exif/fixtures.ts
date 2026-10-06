@@ -16,13 +16,13 @@
  *      (spec §2: these should remain separate localities — personal significance)
  *   H. Spelling variants — "Porto Venere" vs "Portovenere" (WP11 key normalisation)
  *
- * Also provides factories for constructing PlaceEvent, Place, PlaceEntry and
+ * Also provides factories for constructing Place, PlaceEntry and
  * PlaceBinMarker values in unit tests.
  */
 
 import type { PhotoRecord, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord, LocalityResolver, LocalityInfo } from "./types";
 // fakeLocalityResolver is declared later in the file — references below are fine
-import type { PlaceEvent, Place, PlaceEntry, PlaceBinMarker, PhotoEvidenceRef, JEvent } from "../../types";
+import type { Place, PlaceEntry, PlaceBinMarker, PhotoEvidenceRef, JEvent } from "../../types";
 import { uid } from "../../types";
 
 // ─── Low-level record factories ───────────────────────────────────────────────
@@ -108,31 +108,6 @@ export const FIXTURE_IN_FLIGHT: TimedPhotoRecord[] = [
     mediaId: "inflight-1",
   }),
 ];
-
-// ─── PlaceEvent factory ───────────────────────────────────────────────────────
-
-/** Build a minimal valid PlaceEvent. Override any field. */
-export function makePlaceEvent(overrides: Partial<PlaceEvent> = {}): PlaceEvent {
-  const dateStart = overrides.start ?? "2025-07-14";
-  const dateEnd = overrides.end ?? "2025-07-15";
-  return {
-    id: overrides.id ?? `place-${++_seq}`,
-    kind: "place",
-    source: "photo-library",
-    tier: 2,
-    start: dateStart,
-    end: dateEnd,
-    locality: overrides.locality ?? "London",
-    region: overrides.region ?? "England",
-    country: overrides.country ?? "United Kingdom",
-    localityKey: overrides.localityKey ?? "gb:london",
-    photoEvidence: overrides.photoEvidence ?? [],
-    photoCount: overrides.photoCount ?? 4,
-    dedupeKey: overrides.dedupeKey ?? `place|${overrides.localityKey ?? "gb:london"}|${dateStart}`,
-    createdAt: overrides.createdAt ?? new Date().toISOString(),
-    ...overrides,
-  };
-}
 
 /** Build a minimal PhotoEvidenceRef. */
 export function makeEvidenceRef(overrides: Partial<PhotoEvidenceRef> = {}): PhotoEvidenceRef {

@@ -218,7 +218,7 @@ export interface Book extends Base {
 export type LocalityKey = string;
 
 /**
- * A reference back to a single photo that contributed evidence to a PlaceEvent.
+ * A reference back to a single photo that contributed evidence to a place entry.
  * The photo itself is never stored — only the minimal reference needed to re-link
  * the journal entry to the original asset.
  */
@@ -235,25 +235,6 @@ export interface PhotoEvidenceRef {
   timingRule: "exif-offset" | "gps-inferred" | "fallback";
   /** Set true when the photo has been deleted from the library after scanning */
   missing?: boolean;
-}
-
-/**
- * @deprecated Superseded by PlaceEntry (WP10). Kept only to avoid breaking
- * the existing scan pipeline until WP12/WP13 replace it. Do not use in new code.
- *
- * A city-level place event derived from evidence (photos, calendar, receipts, …).
- * Represents presence in a city over a date range (ranges removed in WP10 spec).
- */
-export interface PlaceEvent extends Base {
-  kind: "place";
-  /** Human-readable city / town name (e.g. "London") */
-  locality: string;
-  region?: string;
-  country?: string;
-  localityKey: LocalityKey;
-  photoEvidence: PhotoEvidenceRef[];
-  photoCount: number;
-  singlePhoto?: boolean;
 }
 
 // ─── WP10: Place container and one-day entry ──────────────────────────────────
@@ -354,7 +335,7 @@ export interface PlaceBinMarker {
   photoIds: string[];
 }
 
-export type Entry = Leg | Stay | JEvent | Film | Episode | Book | PlaceEvent | PlaceEntry;
+export type Entry = Leg | Stay | JEvent | Film | Episode | Book | PlaceEntry;
 
 /**
  * A person who appears in journal entries.
@@ -420,7 +401,8 @@ export interface StagingBatch {
   errors: string[];
 }
 
-export interface PlaceRecord {
+/** Transit place cache (airports and stations) used for coordinate and timezone lookup. */
+export interface GazetteerEntry {
   id: string;
   /** Normalised upper-case code or name, e.g. "DUB", "LONDON ST PANCRAS" */
   code: string;
@@ -444,14 +426,8 @@ export interface JournalData {
   notes: Note[];
   staging: StagingBatch[];
   people: Person[];
-  /** Transit place records (airports, stations) used for geo lookup — NOT locality places */
-  places: PlaceRecord[];
-  /**
-   * @deprecated Superseded by localityPlaces + placeEntries (WP10).
-   * Kept for the existing scan pipeline until WP12/WP13 replace it.
-   * Will be removed once the migration is complete.
-   */
-  placeEvents: PlaceEvent[];
+  /** Transit place cache (airports, stations) used for geo lookup — NOT locality places */
+  gazetteer: GazetteerEntry[];
   /** WP10: Place containers (one per locality, like Trip / Series) */
   localityPlaces: Place[];
   /** WP10: One-day place facts (one per locality+day) */
@@ -462,9 +438,7 @@ export interface JournalData {
 
 export const STORES = [
   "trips", "legs", "stays", "events", "films", "episodes", "books",
-  "series", "notes", "staging", "people", "places",
-  // Legacy (WP1–WP9)
-  "placeEvents",
+  "series", "notes", "staging", "people", "gazetteer",
   // WP10
   "localityPlaces", "placeEntries", "placeBinMarkers",
 ] as const;
@@ -524,7 +498,6 @@ export function entryTitle(e: Entry): string {
   const v = view(e);
   if (v.kind === "leg") return `${v.from} → ${v.to}`;
   if (v.kind === "stay") return v.place;
-  if (v.kind === "place") return v.country ? `${v.locality}, ${v.country}` : v.locality;
   if (v.kind === "place-entry") {
     // Derive a human-readable name from localityKey ("gb:london" → "London",
     // "it:porto-venere" → "Porto Venere"). The Place container carries the
