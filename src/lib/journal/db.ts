@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
+import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type StagingBatch, type Trip } from "./types";
 import { KIND_REGISTRY } from "./kinds";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
@@ -8,7 +8,7 @@ import type { StorageAdapter, Row } from "./storage";
 // ─── IndexedDB implementation ─────────────────────────────────────────────────
 
 const DB_NAME = "waypoint-journal";
-const DB_VERSION = 7; // v7: WP10 — added localityPlaces, placeEntries, placeBinMarkers stores
+const DB_VERSION = 8; // v8: DM4 — removed placeEvents store, renamed places→gazetteer
 
 /**
  * MIGRATION RULE (DM10 — go-live gate)
@@ -27,9 +27,18 @@ class IDBAdapter implements StorageAdapter {
     if (!this.dbPromise) {
       this.dbPromise = new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = () => {
+        req.onupgradeneeded = (event) => {
           const db = req.result;
-          for (const s of STORES) if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: "id" });
+          const oldVersion = event.oldVersion;
+          // Create any missing stores (covers fresh installs and upgrades)
+          for (const s of STORES) {
+            if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: "id" });
+          }
+          // v8: remove legacy stores
+          if (oldVersion < 8) {
+            if (db.objectStoreNames.contains("placeEvents")) db.deleteObjectStore("placeEvents");
+            if (db.objectStoreNames.contains("places")) db.deleteObjectStore("places");
+          }
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
@@ -288,7 +297,7 @@ async function migrateEventKeys(data: Partial<State>): Promise<void> {
  * Idempotent — entries without the old "reflection" lock are untouched.
  */
 async function migrateReviewReflection(data: Partial<State>): Promise<void> {
-  const entryStores = ["legs", "stays", "events", "films", "episodes", "books", "placeEvents", "placeEntries"] as const;
+  const entryStores = ["legs", "stays", "events", "films", "episodes", "books", "placeEntries"] as const;
   for (const store of entryStores) {
     const rows = (data[store] ?? []) as Entry[];
     const changed: Entry[] = [];
@@ -318,7 +327,7 @@ async function migrateReviewReflection(data: Partial<State>): Promise<void> {
  * source locks. Idempotent: no writes once every record is normalised.
  */
 async function migrateEvaluationFields(data: Partial<State>): Promise<void> {
-  const entryStores = ["legs", "stays", "events", "films", "episodes", "books", "placeEvents", "placeEntries"] as const;
+  const entryStores = ["legs", "stays", "events", "films", "episodes", "books", "placeEntries"] as const;
   for (const store of entryStores) {
     const rows = (data[store] ?? []) as Entry[];
     const changed: Entry[] = [];
@@ -437,7 +446,7 @@ export async function clearAll() {
   await replaceAll(emptyJournalData());
 }
 
-export type { PlaceRecord };
+export type { GazetteerEntry };
 
 export function storeFor(e: Entry): StoreName {
   return KIND_REGISTRY[e.kind].store;
@@ -446,7 +455,6 @@ export function storeFor(e: Entry): StoreName {
 export function allEntries(s: JournalData): Entry[] {
   return [
     ...s.legs, ...s.stays, ...s.events, ...s.films, ...s.episodes, ...s.books,
-    ...(s.placeEvents ?? []),                                          // legacy
     ...(s.placeEntries ?? []).filter((e) => e.status === "accepted"), // WP10: pending/dismissed are staging items, not journal entries
   ].filter((e) => !e.hidden);
 }
@@ -455,7 +463,6 @@ export function allEntries(s: JournalData): Entry[] {
 export function allHiddenEntries(s: JournalData): Entry[] {
   return [
     ...s.legs, ...s.stays, ...s.events, ...s.films, ...s.episodes, ...s.books,
-    ...(s.placeEvents ?? []),
     ...(s.placeEntries ?? []),
   ].filter((e) => e.hidden === true);
 }

@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { allEntries, putMany, useJournal } from "@/lib/journal/db";
 import { loadStations, locate, normKey, type PlaceInfo } from "@/lib/journal/geo";
-import { uid, view, type PlaceRecord } from "@/lib/journal/types";
+import { uid, view, type GazetteerEntry } from "@/lib/journal/types";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/places")({
@@ -26,10 +26,10 @@ function Places() {
 
   // Build lookup map from user-resolved places (IndexedDB)
   const placeMap = useMemo(() => {
-    const m = new Map<string, PlaceRecord>();
-    for (const p of s.places) m.set(p.code, p);
+    const m = new Map<string, GazetteerEntry>();
+    for (const p of s.gazetteer) m.set(p.code, p);
     return m;
-  }, [s.places]);
+  }, [s.gazetteer]);
 
   const lookup = (code: string): PlaceInfo | undefined => {
     const r = placeMap.get(normKey(code));
@@ -71,7 +71,7 @@ function Places() {
       .then(async () => {
         if (cancelled) return;
         const now = new Date().toISOString();
-        const resolved: PlaceRecord[] = [];
+        const resolved: GazetteerEntry[] = [];
         for (const [code] of unknown) {
           const info = locate(code);
           if (info) {
@@ -86,7 +86,7 @@ function Places() {
             });
           }
         }
-        if (resolved.length > 0 && !cancelled) await putMany("places", resolved);
+        if (resolved.length > 0 && !cancelled) await putMany("gazetteer", resolved);
       })
       .finally(() => { if (!cancelled) setResolving(false); });
     return () => { cancelled = true; };

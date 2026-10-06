@@ -1,4 +1,4 @@
-import { view, type Entry, type StoreName, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "./types";
+import { view, type Entry, type StoreName, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEntry } from "./types";
 
 export type EntryCategory = "movement" | "presence" | "attendance" | "consumption";
 
@@ -66,25 +66,6 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
       return `stay|${s.start.slice(0, 10)}|${s.place.toLowerCase()}`;
     },
     editableFields: ["start", "end", "place", "city", "notes"],
-  },
-
-  place: {
-    store: "placeEvents",
-    category: "presence",
-    title: (e) => {
-      const v = view(e as PlaceEvent);
-      return v.country ? `${v.locality}, ${v.country}` : v.locality;
-    },
-    placeLabel: (e) => {
-      const v = view(e as PlaceEvent);
-      return v.locality;
-    },
-    hasPlace: (_e) => true,
-    buildKey: (e) => {
-      const p = e as PlaceEvent;
-      return `place|${p.localityKey}|${p.start.slice(0, 10)}`;
-    },
-    editableFields: [],
   },
 
   "place-entry": {
