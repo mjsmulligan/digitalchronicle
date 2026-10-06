@@ -76,6 +76,7 @@ export async function stageFile(filename: string, text: string, forced?: string)
     const { entry, sourceRow } = res.entries[i];
     let { warnings } = res.entries[i];
     entry.sourceRef = `${filename}#row${sourceRow}`;
+    entry.sourceLocked = sourceLocks(entry);
     let c = classify(entry, existing, seen);
 
     // Fuzzy flight dedup: a leg with ??? placeholder codes (airport codes
@@ -122,7 +123,8 @@ export async function commitBatch(b: StagingBatch) {
     else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
       const old = byId.get(r.matchId)!;
       // Replace source data but keep sovereign overrides, reflection & trip link
-      e = { ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides, reflection: old.reflection ?? r.entry.reflection } as Entry;
+      // Source-supplied rating/review win (provenance); otherwise the user's values are kept.
+      e = mergeEvaluation({ ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides } as Entry, old);
     } else continue;
     writes[storeFor(e)].push(e);
     count++;
