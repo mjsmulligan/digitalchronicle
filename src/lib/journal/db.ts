@@ -161,14 +161,14 @@ async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
   );
 
   // If two records now share a key, keep the better one
-  function pick<T extends { id: string; tier: number; reflection?: string; journal?: string; createdAt: string }>(
+  function pick<T extends { id: string; tier: number; reflection?: string; createdAt: string }>(
     items: T[],
   ): { keep: T; discard: T[] } {
     if (items.length === 1) return { keep: items[0], discard: [] };
     const sorted = [...items].sort((a, b) => {
       if (a.tier !== b.tier) return a.tier - b.tier; // lower tier = higher precedence
-      const aHasRef = !!(a.reflection ?? a.journal);
-      const bHasRef = !!(b.reflection ?? b.journal);
+      const aHasRef = !!a.reflection;
+      const bHasRef = !!b.reflection;
       if (aHasRef !== bHasRef) return aHasRef ? -1 : 1;
       return a.createdAt < b.createdAt ? -1 : 1;
     });
@@ -215,44 +215,36 @@ async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
   data.stays = updatedStays.filter((s) => !discardStays.has(s.id)).map((s) => stayWriteMap.get(s.id) ?? s);
 }
 
-// ── Boot migration: evaluation fields ────────────────────────────────────────
-
 /**
- * Idempotent pass that:
- *  - Promotes legacy `journal` field to `reflection` on all entry kinds.
- *  - Assigns `sourceLocked` based on the entry's source where not already set.
- *  - Promotes deprecated `Trip.notes` to `Trip.reflection` where absent.
- *
- * Only writes back entries/trips that actually changed (reference-inequality).
+ * Rating + reflection are the universal evaluation fields. Folds legacy
+ * `journal` into `reflection`, `Trip.notes` into `Trip.reflection`, and infers
+ * source locks. Idempotent: no writes once every record is normalised.
  */
-export async function migrateEvaluationFields(data: Partial<State>): Promise<void> {
-  const entryStores: (keyof JournalData)[] = [
-    "legs", "stays", "events", "films", "episodes", "books", "placeEvents", "placeEntries",
-  ];
-  for (const s of entryStores) {
-    const items = ((data as Record<string, unknown>)[s] ?? []) as Entry[];
-    const writes: Entry[] = [];
-    const migrated = items.map((e) => {
-      const m = migrateEntryEvaluation(e as Parameters<typeof migrateEntryEvaluation>[0]);
-      if (m !== e) { writes.push(m as Entry); return m as Entry; }
-      return e;
+async function migrateEvaluationFields(data: Partial<State>): Promise<void> {
+  const entryStores = ["legs", "stays", "events", "films", "episodes", "books", "placeEvents", "placeEntries"] as const;
+  for (const store of entryStores) {
+    const rows = (data[store] ?? []) as Entry[];
+    const changed: Entry[] = [];
+    const next = rows.map((e) => {
+      const m = migrateEntryEvaluation(e);
+      if (m) changed.push(m);
+      return m ?? e;
     });
-    if (writes.length) {
-      (data as Record<string, unknown>)[s] = migrated;
-      await adapter.putMany(s as StoreName, writes);
+    if (changed.length) {
+      await adapter.putMany(store, changed);
+      (data as Record<string, unknown>)[store] = next;
     }
   }
-
   const trips = (data.trips ?? []) as Trip[];
-  const tripWrites: Trip[] = [];
-  const migratedTrips = trips.map((t) => {
+  const changedTrips: Trip[] = [];
+  const nextTrips = trips.map((t) => {
     const m = migrateTripEvaluation(t);
-    if (m !== t) { tripWrites.push(m); return m; }
-    return t;
+    if (m) changedTrips.push(m);
+    return m ?? t;
   });
-  if (tripWrites.length) {
-    data.trips = migratedTrips;
-    await adapter.putMany("trips", tripWrites);
+  if (changedTrips.length) {
+    await adapter.putMany("trips", changedTrips);
+    data.trips = nextTrips;
   }
 }
 

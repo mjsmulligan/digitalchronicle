@@ -151,7 +151,7 @@ export function parseViaduct(text: string): ParseResult {
     const leg: Leg = {
       id: uid(), kind: "leg", mode: "rail", source: "viaduct", tier: 2, start, end,
       from, to, operator: pick(r, ["Operator", "Company"]), trainNumber: pick(r, ["Train", "Train number", "Service", "train_code"]),
-      seat: pick(r, ["Seat", "Coach/Seat"]), journal: pick(r, ["Notes", "Note"]) || undefined,
+      seat: pick(r, ["Seat", "Coach/Seat"]), reflection: pick(r, ["Notes", "Note"]) || undefined,
       dedupeKey: "", createdAt: now(),
       confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),
       raw: r,
@@ -248,7 +248,7 @@ export function parseGeneric(text: string): ParseResult {
     const raw = r;
     const base = {
       id: uid(), source: "generic" as Source, tier, start, end, createdAt: now(),
-      journal: pick(r, ["notes", "note", "journal"]) || undefined, confidence, purpose, companions, raw,
+      reflection: pick(r, ["notes", "note", "journal"]) || undefined, confidence, purpose, companions, raw,
     };
     if (["leg", "flight", "train", "rail", "air", "road", "drive", "bus"].includes(type)) {
       const mode = type === "flight" || type === "air" ? "air" : type === "train" || type === "rail" ? "rail" : type === "leg" ? ((pick(r, ["mode"]) as Leg["mode"]) || "road") : "road";

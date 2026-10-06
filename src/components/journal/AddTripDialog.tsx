@@ -17,14 +17,7 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
   const today = new Date().toISOString().slice(0, 10);
   const blank = (): Record<string, string> =>
     trip
-      ? {
-          title: trip.title,
-          start: trip.start,
-          end: trip.end,
-          purpose: trip.purpose ?? "",
-          // Read reflection, falling back to deprecated notes for display
-          reflection: trip.reflection ?? trip.notes ?? "",
-        }
+      ? { title: trip.title, start: trip.start, end: trip.end, purpose: trip.purpose ?? "", reflection: trip.reflection ?? trip.notes ?? "" }
       : {};
   const [f, setF] = useState<Record<string, string>>(blank);
   const [rating, setRating] = useState<number | undefined>(trip?.rating);

@@ -278,7 +278,7 @@ export default function ChronicleScreen() {
     return (
       <View style={styles.empty}>
         <KindIcon kind="book" size={48} color={colors.textTertiary} accessibilityLabel="" />
-        <Text style={styles.emptyTitle}>Your journal is empty</Text>
+        <Text style={styles.emptyTitle}>Your chronicle is empty</Text>
         <Text style={styles.emptyHint}>
           Tap the import icon above to add your first entries.
         </Text>

@@ -1,10 +1,10 @@
 import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor } from "./db";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations } from "./geo";
+import { mergeEvaluation, sourceLocks } from "./evaluation";
 import {
   uid, view, type Entry, type Leg, type StagedRecord, type StagingBatch,
 } from "./types";
-import { sourceLocks, mergeEvaluation } from "./evaluation";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
 function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>): Pick<StagedRecord, "status" | "matchId"> {
@@ -77,6 +77,7 @@ export async function stageFile(filename: string, text: string, forced?: string)
     const { entry, sourceRow } = res.entries[i];
     let { warnings } = res.entries[i];
     entry.sourceRef = `${filename}#row${sourceRow}`;
+    entry.sourceLocked = sourceLocks(entry);
     let c = classify(entry, existing, seen);
 
     // Fuzzy flight dedup: a leg with ??? placeholder codes (airport codes
@@ -125,13 +126,9 @@ export async function commitBatch(b: StagingBatch) {
       e = locks.length > 0 ? { ...r.entry, sourceLocked: locks } : r.entry;
     } else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
       const old = byId.get(r.matchId)!;
-      // Assign sourceLocked for the incoming record
-      const locks = sourceLocks(r.entry);
-      const incoming = locks.length > 0 ? { ...r.entry, sourceLocked: locks } : r.entry;
-      // Merge evaluation: locked fields take incoming; unlocked keep the user's existing value
-      const evalFields = mergeEvaluation(incoming, old);
-      // Replace source data but keep sovereign overrides, trip link, and merged evaluation
-      e = { ...incoming, id: old.id, tripId: old.tripId, overrides: old.overrides, ...evalFields } as Entry;
+      // Replace source data but keep sovereign overrides, reflection & trip link
+      // Source-supplied rating/review win (provenance); otherwise the user's values are kept.
+      e = mergeEvaluation({ ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides } as Entry, old);
     } else continue;
     writes[storeFor(e)].push(e);
     count++;
