@@ -649,6 +649,48 @@ function CalendarSourceCard({
   );
 }
 
+// ─── Contacts source card ─────────────────────────────────────────────────────
+
+function ContactsSourceCard({
+  peopleCount,
+  disabled,
+  onManage,
+  colors,
+  fonts,
+}: {
+  peopleCount: number;
+  disabled: boolean;
+  onManage: () => void;
+  colors: any;
+  fonts: any;
+}) {
+  return (
+    <SourceCard
+      icon="people-outline"
+      title="Phone contacts"
+      statusText={
+        peopleCount > 0
+          ? `${peopleCount} ${peopleCount === 1 ? "person" : "people"} added`
+          : "Add people from your address book to tag them in entries"
+      }
+      active={false}
+      progressPct={0}
+      colors={colors}
+      fonts={fonts}
+      action={
+        <SrcButton
+          label="Manage"
+          onPress={onManage}
+          disabled={disabled}
+          colors={colors}
+          fonts={fonts}
+          variant="ghost"
+        />
+      }
+    />
+  );
+}
+
 // ─── Goodreads source card ────────────────────────────────────────────────────
 
 function GoodreadsSourceCard({
@@ -1376,6 +1418,14 @@ export default function SourcesScreen() {
           active={activeSource === "calendar"}
           disabled={anyActive}
           onSync={importFromCalendar}
+          colors={colors}
+          fonts={fonts}
+        />
+
+        <ContactsSourceCard
+          peopleCount={journal.people.length}
+          disabled={anyActive}
+          onManage={() => router.push("/import-people")}
           colors={colors}
           fonts={fonts}
         />

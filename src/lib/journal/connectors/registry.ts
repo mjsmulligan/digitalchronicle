@@ -52,6 +52,21 @@ export const UNSUPPORTED_FORMATS: Array<{
     message:
       "Flightradar24 exports are not supported. Use a generic flight CSV or add flights manually.",
   },
+  {
+    // Google Contacts: "Name,Given Name,...,Family Name,..."
+    // Apple/iOS/generic exports: "First Name,Last Name,..."
+    name: "Contacts export",
+    detect(header) {
+      // header is already lowercased by stageFile
+      const cols = new Set(header.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
+      return (
+        (cols.has("given name") && cols.has("family name")) ||
+        (cols.has("first name") && cols.has("last name"))
+      );
+    },
+    message:
+      "Contacts exports are not supported. Chronicle imports travel, events, films, books and TV — not address books.",
+  },
 ];
 
 // ---------------------------------------------------------------------------

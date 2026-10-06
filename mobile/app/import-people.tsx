@@ -5,7 +5,7 @@
  * Uses parseContacts() from contacts.ts (shared with web). No staging batch
  * system — people are committed directly to the people store.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -18,7 +18,7 @@ import {
   Linking,
 } from "react-native";
 import { useDialog, Dialog } from "../src/components/Dialog";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { readDeviceContacts } from "../src/lib/deviceContacts";
@@ -258,6 +258,7 @@ export default function ImportPeopleScreen() {
   const { top } = useSafeAreaInsets();
   const { colors, fonts, spacing } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
+  const params = useLocalSearchParams<{ uri?: string }>();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -267,6 +268,36 @@ export default function ImportPeopleScreen() {
 
   const newCount = contacts.filter((c) => c.status === "new").length;
   const selectedCount = contacts.filter((c) => c.selected).length;
+
+  // Handle incoming URI from the share-intent router (e.g. a .vcf shared from
+  // the Android contacts app). Mirrors the processUri pattern in import.tsx.
+  useEffect(() => {
+    if (params.uri) {
+      void processUri(params.uri, params.uri.split("/").pop() ?? "contacts");
+    }
+  }, [params.uri]);
+
+  const processUri = async (uri: string, filename: string) => {
+    setPhase("parsing");
+    setError(null);
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    try {
+      const response = await fetch(uri);
+      if (!response.ok) throw new Error(`Could not read file (HTTP ${response.status})`);
+      const text = await response.text();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const result = parseContacts(filename, text);
+      if (!result.contacts.length && result.errors.length) {
+        throw new Error(result.errors[0]);
+      }
+      setContacts(buildReviewContacts(result.contacts, journal.people));
+      setParseErrors(result.errors);
+      setPhase("review");
+    } catch (err) {
+      setError(String(err));
+      setPhase("idle");
+    }
+  };
 
   const pickFile = async () => {
     try {
