@@ -6,17 +6,18 @@
  *
  * Classification rules:
  *   - All-day DTSTART + DTEND spanning ≥ 2 days → Stay (hotel, Airbnb, trip)
+ *   - Summary contains "flight"/"fly" or two IATA codes → Leg (mode: air)
  *   - All-day single-day or timed event → JEvent
  *   - Events with RRULE (recurring) → skipped, warning emitted
  *
  * Tier 3: calendar files are secondary evidence — confirm or enrich in staging.
  */
 import { uid } from "../../types";
-import type { JEvent, Stay, EventCategory } from "../../types";
+import type { JEvent, Stay, Leg, EventCategory } from "../../types";
 import { timezoneFor } from "../../geo";
 import { localToUTC } from "../../tz";
 import type { Connector, ParseResult } from "../types";
-import { eventKey, stayKey } from "../keys";
+import { eventKey, stayKey, legKey } from "../keys";
 
 const SOURCE = "icalendar" as const;
 const now = () => new Date().toISOString();
@@ -135,6 +136,66 @@ function inferCategory(summary: string, cats: string): EventCategory {
 }
 
 // ---------------------------------------------------------------------------
+// Flight detection
+// ---------------------------------------------------------------------------
+
+/** IATA airport code — exactly 3 uppercase letters. */
+const IATA_RE = /\b([A-Z]{3})\b/g;
+
+/** Flight number — 1-3 letter airline code followed by 1-4 digits (e.g. BA123, LH4567). */
+const FLIGHT_NUM_RE = /\b([A-Z]{1,3}\s?\d{1,4})\b/;
+
+/** Common false-positive IATA-shaped words to ignore (days, months, etc.). */
+const IATA_IGNORE = new Set([
+  "MON","TUE","WED","THU","FRI","SAT","SUN",
+  "JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC",
+  "THE","AND","FOR","VIA","UTC","GMT",
+]);
+
+interface FlightInfo {
+  from: string;
+  to: string;
+  flightNumber?: string;
+}
+
+/**
+ * Attempt to extract departure and arrival IATA codes from an event summary.
+ * Handles the common patterns airlines and travel apps write:
+ *   "BA123 LHR → CDG"  |  "Flight LHR-CDG"  |  "LHR to CDG"
+ * Returns null if fewer than two valid codes are found.
+ */
+function extractFlight(summary: string): FlightInfo | null {
+  // Work in uppercase for consistency
+  const upper = summary.toUpperCase();
+
+  // Collect all IATA-shaped tokens, excluding known false positives
+  const codes: string[] = [];
+  let m: RegExpExecArray | null;
+  IATA_RE.lastIndex = 0;
+  while ((m = IATA_RE.exec(upper)) !== null) {
+    if (!IATA_IGNORE.has(m[1])) codes.push(m[1]);
+  }
+
+  if (codes.length < 2) return null;
+
+  // Optional flight number
+  const fnMatch = FLIGHT_NUM_RE.exec(upper);
+  const flightNumber = fnMatch ? fnMatch[1].replace(/\s/, "") : undefined;
+
+  return { from: codes[0], to: codes[1], flightNumber };
+}
+
+/**
+ * Return true if the event looks like a flight — either the summary contains
+ * the word "flight" or "fly", or two IATA codes can be extracted.
+ */
+function looksLikeFlight(summary: string): boolean {
+  const lower = summary.toLowerCase();
+  if (/\bfl(ight|y)\b/.test(lower)) return true;
+  return extractFlight(summary.toUpperCase()) !== null;
+}
+
+// ---------------------------------------------------------------------------
 // Location parsing
 // ---------------------------------------------------------------------------
 
@@ -226,6 +287,41 @@ function parseIcs(text: string): ParseResult {
         warnings: city ? [] : ["No city detected in LOCATION — check the place name"],
         sourceRow,
       });
+      return;
+    }
+
+    // --- Flight detection → Leg ---
+    if (looksLikeFlight(summary)) {
+      const flight = extractFlight(summary);
+      const startStr = dtstart.timeStr
+        ? `${dtstart.dateStr}T${dtstart.timeStr}`
+        : dtstart.dateStr;
+      const endStr = dtend
+        ? dtend.timeStr ? `${dtend.dateStr}T${dtend.timeStr}` : dtend.dateStr
+        : undefined;
+      const fromCode = flight?.from ?? "???";
+      const toCode   = flight?.to   ?? "???";
+      const tzFrom = timezoneFor(fromCode) || undefined;
+      const tzTo   = timezoneFor(toCode)   || undefined;
+      const leg: Leg = {
+        ...base,
+        kind: "leg",
+        mode: "air",
+        from: fromCode,
+        to:   toCode,
+        flightNumber: flight?.flightNumber,
+        start:    startStr,
+        end:      endStr,
+        startTz:  dtstart.tz ?? tzFrom,
+        endTz:    dtend?.tz  ?? tzTo,
+        startUTC: localToUTC(startStr, dtstart.tz ?? tzFrom),
+        endUTC:   endStr ? localToUTC(endStr, dtend?.tz ?? tzTo) : undefined,
+        dedupeKey: "",
+      };
+      leg.dedupeKey = legKey(leg);
+      const warnings: string[] = [];
+      if (!flight) warnings.push("No airport codes found — fill in From/To before confirming");
+      out.entries.push({ entry: leg, warnings, sourceRow });
       return;
     }
 
