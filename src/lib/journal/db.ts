@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { STORES, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
+import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
+import { KIND_REGISTRY } from "./kinds";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
 import type { StorageAdapter, Row } from "./storage";
@@ -8,6 +9,16 @@ import type { StorageAdapter, Row } from "./storage";
 
 const DB_NAME = "waypoint-journal";
 const DB_VERSION = 7; // v7: WP10 — added localityPlaces, placeEntries, placeBinMarkers stores
+
+/**
+ * MIGRATION RULE (DM10 — go-live gate)
+ * Every change to a stored record shape after this point requires a migration:
+ *   1. Bump DB_VERSION
+ *   2. Add an onupgradeneeded handler in IDBAdapter for the new version
+ *   3. Add a boot migration function (pattern: migrateLegStayKeys, migrateEventKeys, etc.)
+ *   4. Add a corresponding migration in SQLiteAdapter
+ *   5. Add a test that the migration is idempotent
+ */
 
 class IDBAdapter implements StorageAdapter {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -68,7 +79,7 @@ class IDBAdapter implements StorageAdapter {
   }
 
   async clearAll(): Promise<void> {
-    await this.replaceAll({ trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [], localityPlaces: [], placeEntries: [], placeBinMarkers: [] });
+    await this.replaceAll(emptyJournalData());
   }
 }
 
@@ -100,7 +111,7 @@ export interface State extends JournalData {
   ready: boolean;
   commitProgress: CommitProgress | null;
 }
-const empty = (): State => ({ ready: false, commitProgress: null, trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [], series: [], notes: [], staging: [], people: [], places: [], placeEvents: [], localityPlaces: [], placeEntries: [], placeBinMarkers: [] });
+const empty = (): State => ({ ready: false, commitProgress: null, ...emptyJournalData() });
 const SERVER = empty();
 let state: State = empty();
 const listeners = new Set<() => void>();
@@ -112,13 +123,7 @@ function emit(next: Partial<State>) {
 // ─── Geo helpers ─────────────────────────────────────────────────────────────
 
 function hasPlace(e: Entry): boolean {
-  if (e.kind === "leg") return !!(e.from || e.to || e.overrides?.from || e.overrides?.to);
-  if (e.kind === "place") return true;        // legacy PlaceEvent — always city-level
-  if (e.kind === "place-entry") return false; // WP10: locality resolved at scan time, no geocoder needed here
-  if (e.kind === "film" || e.kind === "episode" || e.kind === "book") return false;
-  if (e.kind === "stay") return !!(e.place || e.overrides?.place || e.city || e.overrides?.city);
-  // event / JEvent
-  return !!(e.city || e.overrides?.city);
+  return KIND_REGISTRY[e.kind].hasPlace(e);
 }
 
 function hasJournalPlaces(data: Partial<JournalData>): boolean {
@@ -216,6 +221,98 @@ async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
 }
 
 /**
+ * Recomputes JEvent dedupeKeys from source-namespaced format
+ * (e.g. "setlistfm|event|...") to source-agnostic format ("event|...").
+ * No-op on subsequent boots once all keys already start with "event|".
+ * If the key change reveals true duplicates (same date+artist from two sources),
+ * the higher-precedence record (lower tier, then reflection present, then
+ * earlier createdAt) is kept.
+ */
+async function migrateEventKeys(data: Partial<State>): Promise<void> {
+  const events = (data.events ?? []) as JEvent[];
+
+  const staleIds = new Set(
+    events
+      .filter((e) => e.dedupeKey.includes("|event|") && !e.dedupeKey.startsWith("event|"))
+      .map((e) => e.id),
+  );
+
+  if (staleIds.size === 0) return;
+
+  const updatedEvents = events.map((e) =>
+    staleIds.has(e.id)
+      ? { ...e, dedupeKey: `event|${e.start.slice(0, 10)}|${e.artist.toLowerCase()}` }
+      : e,
+  );
+
+  function pickBest<T extends { id: string; tier: number; reflection?: string; createdAt: string }>(
+    items: T[],
+  ): { keep: T; discard: T[] } {
+    if (items.length === 1) return { keep: items[0], discard: [] };
+    const sorted = [...items].sort((a, b) => {
+      if (a.tier !== b.tier) return a.tier - b.tier;
+      const aHasRef = !!a.reflection;
+      const bHasRef = !!b.reflection;
+      if (aHasRef !== bHasRef) return aHasRef ? -1 : 1;
+      return a.createdAt < b.createdAt ? -1 : 1;
+    });
+    return { keep: sorted[0], discard: sorted.slice(1) };
+  }
+
+  const byKey = new Map<string, JEvent[]>();
+  for (const e of updatedEvents) {
+    (byKey.get(e.dedupeKey) ?? byKey.set(e.dedupeKey, []).get(e.dedupeKey)!).push(e);
+  }
+
+  const writes: JEvent[] = [];
+  const removeIds: string[] = [];
+  for (const group of byKey.values()) {
+    const hasStale = group.some((e) => staleIds.has(e.id));
+    if (!hasStale) continue;
+    const { keep, discard } = pickBest(group);
+    writes.push(keep);
+    removeIds.push(...discard.map((e) => e.id));
+  }
+
+  if (writes.length) await adapter.putMany("events", writes);
+  if (removeIds.length) await adapter.removeMany("events", removeIds);
+
+  const discardSet = new Set(removeIds);
+  const writeMap = new Map(writes.map((e) => [e.id, e]));
+  data.events = updatedEvents.filter((e) => !discardSet.has(e.id)).map((e) => writeMap.get(e.id) ?? e);
+}
+
+/**
+ * Migrate old `sourceLocked: ["reflection"]` entries: move `reflection` → `review`,
+ * clear `reflection`, remove `"reflection"` from `sourceLocked`.
+ * Idempotent — entries without the old "reflection" lock are untouched.
+ */
+async function migrateReviewReflection(data: Partial<State>): Promise<void> {
+  const entryStores = ["legs", "stays", "events", "films", "episodes", "books", "placeEvents", "placeEntries"] as const;
+  for (const store of entryStores) {
+    const rows = (data[store] ?? []) as Entry[];
+    const changed: Entry[] = [];
+    const next = rows.map((e) => {
+      const locked = (e.sourceLocked as string[] | undefined) ?? [];
+      if (!locked.includes("reflection")) return e;
+      const updated = {
+        ...e,
+        review: e.review ?? e.reflection,
+        reflection: undefined,
+        sourceLocked: locked.filter((f) => f !== "reflection") as ("rating")[],
+      };
+      if (updated.sourceLocked.length === 0) updated.sourceLocked = undefined as unknown as ("rating")[];
+      changed.push(updated as Entry);
+      return updated as Entry;
+    });
+    if (changed.length) {
+      await adapter.putMany(store, changed);
+      (data as Record<string, unknown>)[store] = next;
+    }
+  }
+}
+
+/**
  * Rating + reflection are the universal evaluation fields. Folds legacy
  * `journal` into `reflection`, `Trip.notes` into `Trip.reflection`, and infers
  * source locks. Idempotent: no writes once every record is normalised.
@@ -258,6 +355,8 @@ export function initJournal(): Promise<void> {
       await loadStations();
     }
     await migrateLegStayKeys(data);
+    await migrateEventKeys(data);
+    await migrateReviewReflection(data);
     await migrateEvaluationFields(data);
     emit({ ...data, ready: true });
   })().catch((error: unknown) => {
@@ -335,25 +434,13 @@ export async function replaceAll(data: JournalData) {
 }
 
 export async function clearAll() {
-  await replaceAll({
-    trips: [], legs: [], stays: [], events: [], films: [], episodes: [], books: [],
-    series: [], notes: [], staging: [], people: [], places: [],
-    placeEvents: [],
-    localityPlaces: [], placeEntries: [], placeBinMarkers: [],
-  });
+  await replaceAll(emptyJournalData());
 }
 
 export type { PlaceRecord };
 
 export function storeFor(e: Entry): StoreName {
-  if (e.kind === "leg") return "legs";
-  if (e.kind === "stay") return "stays";
-  if (e.kind === "place") return "placeEvents";       // legacy PlaceEvent
-  if (e.kind === "place-entry") return "placeEntries"; // WP10
-  if (e.kind === "film") return "films";
-  if (e.kind === "episode") return "episodes";
-  if (e.kind === "book") return "books";
-  return "events";
+  return KIND_REGISTRY[e.kind].store;
 }
 
 export function allEntries(s: JournalData): Entry[] {

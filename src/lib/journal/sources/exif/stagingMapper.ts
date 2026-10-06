@@ -38,37 +38,6 @@ export const EXIF_TIER = 2 as const;
 export const MAX_EVIDENCE_REFS = 10;
 
 /**
- * Minimum photo count required to promote confidence from "inferred" to "approximate".
- * (Spec §10: "a place with ≥5 photos from multiple days is more likely to be correct".)
- */
-export const MIN_PHOTOS_FOR_APPROXIMATE = 5;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/**
- * Derive the confidence level for a place from its evidence.
- *
- * Rules (spec §10):
- *   - Single photo only → "inferred" (weakest signal)
- *   - Multiple photos but all using "fallback" timing (no GPS, no EXIF offset) → "inferred"
- *   - 5+ photos, at least one with gps or exif-offset timing → "approximate"
- *   - Places coming from direct booking/calendar sources would be "confirmed";
- *     photo-library evidence is never stronger than "approximate".
- */
-export function placeConfidence(place: BuiltPlace): PlaceEvent["confidence"] {
-  const allPhotos = [...place.photos, ...place.unlocatedPhotos];
-  if (allPhotos.length < 2) return "inferred";
-
-  const hasGoodTiming = place.photos.some(
-    (p) => p.timingRule === "exif-offset" || p.timingRule === "gps-inferred",
-  );
-  if (!hasGoodTiming) return "inferred";
-
-  if (allPhotos.length >= MIN_PHOTOS_FOR_APPROXIMATE) return "approximate";
-  return "inferred";
-}
-
-/**
  * Sample up to MAX_EVIDENCE_REFS photos from a BuiltPlace to use as stored
  * evidence refs. Prefers located photos (they have GPS) over unlocated ones.
  * Within each group, picks photos spread across the date range so evidence
@@ -159,7 +128,6 @@ export function mapToStagingBatch(
 
   for (const place of builtPlaces) {
     const allPhotos = [...place.photos, ...place.unlocatedPhotos];
-    const confidence = placeConfidence(place);
     const evidenceRefs = sampleEvidenceRefs(place);
     const dedupeKey = placeDedupeKey(place);
     const tripId = proposeTripId(place, trips);
@@ -171,7 +139,6 @@ export function mapToStagingBatch(
       tier: EXIF_TIER,
       start: place.dateStart,
       end: place.dateEnd,
-      confidence,
       locality: place.locality,
       region: place.region,
       country: place.country,

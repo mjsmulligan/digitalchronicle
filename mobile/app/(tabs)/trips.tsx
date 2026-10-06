@@ -41,13 +41,6 @@ function nights(trip: Trip): number {
   );
 }
 
-/** Maps trip purpose to the KindIcon kind string. */
-const PURPOSE_KIND: Record<string, string> = {
-  leisure: "leisure",
-  work:    "work",
-  family:  "family",
-};
-
 // ── styles factory ────────────────────────────────────────────────────────────
 
 const DATE_COL_W = 52;
@@ -253,14 +246,6 @@ function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; col
             <Text style={styles.tripTitle} numberOfLines={2}>
               {trip.title}
             </Text>
-            {trip.purpose && (
-              <KindIcon
-                kind={PURPOSE_KIND[trip.purpose] ?? "location"}
-                size={18}
-                color={colors.textSecondary}
-                accessibilityLabel=""
-              />
-            )}
           </View>
           <View style={styles.cardMeta}>
             <Text style={styles.metaText}>{"→"} {fmtEnd(trip.end)}</Text>

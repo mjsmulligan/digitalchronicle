@@ -10,6 +10,7 @@ import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View }
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
 import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { mergeEntries } from "@/lib/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
@@ -450,38 +451,17 @@ export default function EntryDetailScreen() {
     // Confirm: keep `entry` (this), delete `other`
     dialog.confirm(
       "Merge entries",
-      `Keep "${entryTitle(entry)}" and discard "${entryTitle(other)}"?\n\nAny trip link and participants from the discarded entry will be preserved.`,
+      `Keep "${entryTitle(entry)}" and discard "${entryTitle(other)}"?\n\nTrip link, participants, overrides and reflections from the discarded entry will be preserved.`,
       "Merge",
       async () => {
         setMergeSaving(true);
         setMergeVisible(false);
         try {
-          // Union tripId, participants from the loser onto the winner
-          const winnerTripId  = entry.tripId ?? other.tripId;
-          const winnerParts   = Array.from(new Set([
-            ...(entry.participants ?? []),
-            ...(other.participants ?? []),
-          ]));
-          // Collect all sources from both sides, deduped
-          const existingAdditional = entry.additionalSources ?? [];
-          const loserSources: Array<{ source: string; sourceRef?: string }> = [
-            { source: other.source, sourceRef: other.sourceRef },
-            ...(other.additionalSources ?? []),
-          ];
-          const allSources = [
-            ...existingAdditional,
-            ...loserSources.filter(
-              (ls) => ls.source !== entry.source &&
-                !existingAdditional.some((s) => s.source === ls.source),
-            ),
-          ];
+          const merged = mergeEntries(entry, other);
           const updated = {
-            ...entry,
+            ...merged,
             tier: 1 as Tier,
-            source: "manual",
-            tripId: winnerTripId,
-            participants: winnerParts.length ? winnerParts : undefined,
-            additionalSources: allSources.length ? allSources : undefined,
+            source: "manual" as const,
           };
           await putMany(storeFor(entry), [updated]);
           await hideMany(storeFor(other), [other.id]);

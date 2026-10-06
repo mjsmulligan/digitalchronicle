@@ -2,7 +2,7 @@
  * Field-picking and value-coercion helpers shared by all connectors.
  * Moved verbatim from parsers.ts — no behaviour change.
  */
-import type { Confidence, Purpose } from "../types";
+import type { Purpose } from "../types";
 
 /** Normalise to lowercase alphanumeric for fuzzy header matching. */
 export const nk = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -40,11 +40,3 @@ export function companionsFrom(row: Record<string, unknown>): string[] | undefin
   return list.length ? list : undefined;
 }
 
-const CONFIDENCE_VALUES: Confidence[] = ["confirmed", "inferred", "approximate"];
-export function confidenceFrom(
-  row: Record<string, unknown>,
-  fallback: Confidence,
-): Confidence {
-  const v = pick(row as Record<string, string>, ["confidence"]).toLowerCase();
-  return (CONFIDENCE_VALUES as string[]).includes(v) ? (v as Confidence) : fallback;
-}

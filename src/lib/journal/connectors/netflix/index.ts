@@ -215,7 +215,6 @@ async function parseNetflix(text: string): Promise<ParseResult> {
         dedupeKey: filmDedupeKey(parsed.title, watchedDate),
         sourceRef: `netflix:row:${sourceRow}`,
         createdAt: now(),
-        confidence: "confirmed",
         raw: r as Record<string, unknown>,
       };
       out.entries.push({ entry: film, warnings: [], sourceRow });
@@ -238,7 +237,6 @@ async function parseNetflix(text: string): Promise<ParseResult> {
         ),
         sourceRef: `netflix:row:${sourceRow}`,
         createdAt: now(),
-        confidence: "confirmed",
         raw: r as Record<string, unknown>,
       };
       out.entries.push({ entry: ep, warnings: [], sourceRow });

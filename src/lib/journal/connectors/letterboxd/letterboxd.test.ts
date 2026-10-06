@@ -104,11 +104,11 @@ describe("letterboxd connector", () => {
       expect(r.entries).toHaveLength(1);
     });
 
-    it("populates reflection from Review column", () => {
+    it("populates review from Review column", () => {
       const r = connector.parse({ name: "reviews.csv", text: reviewsText });
       if (r instanceof Promise) throw new Error("expected sync parse");
       const entry = r.entries[0].entry as Film;
-      expect(entry.reflection).toBe("Great fun but runs about 20 minutes too long.");
+      expect(entry.review).toBe("Great fun but runs about 20 minutes too long.");
     });
 
     it("shares the same dedupeKey as the diary entry for the same watch", () => {

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { putMany, removeMany, hideMany, storeFor, useJournal } from "@/lib/journal/db";
-import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person } from "@/lib/journal/types";
+import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person, type AnyOverrides } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { operatorMarkId } from "@/lib/journal/connectors/icons";
 import { isLocked } from "@/lib/journal/evaluation";
@@ -236,7 +236,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   const [reflection, setReflection] = useState(entry.reflection ?? "");
   const [rating, setRating] = useState<number | undefined>(entry.rating);
   const [dateStarted, setDateStarted] = useState(entry.kind === "book" ? (entry.dateStarted ?? "") : "");
-  const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
+  const [ov, setOv] = useState<Record<string, string>>((entry.overrides as Record<string, string>) ?? {});
   const [participants, setParticipants] = useState<string[] | undefined>(entry.participants);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -261,7 +261,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
         ...entry, ...extra,
         reflection: reflectionVal,
         rating: ratingVal,
-        overrides: Object.keys(clean).length ? clean : undefined,
+        overrides: Object.keys(clean).length ? (clean as AnyOverrides) : undefined,
         participants,
       }]);
       toast.success("Entry saved");
@@ -316,7 +316,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             {trip && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trip.title}</Badge>}
           </div>
           {!compact && meta && <p className="truncate text-sm text-muted-foreground">{meta}</p>}
-          {!open && entry.reflection && <p className="mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80">&ldquo;{entry.reflection}&rdquo;</p>}
+          {!open && (entry.review ?? entry.reflection) && <p className="mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80">&ldquo;{entry.review ?? entry.reflection}&rdquo;</p>}
         </div>
         <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{entryLabel(v)}</span>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
@@ -329,20 +329,20 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             </ol>
           )}
 
-          {/* Reflection — locked (source provenance) or editable */}
+          {/* Reflection — locked (source review present) or editable */}
           {reflectionLocked ? (
             <div className="space-y-1">
               <div className="flex items-center gap-1.5">
-                <p className="text-xs text-muted-foreground">Reflection</p>
+                <p className="text-xs text-muted-foreground">Source review</p>
                 <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
                   <Lock className="h-2.5 w-2.5" />
                   <SourceIcon source={entry.source} />
                   {sourceLabel(entry.source)}
                 </span>
               </div>
-              {entry.reflection && (
+              {entry.review && (
                 <blockquote className="border-l-2 border-amber-400/60 pl-3 font-serif text-sm italic text-foreground/80">
-                  {entry.reflection}
+                  {entry.review}
                 </blockquote>
               )}
             </div>

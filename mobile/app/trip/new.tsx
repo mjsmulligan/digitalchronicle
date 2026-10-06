@@ -14,18 +14,8 @@ import { useDialog, Dialog } from "../../src/components/Dialog";
 import { DateField } from "../../src/components/DateField";
 import { Stack, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
-import { uid, type Purpose } from "@chronicle/journal/types";
+import { uid } from "@chronicle/journal/types";
 import { useTheme } from "../../src/components/ThemeProvider";
-import { KindIcon } from "../../src/components/KindIcon";
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-const PURPOSES: { id: Purpose; label: string; kind: string }[] = [
-  { id: "leisure", label: "Leisure",  kind: "leisure" },
-  { id: "work",    label: "Work",     kind: "work" },
-  { id: "family",  label: "Family",   kind: "family" },
-  { id: "other",   label: "Other",    kind: "location" },
-];
 
 /** Returns today as YYYY-MM-DD */
 function today(): string {
@@ -66,23 +56,6 @@ export default function NewTripScreen() {
     dateField: { flex: 1 },
     validationError: { ...text.sm, color: colors.error, marginTop: 4 },
 
-    purposeRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
-    purposeChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.sm2,
-      paddingHorizontal: spacing.md2,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    purposeChipActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
-    purposeIconWrap: { marginTop: 1 },
-    purposeLabel: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
-    purposeLabelActive: { color: colors.accentSubtle },
-
     saveBtn: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
     saveBtnDisabled: { opacity: 0.4 },
 
@@ -100,7 +73,6 @@ export default function NewTripScreen() {
   const [title, setTitle]         = useState("");
   const [start, setStart]         = useState(today());
   const [end, setEnd]             = useState(today());
-  const [purpose, setPurpose]     = useState<Purpose | undefined>(undefined);
   const [reflection, setReflection] = useState("");
   const [rating, setRating]       = useState<number | undefined>(undefined);
   const [saving, setSaving]       = useState(false);
@@ -119,7 +91,6 @@ export default function NewTripScreen() {
         end,
         cover: "",
         createdAt: new Date().toISOString(),
-        ...(purpose ? { purpose } : {}),
         ...(reflection.trim() ? { reflection: reflection.trim() } : {}),
         ...(rating !== undefined ? { rating } : {}),
       };
@@ -183,30 +154,6 @@ export default function NewTripScreen() {
       {start > end && isValidDate(start) && isValidDate(end) && (
         <Text style={styles.validationError}>End date must be on or after start date</Text>
       )}
-
-      {/* Purpose */}
-      <Text style={styles.label}>Purpose</Text>
-      <View style={styles.purposeRow}>
-        {PURPOSES.map((p) => (
-          <Pressable
-            key={p.id}
-            style={[styles.purposeChip, purpose === p.id && styles.purposeChipActive]}
-            onPress={() => setPurpose(purpose === p.id ? undefined : p.id)}
-          >
-            <View style={styles.purposeIconWrap}>
-              <KindIcon
-                kind={p.kind}
-                size={14}
-                color={purpose === p.id ? colors.accentSubtle : colors.textSecondary}
-                accessibilityLabel=""
-              />
-            </View>
-            <Text style={[styles.purposeLabel, purpose === p.id && styles.purposeLabelActive]}>
-              {p.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
 
       {/* Rating */}
       <Text style={styles.label}>Rating <Text style={styles.optional}>(optional)</Text></Text>

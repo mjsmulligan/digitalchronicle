@@ -31,6 +31,7 @@ import {
   type Mode,
   type EventCategory,
   type Tier,
+  type AnyOverrides,
 } from "@chronicle/journal/types";
 import { useTheme } from "../../../src/components/ThemeProvider";
 import { KindIcon } from "../../../src/components/KindIcon";
@@ -704,16 +705,13 @@ export default function EditEntryScreen() {
     try {
       if (!kindChanged) {
         // ── Same-kind edit: write to overrides ───────────────────────────────
-        // String-cast all override values (overrides is Record<string,string>)
-        const newOverrides: Record<string, string> = {
-          ...(entry.overrides ?? {}),
-        };
+        const newOverrides: AnyOverrides = { ...(entry.overrides ?? {}) };
         for (const [k, v] of Object.entries(fieldPatch)) {
           if (v !== undefined && v !== null) {
-            newOverrides[k] = String(v);
+            (newOverrides as Record<string, unknown>)[k] = v;
           } else {
             // Explicitly clear a previously-overridden field
-            delete newOverrides[k];
+            delete (newOverrides as Record<string, unknown>)[k];
           }
         }
         const updated = {
@@ -736,6 +734,11 @@ export default function EditEntryScreen() {
           participants: entry.participants,
           dedupeKey: `${selectedKind}|manual|${uid()}`,
           createdAt: new Date().toISOString(),
+          // Preserve authored data across kind change (DM6)
+          ...(entry.rating    !== undefined ? { rating:     entry.rating    } : {}),
+          ...(entry.reflection               ? { reflection: entry.reflection } : {}),
+          ...(entry.review                   ? { review:     entry.review    } : {}),
+          ...(entry.overrides                ? { overrides:  entry.overrides } : {}),
         };
 
         let newEntry: Entry | null = null;
