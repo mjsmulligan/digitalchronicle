@@ -2,7 +2,7 @@ import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor 
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations } from "./geo";
 import {
-  uid, view, type Entry, type StagedRecord, type StagingBatch,
+  uid, view, type Entry, type Leg, type StagedRecord, type StagingBatch,
 } from "./types";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
@@ -54,6 +54,17 @@ export async function stageFile(filename: string, text: string, forced?: string)
   const existing = new Map(allEntries(getState()).map((e) => [e.dedupeKey, e]));
   const seen = new Set<string>();
 
+  // Secondary index: date → existing legs, for fuzzy flight dedup (see below).
+  const legsByDate = new Map<string, Entry[]>();
+  for (const e of existing.values()) {
+    if (e.kind === "leg") {
+      const day = e.start.slice(0, 10);
+      const bucket = legsByDate.get(day);
+      if (bucket) bucket.push(e);
+      else legsByDate.set(day, [e]);
+    }
+  }
+
   // Chunk the classify loop so the UI thread isn't starved on large imports
   // (e.g. 4000-row Netflix history). Yield every 200 entries.
   const CLASSIFY_CHUNK = 200;
@@ -62,9 +73,30 @@ export async function stageFile(filename: string, text: string, forced?: string)
     if (i > 0 && i % CLASSIFY_CHUNK === 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
-    const { entry, warnings, sourceRow } = res.entries[i];
+    const { entry, sourceRow } = res.entries[i];
+    let { warnings } = res.entries[i];
     entry.sourceRef = `${filename}#row${sourceRow}`;
-    const c = classify(entry, existing, seen);
+    let c = classify(entry, existing, seen);
+
+    // Fuzzy flight dedup: a leg with ??? placeholder codes (airport codes
+    // couldn't be parsed from the calendar summary) won't match any real leg by
+    // dedupeKey. If another leg already exists on the same date, flag it as a
+    // likely duplicate so the user reviews it rather than auto-committing.
+    if (
+      c.status === "new" &&
+      entry.kind === "leg" &&
+      (entry as Leg).from === "???"
+    ) {
+      const sameDayLegs = legsByDate.get(entry.start.slice(0, 10)) ?? [];
+      if (sameDayLegs.length > 0) {
+        c = { status: "duplicate", matchId: sameDayLegs[0].id };
+        warnings = [
+          ...warnings,
+          "Airport codes couldn't be parsed — possible duplicate of an existing flight on this date. Verify before committing.",
+        ];
+      }
+    }
+
     records.push({ entry, warnings, ...c, selected: c.status === "new" || c.status === "supersedes" });
   }
   const batch: StagingBatch = { id: uid(), source, filename, createdAt: new Date().toISOString(), records, errors: res.errors };
