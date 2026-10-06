@@ -1,15 +1,22 @@
 /**
  * Entry detail screen — view-only for all entry kinds.
  * Reached by tapping any row in the Chronicle feed.
+ *
+ * WP-E1/E2 — Edit button in header routes to entry/edit/[id].tsx
+ * WP-E3    — Merge action shows same-day entries; merges two into one.
  */
 import { useMemo, useState } from "react";
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { Stack, useLocalSearchParams } from "expo-router";
-import { useJournal, allEntries } from "@chronicle/journal/db";
-import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "@chronicle/journal/types";
+import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
+import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { mergeEntries } from "@/lib/journal/merge";
+import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { SourceMark } from "../../src/components/SourceMark";
+import { useDialog, Dialog } from "../../src/components/Dialog";
+import { Ionicons } from "@expo/vector-icons";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -111,7 +118,7 @@ function StayDetail({ e, styles, ic }: { e: Stay; styles: DetailStyles; ic: Icon
       <Field label="Check-in" value={fmt(v.start)} styles={styles} />
       {v.end && <Field label="Check-out" value={fmt(v.end)} styles={styles} />}
       <Field label="City" value={v.city} styles={styles} />
-      <Field label="Notes" value={(e as Stay).notes} styles={styles} />
+      <Field label="Notes" value={e.reflection} styles={styles} />
     </>
   );
 }
@@ -315,12 +322,20 @@ function EventDetail({ e, styles, ic }: { e: JEvent; styles: DetailStyles; ic: I
   );
 }
 
+// ── editable kinds ────────────────────────────────────────────────────────────
+
+const EDITABLE_KINDS = new Set(["leg", "stay", "event", "film", "episode", "book"]);
+
 // ── screen ────────────────────────────────────────────────────────────────────
 
 export default function EntryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const journal = useJournal();
   const { colors, fonts, text, spacing, radius, common } = useTheme();
+  const dialog = useDialog();
+  const [mergeVisible, setMergeVisible] = useState(false);
+  const [mergeSaving, setMergeSaving] = useState(false);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
@@ -368,6 +383,42 @@ export default function EntryDetailScreen() {
 
     notFound:     { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
     notFoundText: { ...text.lg, color: colors.textTertiary },
+
+    // header actions
+    headerActions: { flexDirection: "row" as const, alignItems: "center" as const, gap: 2, marginRight: 4 },
+    headerBtn:     { padding: 8 },
+
+    // merge modal
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" as const },
+    modalSheet: {
+      backgroundColor: colors.bg,
+      borderTopLeftRadius: radius["2xl"],
+      borderTopRightRadius: radius["2xl"],
+      paddingTop: spacing.md,
+      paddingBottom: spacing["3xl"],
+      maxHeight: "70%",
+    },
+    modalHandle: {
+      width: 36, height: 4,
+      backgroundColor: colors.border,
+      borderRadius: 2,
+      alignSelf: "center" as const,
+      marginBottom: spacing.md,
+    },
+    modalTitle: { ...text.lg, color: colors.textPrimary, fontWeight: "600" as const, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+    modalSubtitle: { ...text.sm, color: colors.textTertiary, paddingHorizontal: spacing.lg, marginBottom: spacing.base },
+    mergeRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      gap: spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    mergeRowText: { ...text.base, color: colors.textPrimary, flex: 1 },
+    mergeRowSub:  { ...text.sm, color: colors.textTertiary },
+    mergeEmpty: { ...text.base, color: colors.textTertiary, textAlign: "center" as const, padding: spacing.xl },
   }), [colors, fonts]);
 
   const ic = useMemo<IconColors>(
@@ -386,6 +437,60 @@ export default function EntryDetailScreen() {
     return (journal.localityPlaces ?? []).find((p) => p.id === (entry as PlaceEntry).placeId);
   }, [entry, journal.localityPlaces]);
 
+  // Same-day entries for the merge picker (WP-E3)
+  const sameDayEntries = useMemo<Entry[]>(() => {
+    if (!entry) return [];
+    const day = entry.start.slice(0, 10);
+    return allEntries(journal).filter(
+      (e) => e.id !== entry.id && e.start.slice(0, 10) === day,
+    );
+  }, [entry, journal]);
+
+  const handleMerge = async (other: Entry) => {
+    if (!entry || mergeSaving) return;
+    // Confirm: keep `entry` (this), delete `other`
+    dialog.confirm(
+      "Merge entries",
+      `Keep "${entryTitle(entry)}" and discard "${entryTitle(other)}"?\n\nTrip link, participants, overrides and reflections from the discarded entry will be preserved.`,
+      "Merge",
+      async () => {
+        setMergeSaving(true);
+        setMergeVisible(false);
+        try {
+          const merged = mergeEntries(entry, other);
+          const updated = {
+            ...merged,
+            tier: 1 as Tier,
+            source: "manual" as const,
+          };
+          await putMany(storeFor(entry), [updated]);
+          await hideMany(storeFor(other), [other.id]);
+        } catch (err) {
+          dialog.alert("Merge failed", String(err));
+        } finally {
+          setMergeSaving(false);
+        }
+      },
+    );
+  };
+
+  const handleHide = () => {
+    if (!entry) return;
+    dialog.confirm(
+      "Hide entry",
+      `"${entryTitle(entry)}" will be hidden from your journal. You can restore it from Settings → Hidden Entries.`,
+      "Hide",
+      async () => {
+        try {
+          await hideMany(storeFor(entry), [entry.id]);
+          router.back();
+        } catch (err) {
+          dialog.alert("Could not hide entry", String(err));
+        }
+      },
+    );
+  };
+
   if (!entry) {
     return (
       <View style={styles.notFound}>
@@ -400,10 +505,40 @@ export default function EntryDetailScreen() {
     .join(", ");
 
   const reflection = entry.reflection ?? (entry as any).journal;
+  const reflectionLocked = isLocked(entry, "reflection");
+  const ratingLocked = isLocked(entry, "rating");
+
+  const isEditable = EDITABLE_KINDS.has(entry.kind);
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen options={{ title: "", ...common.header }} />
+      <Stack.Screen
+        options={{
+          title: "",
+          ...common.header,
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              {sameDayEntries.length > 0 && (
+                <Pressable style={styles.headerBtn} onPress={() => setMergeVisible(true)}>
+                  <Ionicons name="git-merge-outline" size={22} color={colors.textTertiary} />
+                </Pressable>
+              )}
+              {isEditable && (
+                <Pressable
+                  style={styles.headerBtn}
+                  onPress={() => router.push({ pathname: "/entry/edit/[id]", params: { id: entry.id } })}
+                >
+                  <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
+                </Pressable>
+              )}
+              <Pressable style={styles.headerBtn} onPress={handleHide}>
+                <Ionicons name="trash-outline" size={22} color={colors.textTertiary} />
+              </Pressable>
+            </View>
+          ),
+        }}
+      />
 
       <View style={styles.card}>
         {entry.kind === "leg"         && <LegDetail         e={entry as Leg}        styles={styles} ic={ic} />}
@@ -419,7 +554,14 @@ export default function EntryDetailScreen() {
       {/* Reflection */}
       {reflection && (
         <View style={styles.reflectionCard}>
-          <Text style={styles.reflectionLabel}>Reflection</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={styles.reflectionLabel}>Reflection</Text>
+            {reflectionLocked && (
+              <Text style={{ ...styles.reflectionLabel, color: colors.accentSoft }}>
+                · {sourceLabel(entry.source)}
+              </Text>
+            )}
+          </View>
           <Text style={styles.reflectionText}>{reflection}</Text>
         </View>
       )}
@@ -441,7 +583,57 @@ export default function EntryDetailScreen() {
           </View>
         </View>
         {entry.sourceRef && <Field label="Ref" value={entry.sourceRef} styles={styles} />}
+        {entry.additionalSources?.map((s, i) => (
+          <View key={i}>
+            <View style={styles.sourceFieldRow}>
+              <Text style={styles.fieldLabel} />
+              <View style={styles.sourceValue}>
+                <SourceMark source={s.source} size={18} />
+                <Text style={styles.fieldValue} numberOfLines={1}>{sourceLabel(s.source)}</Text>
+              </View>
+            </View>
+            {s.sourceRef && <Field label="Ref" value={s.sourceRef} styles={styles} />}
+          </View>
+        ))}
       </View>
     </ScrollView>
+
+    {/* ── Merge modal (WP-E3) ── */}
+    <Modal
+      visible={mergeVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setMergeVisible(false)}
+    >
+      <Pressable style={styles.modalOverlay} onPress={() => setMergeVisible(false)}>
+        <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Merge with…</Text>
+          <Text style={styles.modalSubtitle}>
+            Pick another entry from the same day. This entry will be kept; the selected one will be removed.
+          </Text>
+          {sameDayEntries.length === 0 ? (
+            <Text style={styles.mergeEmpty}>No other entries on this day.</Text>
+          ) : (
+            <FlatList
+              data={sameDayEntries}
+              keyExtractor={(e) => e.id}
+              renderItem={({ item }) => (
+                <Pressable style={styles.mergeRow} onPress={() => handleMerge(item)}>
+                  <KindIcon kind={item.kind} size={18} color={colors.textSecondary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.mergeRowText} numberOfLines={1}>{entryTitle(item)}</Text>
+                    <Text style={styles.mergeRowSub}>{item.source}</Text>
+                  </View>
+                </Pressable>
+              )}
+            />
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }

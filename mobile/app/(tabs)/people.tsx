@@ -5,6 +5,7 @@
 import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Link, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Person } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
@@ -81,6 +82,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     emptyIcon: { fontSize: 48, marginBottom: spacingScale.base },
     emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacingScale.sm },
     emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+    ctaBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm2,
+      marginTop: spacingScale.xl,
+      paddingHorizontal: spacingScale.lg,
+      paddingVertical: spacingScale.md,
+      borderRadius: radiusScale.pill,
+      backgroundColor: colors.accentBold,
+    },
+    ctaBtnText: { color: colors.white, fontSize: 15, fontWeight: "700" },
   });
 }
 
@@ -158,8 +170,14 @@ export default function PeopleScreen() {
         <Text style={styles.emptyIcon}>👤</Text>
         <Text style={styles.emptyTitle}>No people yet</Text>
         <Text style={styles.emptyHint}>
-          Use Import contacts to add people from a .vcf or contacts CSV file.
+          Add people from your phone contacts or a .vcf / contacts CSV file.
         </Text>
+        <Link href="/import-people" asChild>
+          <Pressable style={styles.ctaBtn}>
+            <Ionicons name="add" size={18} color="white" />
+            <Text style={styles.ctaBtnText}>Import contacts</Text>
+          </Pressable>
+        </Link>
       </View>
     );
   }

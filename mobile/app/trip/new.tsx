@@ -14,18 +14,8 @@ import { useDialog, Dialog } from "../../src/components/Dialog";
 import { DateField } from "../../src/components/DateField";
 import { Stack, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
-import { uid, type Purpose } from "@chronicle/journal/types";
+import { uid } from "@chronicle/journal/types";
 import { useTheme } from "../../src/components/ThemeProvider";
-import { KindIcon } from "../../src/components/KindIcon";
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-const PURPOSES: { id: Purpose; label: string; kind: string }[] = [
-  { id: "leisure", label: "Leisure",  kind: "leisure" },
-  { id: "work",    label: "Work",     kind: "work" },
-  { id: "family",  label: "Family",   kind: "family" },
-  { id: "other",   label: "Other",    kind: "location" },
-];
 
 /** Returns today as YYYY-MM-DD */
 function today(): string {
@@ -66,23 +56,6 @@ export default function NewTripScreen() {
     dateField: { flex: 1 },
     validationError: { ...text.sm, color: colors.error, marginTop: 4 },
 
-    purposeRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
-    purposeChip: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.sm2,
-      paddingHorizontal: spacing.md2,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    purposeChipActive: { backgroundColor: colors.surfaceAccent, borderColor: colors.accent },
-    purposeIconWrap: { marginTop: 1 },
-    purposeLabel: { ...text.smMd, color: colors.textSecondary, fontWeight: "600" },
-    purposeLabelActive: { color: colors.accentSubtle },
-
     saveBtn: { ...text.lg, color: colors.accentSoft, fontWeight: "600" },
     saveBtnDisabled: { opacity: 0.4 },
 
@@ -97,12 +70,12 @@ export default function NewTripScreen() {
     saveButtonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
   }), [colors, fonts]);
 
-  const [title, setTitle]     = useState("");
-  const [start, setStart]     = useState(today());
-  const [end, setEnd]         = useState(today());
-  const [purpose, setPurpose] = useState<Purpose | undefined>(undefined);
-  const [notes, setNotes]     = useState("");
-  const [saving, setSaving]   = useState(false);
+  const [title, setTitle]         = useState("");
+  const [start, setStart]         = useState(today());
+  const [end, setEnd]             = useState(today());
+  const [reflection, setReflection] = useState("");
+  const [rating, setRating]       = useState<number | undefined>(undefined);
+  const [saving, setSaving]       = useState(false);
   const dialog = useDialog();
 
   const canSave = title.trim().length > 0 && isValidDate(start) && isValidDate(end) && start <= end;
@@ -116,10 +89,10 @@ export default function NewTripScreen() {
         title: title.trim(),
         start,
         end,
-        notes: notes.trim(),
         cover: "",
         createdAt: new Date().toISOString(),
-        ...(purpose ? { purpose } : {}),
+        ...(reflection.trim() ? { reflection: reflection.trim() } : {}),
+        ...(rating !== undefined ? { rating } : {}),
       };
       await putMany("trips", [trip]);
       router.replace(`/trip/${trip.id}`);
@@ -182,37 +155,36 @@ export default function NewTripScreen() {
         <Text style={styles.validationError}>End date must be on or after start date</Text>
       )}
 
-      {/* Purpose */}
-      <Text style={styles.label}>Purpose</Text>
-      <View style={styles.purposeRow}>
-        {PURPOSES.map((p) => (
+      {/* Rating */}
+      <Text style={styles.label}>Rating <Text style={styles.optional}>(optional)</Text></Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {[2, 4, 6, 8, 10].map((val) => (
           <Pressable
-            key={p.id}
-            style={[styles.purposeChip, purpose === p.id && styles.purposeChipActive]}
-            onPress={() => setPurpose(purpose === p.id ? undefined : p.id)}
+            key={val}
+            onPress={() => setRating(rating === val ? undefined : val)}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: rating !== undefined && rating >= val ? colors.accent : colors.border,
+              backgroundColor: rating !== undefined && rating >= val ? colors.surfaceAccent : colors.surface,
+            }}
           >
-            <View style={styles.purposeIconWrap}>
-              <KindIcon
-                kind={p.kind}
-                size={14}
-                color={purpose === p.id ? colors.accentSubtle : colors.textSecondary}
-                accessibilityLabel=""
-              />
-            </View>
-            <Text style={[styles.purposeLabel, purpose === p.id && styles.purposeLabelActive]}>
-              {p.label}
+            <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: rating !== undefined && rating >= val ? colors.accentSubtle : colors.textTertiary }}>
+              {"★".repeat(val / 2)}
             </Text>
           </Pressable>
         ))}
       </View>
 
-      {/* Notes */}
-      <Text style={styles.label}>Notes <Text style={styles.optional}>(optional)</Text></Text>
+      {/* Reflection */}
+      <Text style={styles.label}>Reflection <Text style={styles.optional}>(optional)</Text></Text>
       <TextInput
         style={[styles.input, styles.inputMultiline]}
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Any notes about this trip…"
+        value={reflection}
+        onChangeText={setReflection}
+        placeholder="Trip reflection…"
         placeholderTextColor="#475569"
         multiline
         numberOfLines={4}

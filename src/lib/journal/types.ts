@@ -11,9 +11,22 @@ export type Source = string;
 export type Tier = 1 | 2 | 3;
 export type Mode = "air" | "rail" | "road";
 
-/** How sure we are this fact is right, independent of Tier (which is precedence, not quality). */
-export type Confidence = "confirmed" | "inferred" | "approximate";
 export type Purpose = "work" | "family" | "leisure" | "other";
+
+// Per-kind override shapes — defined before Base to avoid circular references.
+// Fields mirror the corresponding kind interfaces; kept in sync manually.
+export type LegOverrides = Partial<{
+  start: string; end: string; from: string; to: string;
+  fromName: string; toName: string; mode: string;
+  flightNumber: string; trainNumber: string; operator: string; seat: string;
+}>;
+export type StayOverrides    = Partial<{ start: string; end: string; place: string; city: string; notes: string }>;
+export type EventOverrides   = Partial<{ start: string; end: string; artist: string; venue: string; city: string; country: string; category: string; tour: string }>;
+export type FilmOverrides    = Partial<{ start: string; title: string; year: number; director: string }>;
+export type EpisodeOverrides = Partial<{ start: string; showTitle: string; season: string; episodeTitle: string; episodeNumber: number }>;
+export type BookOverrides    = Partial<{ start: string; title: string; author: string; year: number; dateStarted: string }>;
+
+export type AnyOverrides = LegOverrides | StayOverrides | EventOverrides | FilmOverrides | EpisodeOverrides | BookOverrides;
 
 interface Base {
   id: string;
@@ -37,12 +50,21 @@ interface Base {
   endUTC?: string;
   tripId?: string;
   dedupeKey: string;
-  /** Free-text personal reflection on this entry. Stored in IndexedDB; never exported. */
+  /** User's own prose reflection. Never overwritten by connectors or supersede. */
   reflection?: string;
-  /** @deprecated Legacy name for `reflection`; still written by existing UI and parsers. */
-  journal?: string;
-  /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
+  /**
+   * Source-supplied review text (e.g. a Letterboxd review, Goodreads review,
+   * or calendar description). Written only by connectors. Read-only in the UI.
+   * See evaluation.ts — D8.
+   */
+  review?: string;
+  /** Universal quantitative field: rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
+  /**
+   * Tracks rating provenance — whether the rating came from an external source.
+   * See `isLocked()` in evaluation.ts.
+   */
+  sourceLocked?: ("rating")[];
   /**
    * How precisely the date is known.
    * "day"     — full YYYY-MM-DD known (default assumed when omitted)
@@ -52,13 +74,8 @@ interface Base {
    */
   datePrecision?: "day" | "month" | "year" | "unknown";
   /** Tier 1 manual overrides layered on top of source data */
-  overrides?: Record<string, string>;
+  overrides?: AnyOverrides;
   createdAt: string;
-  /**
-   * How sure we are this fact (not just this record) is right. Not the same as Tier.
-   * Optional: PlaceEntry does not use confidence (staging hints replace it — see WP10).
-   */
-  confidence?: Confidence;
   purpose?: Purpose;
   /** Person ids or free-text names of who was there */
   companions?: string[];
@@ -66,6 +83,15 @@ interface Base {
   raw?: Record<string, unknown>;
   /** Where this fact came from: filename and row/index within it. */
   sourceRef?: string;
+  /** Extra sources absorbed when two entries were merged. */
+  additionalSources?: Array<{ source: string; sourceRef?: string }>;
+  /**
+   * Soft-delete flag. When `true` the entry is excluded from all normal views
+   * and helpers (allEntries, feeds, trip linking, etc.) but remains in the
+   * database so it can be restored from Settings → Hidden Entries.
+   * Absent (undefined) means visible — the field is never set to `false`.
+   */
+  hidden?: true;
 }
 
 export interface Leg extends Base {
@@ -153,6 +179,10 @@ export interface Series {
   title: string;
   /** "tv" for television shows; "book" for book series */
   mediaType?: "tv" | "book";
+  /** Container-level rating 0–10. Separate from individual episode/book ratings. */
+  rating?: number;
+  /** Container-level reflection prose. */
+  reflection?: string;
   createdAt: string;
 }
 
@@ -342,6 +372,10 @@ export interface Person {
   createdAt: string;
 }
 
+/**
+ * @deprecated Day-level notes are no longer part of the model: reflections belong
+ * to entries and containers only. The store is kept so existing data survives in backups.
+ */
 export interface Note {
   id: string;
   /** YYYY-MM-DD day note, or attached to a trip */
@@ -357,10 +391,14 @@ export interface Trip {
   title: string;
   start: string;
   end: string;
-  notes: string;
   cover: string;
   createdAt: string;
-  purpose?: Purpose;
+  /** Universal rating 0–10 for the whole trip */
+  rating?: number;
+  /** Universal reflection on the whole trip */
+  reflection?: string;
+  /** @deprecated Folded into `reflection` on boot. */
+  notes?: string;
 }
 
 export type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-duplicate";
@@ -431,6 +469,19 @@ export const STORES = [
   "localityPlaces", "placeEntries", "placeBinMarkers",
 ] as const;
 export type StoreName = (typeof STORES)[number];
+
+/** Returns an empty JournalData with every store initialised to an empty array. */
+export function emptyJournalData(): JournalData {
+  return Object.fromEntries(STORES.map((s) => [s, []])) as unknown as JournalData;
+}
+
+/** The top-level shape of a Chronicle backup file. */
+export interface BackupFile {
+  app: "chronicle";
+  schemaVersion: 1;
+  exportedAt: string;
+  data: JournalData;
+}
 
 /**
  * @deprecated Use sourceLabel(id) from connectors/registry.ts instead.

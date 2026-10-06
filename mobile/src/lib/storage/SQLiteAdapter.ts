@@ -9,7 +9,7 @@
  * WAL mode is enabled for better concurrent read performance.
  */
 import * as SQLite from "expo-sqlite";
-import { STORES, type JournalData, type StoreName } from "@chronicle/journal/types";
+import { STORES, emptyJournalData, type JournalData, type StoreName } from "@chronicle/journal/types";
 import type { StorageAdapter, Row } from "@chronicle/journal/storage";
 
 export class SQLiteAdapter implements StorageAdapter {
@@ -127,23 +127,6 @@ export class SQLiteAdapter implements StorageAdapter {
   }
 
   async clearAll(): Promise<void> {
-    await this.replaceAll({
-      trips: [],
-      legs: [],
-      stays: [],
-      events: [],
-      films: [],
-      episodes: [],
-      books: [],
-      series: [],
-      notes: [],
-      staging: [],
-      people: [],
-      places: [],
-      placeEvents: [],
-      localityPlaces: [],
-      placeEntries: [],
-      placeBinMarkers: [],
-    });
+    await this.replaceAll(emptyJournalData());
   }
 }

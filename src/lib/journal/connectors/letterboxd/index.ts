@@ -78,9 +78,9 @@ function parseLetterboxd(text: string): ParseResult {
       ? true
       : undefined;
 
-    // Reflection from reviews.csv "Review" column; omit if blank.
+    // Source review from reviews.csv "Review" column; stored as `review`, not `reflection`.
     const rawReview = (r["Review"] as string | undefined)?.trim();
-    const reflection = rawReview || undefined;
+    const review = rawReview || undefined;
 
     const letterboxdUri = (r["Letterboxd URI"] as string | undefined)?.trim();
 
@@ -95,11 +95,10 @@ function parseLetterboxd(text: string): ParseResult {
       year,
       rewatch,
       rating,
-      reflection,
+      review,
       sourceRef: letterboxdUri || `letterboxd:row:${sourceRow}`,
       dedupeKey: filmKey(title, year, watchedDate),
       createdAt: now(),
-      confidence: "confirmed",
       raw: r as Record<string, unknown>,
     };
 

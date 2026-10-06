@@ -1,8 +1,10 @@
 import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor } from "./db";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations } from "./geo";
+import { mergeEvaluation, sourceLocks } from "./evaluation";
+import { KIND_REGISTRY } from "./kinds";
 import {
-  uid, view, type Entry, type Leg, type StagedRecord, type StagingBatch,
+  uid, type Entry, type Leg, type StagedRecord, type StagingBatch,
 } from "./types";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
@@ -17,16 +19,7 @@ function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>)
 }
 
 export function placeLabel(e: Entry): string {
-  const v = view(e);
-  if (v.kind === "leg") return v.toName ?? v.to;
-  if (v.kind === "stay") return v.city ?? v.place;
-  if (v.kind === "place") return v.locality;
-  if (v.kind === "place-entry") return v.localDay;
-  if (v.kind === "film") return v.title;
-  if (v.kind === "episode") return v.showTitle;
-  if (v.kind === "book") return v.title;
-  // JEvent
-  return v.city || v.venue;
+  return KIND_REGISTRY[e.kind].placeLabel(e);
 }
 
 export async function stageFile(filename: string, text: string, forced?: string) {
@@ -76,6 +69,7 @@ export async function stageFile(filename: string, text: string, forced?: string)
     const { entry, sourceRow } = res.entries[i];
     let { warnings } = res.entries[i];
     entry.sourceRef = `${filename}#row${sourceRow}`;
+    entry.sourceLocked = sourceLocks(entry);
     let c = classify(entry, existing, seen);
 
     // Fuzzy flight dedup: a leg with ??? placeholder codes (airport codes
@@ -118,11 +112,15 @@ export async function commitBatch(b: StagingBatch) {
   for (const r of b.records) {
     if (!r.selected) continue;
     let e: Entry;
-    if (r.status === "new") e = r.entry;
-    else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
+    if (r.status === "new") {
+      // Assign sourceLocked based on the connector that produced this entry
+      const locks = sourceLocks(r.entry);
+      e = locks.length > 0 ? { ...r.entry, sourceLocked: locks } : r.entry;
+    } else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
       const old = byId.get(r.matchId)!;
       // Replace source data but keep sovereign overrides, reflection & trip link
-      e = { ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides, reflection: old.reflection ?? r.entry.reflection } as Entry;
+      // Source-supplied rating/review win (provenance); otherwise the user's values are kept.
+      e = mergeEvaluation({ ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides } as Entry, old);
     } else continue;
     writes[storeFor(e)].push(e);
     count++;

@@ -6,6 +6,7 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 
 ## Recently completed
 
+- [x] **Universal evaluation refactor** — `rating` (0–10) and `reflection` (prose) on all entry kinds, `Trip`, and `Series` containers. Source provenance locked via `sourceLocked`; locked fields rendered read-only with source badge. Legacy `Base.journal` and `Trip.notes` migrated on boot. Day-level note composition removed from mobile feed.
 - [x] **Shared `rating`, `reflection`, `datePrecision`, `sourceRef` fields** on Base — normalised across all entry types.
 - [x] **Film & Episode types** (`film`, `episode`) with `Series` container, rewatch flag, season/episode parsing.
 - [x] **Book type** (`book`) with clean title, author, series/seriesNumber.

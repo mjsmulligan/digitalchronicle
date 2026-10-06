@@ -292,9 +292,8 @@ function parseIcs(text: string): ParseResult {
       id: uid(),
       source: SOURCE,
       tier: 3 as const,
-      confidence: "inferred" as const,
       createdAt: now(),
-      reflection: description,
+      review: description,
     };
 
     // --- Classify: multi-day all-day → Stay ---
@@ -392,7 +391,7 @@ function parseIcs(text: string): ParseResult {
       startUTC: localToUTC(startStr, tz),
       dedupeKey: "",
     };
-    e.dedupeKey = eventKey(e, SOURCE);
+    e.dedupeKey = eventKey(e);
     out.entries.push({ entry: e, warnings: [], sourceRow });
   });
 

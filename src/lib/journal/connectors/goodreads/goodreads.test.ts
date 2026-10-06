@@ -57,12 +57,12 @@ describe("goodreads connector — parse", () => {
     expect(entry.rating).toBe(2);
   });
 
-  it("The Magicians — reflection from My Review", () => {
+  it("The Magicians — review from My Review", () => {
     const entry = result.entries.find(
       ({ entry }) => (entry as Book).goodreadsId === "6101718",
     )!.entry as Book;
-    expect(entry.reflection).toBeTruthy();
-    expect(entry.reflection).toContain("DNF");
+    expect(entry.review).toBeTruthy();
+    expect(entry.review).toContain("DNF");
   });
 
   it("The Magicians — start = Date Read", () => {

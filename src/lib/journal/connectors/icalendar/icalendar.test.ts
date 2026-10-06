@@ -47,7 +47,6 @@ describe("icalendar connector", () => {
       for (const { entry } of r.entries) {
         expect(entry.source).toBe("icalendar");
         expect(entry.tier).toBe(3);
-        expect(entry.confidence).toBe("inferred");
       }
     });
 
@@ -89,13 +88,13 @@ describe("icalendar connector", () => {
       expect(entry.start).toBe("2026-03-14T20:00");
     });
 
-    it("maps DESCRIPTION to reflection", () => {
+    it("maps DESCRIPTION to review", () => {
       const entry = r.entries[0].entry as JEvent;
-      expect(entry.reflection).toContain("Incredible energy");
+      expect(entry.review).toContain("Incredible energy");
     });
 
-    it("dedupeKey starts with icalendar|event|", () => {
-      expect(r.entries[0].entry.dedupeKey).toMatch(/^icalendar\|event\|/);
+    it("dedupeKey starts with event|", () => {
+      expect(r.entries[0].entry.dedupeKey).toMatch(/^event\|/);
     });
   });
 
@@ -330,11 +329,11 @@ describe("icalendar connector", () => {
       );
     });
 
-    it("dedupeKey format: icalendar|event|date|artist", () => {
+    it("dedupeKey format: event|date|artist", () => {
       const ics = `BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20260601\nDTEND:20260602\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR`;
       const r = connector.parse({ name: "test.ics", text: ics });
       if (r instanceof Promise) throw new Error("sync expected");
-      expect(r.entries[0].entry.dedupeKey).toBe("icalendar|event|2026-06-01|test event");
+      expect(r.entries[0].entry.dedupeKey).toBe("event|2026-06-01|test event");
     });
   });
 });

@@ -45,7 +45,6 @@ import { buildPlaces, DEFAULT_MAX_GAP_DAYS } from "./placeBuilder";
 import { daysDiff, isDuringLeg } from "./entryBuilder";
 import {
   mapToStagingBatch,
-  placeConfidence,
   sampleEvidenceRefs,
   proposeTripId,
   placeDedupeKey,
@@ -121,10 +120,9 @@ describe("WP1 — PlaceEvent data model", () => {
     expect(p.photoCount).toBe(10);
   });
 
-  it("singlePhoto flag can be set for low-confidence single-photo places", () => {
-    const p = makePlaceEvent({ photoEvidence: [makeEvidenceRef()], photoCount: 1, singlePhoto: true, confidence: "inferred" });
+  it("singlePhoto flag can be set for single-photo places", () => {
+    const p = makePlaceEvent({ photoEvidence: [makeEvidenceRef()], photoCount: 1, singlePhoto: true });
     expect(p.singlePhoto).toBe(true);
-    expect(p.confidence).toBe("inferred");
   });
 });
 
@@ -251,7 +249,6 @@ describe("WP3 — Time resolution helpers", () => {
       endUTC: "2025-07-13T08:00:00.000Z",
       startTz: "Europe/Dublin", endTz: "Europe/London",
       dedupeKey: "leg|2025-07-13|DUB|LHR",
-      confidence: "confirmed",
       createdAt: new Date().toISOString(),
     };
 
@@ -320,7 +317,6 @@ describe("WP3 — Time resolution helpers", () => {
         endUTC: "2025-07-14T06:30:00.000Z",
         startTz: "Europe/London", endTz: "Asia/Tokyo",
         dedupeKey: "leg|2025-07-13|LHR|NRT",
-        confidence: "confirmed",
         createdAt: new Date().toISOString(),
       };
       const photo = makePhoto({ captureTimestamp: ts, tzOffset: null, latitude: null, longitude: null });
@@ -607,7 +603,6 @@ describe("WP5 — isDuringLeg", () => {
     endUTC:   "2025-07-13T12:45:00.000Z",
     startTz: "Europe/Dublin", endTz: "Europe/London",
     dedupeKey: "leg|2025-07-13|DUB|LHR",
-    confidence: "confirmed",
     createdAt: new Date().toISOString(),
   };
 
@@ -766,7 +761,6 @@ describe("Acceptance check 9 — photos during a known leg do not create places"
     endUTC:   "2025-07-13T12:45:00.000Z",
     startTz: "Europe/Dublin", endTz: "Europe/London",
     dedupeKey: "leg|2025-07-13|DUB|LHR",
-    confidence: "confirmed",
     createdAt: new Date().toISOString(),
   };
 
@@ -850,24 +844,6 @@ describe("WP6 — placeDedupeKey", () => {
     const { located, unlocated } = await resolveFixture(FIXTURE_LONDON_MULTI_DAY);
     const [place] = buildPlaces(located, unlocated, [], []);
     expect(placeDedupeKey(place)).toBe("place|gb:london|2025-07-14");
-  });
-});
-
-describe("WP6 — placeConfidence", () => {
-  it("returns 'inferred' for a single-photo place", async () => {
-    const { located, unlocated } = await resolveFixture([FIXTURE_LONDON_MULTI_DAY[0]]);
-    const [place] = buildPlaces(located, unlocated, [], []);
-    expect(placeConfidence(place)).toBe("inferred");
-  });
-
-  it("returns 'approximate' for a place with 5+ photos and good timing", async () => {
-    // Create 5 located photos with exif-offset timing
-    const manyPhotos = Array.from({ length: 5 }, (_, i) =>
-      ({ ...FIXTURE_LONDON_MULTI_DAY[0], mediaId: `many-${i}`, localDay: `2025-07-${14 + i}` }),
-    );
-    const { located, unlocated } = await resolveFixture(manyPhotos);
-    const [place] = buildPlaces(located, unlocated, [], []);
-    expect(placeConfidence(place)).toBe("approximate");
   });
 });
 

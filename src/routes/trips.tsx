@@ -5,12 +5,12 @@ import { allEntries, putMany, removeMany, useJournal, storeFor } from "@/lib/jou
 import { EntryCard } from "@/components/journal/EntryCard";
 import { AddTripDialog } from "@/components/journal/AddTripDialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { entryTitle, type Entry, type Trip } from "@/lib/journal/types";
+import { StarRating } from "@/components/journal/StarRating";
 
 const day = (e: Entry) => e.start.slice(0, 10);
 
@@ -59,7 +59,7 @@ function TripCard({ trip }: { trip: Trip }) {
           <p className="font-mono text-xs text-muted-foreground">{trip.start} → {trip.end} · {nights} nights</p>
           <div className="mt-1 flex flex-wrap items-baseline gap-2">
             <h2 className="text-2xl">{trip.title}</h2>
-            {trip.purpose && <Badge variant="secondary" className="capitalize">{trip.purpose}</Badge>}
+            {trip.rating !== undefined && <StarRating rating={trip.rating} className="self-center" />}
           </div>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs">
             <span>{legs.filter((l) => l.kind === "leg" && l.mode === "air").length} flights</span>
@@ -72,7 +72,11 @@ function TripCard({ trip }: { trip: Trip }) {
       </div>
       {open && (
         <div className="space-y-4 border-t border-border p-5">
-          {trip.notes && <p className="whitespace-pre-wrap font-serif text-sm text-muted-foreground">{trip.notes}</p>}
+          {(trip.reflection ?? trip.notes) && (
+            <p className="whitespace-pre-wrap font-serif text-sm text-muted-foreground">
+              {trip.reflection ?? trip.notes}
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={gather}>
               Gather entries in these dates{inWindow.length ? ` (${inWindow.length})` : ""}

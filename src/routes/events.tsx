@@ -27,7 +27,7 @@ const CATEGORY_PLURAL: Record<EventCategory, string> = {
 };
 
 function field(e: JEvent, key: "artist" | "venue" | "city") {
-  return e.overrides?.[key] ?? e[key] ?? "";
+  return (e.overrides as Record<string, unknown> | undefined)?.[key] ?? e[key] ?? "";
 }
 
 function Events() {
@@ -52,7 +52,7 @@ function Events() {
     return events.filter((e) => {
       if (cat !== "all" && e.category !== cat) return false;
       if (!ql) return true;
-      const hay = [field(e, "artist"), field(e, "venue"), field(e, "city"), e.tour ?? "", (e.people ?? []).join(" "), (e.companions ?? []).join(" "), e.journal ?? ""].join(" ").toLowerCase();
+      const hay = [field(e, "artist"), field(e, "venue"), field(e, "city"), e.tour ?? "", (e.people ?? []).join(" "), (e.companions ?? []).join(" "), e.reflection ?? ""].join(" ").toLowerCase();
       return hay.includes(ql);
     });
   }, [events, cat, q]);
