@@ -8,7 +8,7 @@ import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { clearAll, useJournal } from "@chronicle/journal/db";
+import { clearAll, allHiddenEntries, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
 // useExifScan removed — scan has moved to Sources page (WP15)
 
@@ -213,6 +213,8 @@ export default function SettingsScreen() {
     journal.episodes.length +
     journal.books.length;
 
+  const hiddenCount = allHiddenEntries(journal).length;
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -336,10 +338,26 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.divider} />
         <View style={styles.statRow}>
+          <Text style={styles.statLabel}>Hidden entries</Text>
+          <Text style={styles.statValue}>{hiddenCount.toLocaleString()}</Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.statRow}>
           <Text style={styles.statLabel}>Pending imports</Text>
           <Text style={styles.statValue}>{journal.staging.length}</Text>
         </View>
       </View>
+
+      <Pressable
+        style={[styles.card, { flexDirection: "row", alignItems: "center", marginBottom: spacing.xl }]}
+        onPress={() => router.push("/hidden-entries" as any)}
+      >
+        <Ionicons name="eye-off-outline" size={18} color={colors.accent} style={{ marginRight: spacing.md }} />
+        <Text style={{ ...styles.resetHint, color: colors.textSecondary, flex: 1, marginBottom: 0, textAlign: "left" }}>
+          Hidden Entries · view and restore hidden entries
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
 
       <Pressable
         style={[styles.resetBtn, exporting && styles.resetBtnDisabled, { borderColor: colors.border, marginBottom: spacing.sm }]}

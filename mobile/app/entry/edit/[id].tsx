@@ -16,7 +16,7 @@ import {
   View,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useJournal, allEntries, putMany, removeMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
 import {
   uid,
   view,
@@ -803,7 +803,7 @@ export default function EditEntryScreen() {
         if (newEntry) {
           const targetStore = storeFor(newEntry);
           await putMany(targetStore, [newEntry]);
-          await removeMany(storeFor(entry), [entry.id]);
+          await hideMany(storeFor(entry), [entry.id]);
           // Navigate to the new entry's detail
           router.replace({ pathname: "/entry/[id]", params: { id: newEntry.id } });
           return;

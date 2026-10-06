@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useJournal, allEntries, putMany, removeMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
 import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
@@ -470,11 +470,28 @@ export default function EntryDetailScreen() {
             participants: winnerParts.length ? winnerParts : undefined,
           };
           await putMany(storeFor(entry), [updated]);
-          await removeMany(storeFor(other), [other.id]);
+          await hideMany(storeFor(other), [other.id]);
         } catch (err) {
           dialog.alert("Merge failed", String(err));
         } finally {
           setMergeSaving(false);
+        }
+      },
+    );
+  };
+
+  const handleHide = () => {
+    if (!entry) return;
+    dialog.confirm(
+      "Hide entry",
+      `"${entryTitle(entry)}" will be hidden from your journal. You can restore it from Settings → Hidden Entries.`,
+      "Hide",
+      async () => {
+        try {
+          await hideMany(storeFor(entry), [entry.id]);
+          router.back();
+        } catch (err) {
+          dialog.alert("Could not hide entry", String(err));
         }
       },
     );
@@ -521,6 +538,9 @@ export default function EntryDetailScreen() {
                   <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
                 </Pressable>
               )}
+              <Pressable style={styles.headerBtn} onPress={handleHide}>
+                <Ionicons name="trash-outline" size={22} color={colors.textTertiary} />
+              </Pressable>
             </View>
           ),
         }}
