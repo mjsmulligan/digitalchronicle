@@ -44,6 +44,11 @@ interface Base {
   /** Evaluation fields supplied by the import source — read-only in the UI (see evaluation.ts). */
   sourceLocked?: ("rating" | "reflection")[];
   /**
+   * Which evaluation fields are provenance-locked (supplied by an external source
+   * and not user-editable). See `isLocked()` in evaluation.ts.
+   */
+  sourceLocked?: ("rating" | "reflection")[];
+  /**
    * How precisely the date is known.
    * "day"     — full YYYY-MM-DD known (default assumed when omitted)
    * "month"   — only YYYY-MM known (e.g. Goodreads "read" month)
@@ -153,6 +158,10 @@ export interface Series {
   title: string;
   /** "tv" for television shows; "book" for book series */
   mediaType?: "tv" | "book";
+  /** Container-level rating 0–10. Separate from individual episode/book ratings. */
+  rating?: number;
+  /** Container-level reflection prose. */
+  reflection?: string;
   createdAt: string;
   /** Universal rating 0–10 for the whole series */
   rating?: number;

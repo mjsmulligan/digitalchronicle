@@ -7,6 +7,7 @@ import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "rea
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "@chronicle/journal/types";
+import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { SourceMark } from "../../src/components/SourceMark";
@@ -111,7 +112,7 @@ function StayDetail({ e, styles, ic }: { e: Stay; styles: DetailStyles; ic: Icon
       <Field label="Check-in" value={fmt(v.start)} styles={styles} />
       {v.end && <Field label="Check-out" value={fmt(v.end)} styles={styles} />}
       <Field label="City" value={v.city} styles={styles} />
-      <Field label="Notes" value={(e as Stay).notes} styles={styles} />
+      <Field label="Notes" value={e.reflection} styles={styles} />
     </>
   );
 }
@@ -400,6 +401,8 @@ export default function EntryDetailScreen() {
     .join(", ");
 
   const reflection = entry.reflection ?? (entry as any).journal;
+  const reflectionLocked = isLocked(entry, "reflection");
+  const ratingLocked = isLocked(entry, "rating");
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -419,7 +422,14 @@ export default function EntryDetailScreen() {
       {/* Reflection */}
       {reflection && (
         <View style={styles.reflectionCard}>
-          <Text style={styles.reflectionLabel}>Reflection</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={styles.reflectionLabel}>Reflection</Text>
+            {reflectionLocked && (
+              <Text style={{ ...styles.reflectionLabel, color: colors.accentSoft }}>
+                · {sourceLabel(entry.source)}
+              </Text>
+            )}
+          </View>
           <Text style={styles.reflectionText}>{reflection}</Text>
         </View>
       )}

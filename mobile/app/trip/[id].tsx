@@ -10,7 +10,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
-import { KindIcon } from "../../src/components/KindIcon";
+import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -608,8 +608,13 @@ export default function TripDetailScreen() {
                     ))}
                   </View>
                 )}
-                {trip.notes
-                  ? <Text style={styles.tripNotes}>{trip.notes}</Text>
+                {trip.rating !== undefined && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
+                    <StarRating rating={trip.rating} color={colors.star} size={14} />
+                  </View>
+                )}
+                {(trip.reflection ?? trip.notes)
+                  ? <Text style={styles.tripNotes}>{trip.reflection ?? trip.notes}</Text>
                   : null}
               </View>
             );

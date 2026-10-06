@@ -103,12 +103,14 @@ export default function EditTripScreen() {
     [journal, id]
   );
 
-  const [title, setTitle]     = useState(trip?.title     ?? "");
-  const [start, setStart]     = useState(trip?.start     ?? "");
-  const [end, setEnd]         = useState(trip?.end       ?? "");
-  const [purpose, setPurpose] = useState<Purpose | undefined>(trip?.purpose);
-  const [notes, setNotes]     = useState(trip?.notes     ?? "");
-  const [saving, setSaving]   = useState(false);
+  const [title, setTitle]           = useState(trip?.title ?? "");
+  const [start, setStart]           = useState(trip?.start ?? "");
+  const [end, setEnd]               = useState(trip?.end   ?? "");
+  const [purpose, setPurpose]       = useState<Purpose | undefined>(trip?.purpose);
+  // Read reflection, falling back to deprecated notes for pre-migration trips
+  const [reflection, setReflection] = useState(trip?.reflection ?? trip?.notes ?? "");
+  const [rating, setRating]         = useState<number | undefined>(trip?.rating);
+  const [saving, setSaving]         = useState(false);
   const dialog = useDialog();
 
   if (!trip) {
@@ -131,7 +133,8 @@ export default function EditTripScreen() {
         title: title.trim(),
         start,
         end,
-        notes: notes.trim(),
+        reflection: reflection.trim() || undefined,
+        rating,
         purpose: purpose ?? undefined,
       };
       // Remove purpose key entirely if unset (keeps data model clean)
@@ -220,13 +223,36 @@ export default function EditTripScreen() {
         ))}
       </View>
 
-      {/* Notes */}
-      <Text style={styles.label}>Notes <Text style={styles.optional}>(optional)</Text></Text>
+      {/* Rating */}
+      <Text style={styles.label}>Rating <Text style={styles.optional}>(optional)</Text></Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {[2, 4, 6, 8, 10].map((val) => (
+          <Pressable
+            key={val}
+            onPress={() => setRating(rating === val ? undefined : val)}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: rating !== undefined && rating >= val ? colors.accent : colors.border,
+              backgroundColor: rating !== undefined && rating >= val ? colors.surfaceAccent : colors.surface,
+            }}
+          >
+            <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: rating !== undefined && rating >= val ? colors.accentSubtle : colors.textTertiary }}>
+              {"★".repeat(val / 2)}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Reflection */}
+      <Text style={styles.label}>Reflection <Text style={styles.optional}>(optional)</Text></Text>
       <TextInput
         style={[styles.input, styles.inputMultiline]}
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Any notes about this trip…"
+        value={reflection}
+        onChangeText={setReflection}
+        placeholder="Trip reflection…"
         placeholderTextColor="#475569"
         multiline
         numberOfLines={4}

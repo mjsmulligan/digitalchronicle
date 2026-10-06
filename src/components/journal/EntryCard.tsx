@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { SourceIcon } from "@/components/journal/SourceIcon";
-import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, MapPin, ChevronDown, Trash2, X, Plus, AlertTriangle } from "lucide-react";
+import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, MapPin, ChevronDown, Trash2, X, Plus, AlertTriangle, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { operatorMarkId } from "@/lib/journal/connectors/icons";
+import { isLocked } from "@/lib/journal/evaluation";
 import { StarRating } from "@/components/journal/StarRating";
 import { cn } from "@/lib/utils";
 
@@ -233,6 +234,7 @@ function ParticipantPicker({ participants, onChange, people }: ParticipantPicker
 export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [reflection, setReflection] = useState(entry.reflection ?? "");
+  const [rating, setRating] = useState<number | undefined>(entry.rating);
   const [dateStarted, setDateStarted] = useState(entry.kind === "book" ? (entry.dateStarted ?? "") : "");
   const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
   const [participants, setParticipants] = useState<string[] | undefined>(entry.participants);
@@ -243,13 +245,25 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   const Icon = entryIcon(v);
   const trip = trips.find((t) => t.id === entry.tripId);
 
+  const reflectionLocked = isLocked(entry, "reflection");
+  const ratingLocked = isLocked(entry, "rating");
+
   const save = async () => {
     if (saving) return;
     setSaving(true);
     try {
       const clean = Object.fromEntries(Object.entries(ov).filter(([, x]) => x.trim()));
       const extra = entry.kind === "book" ? { dateStarted: dateStarted || undefined } : {};
-      await putMany(storeFor(entry), [{ ...entry, ...extra, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined, participants }]);
+      // Only write unlocked evaluation fields back; locked fields stay as-is from source
+      const reflectionVal = reflectionLocked ? entry.reflection : (reflection || undefined);
+      const ratingVal = ratingLocked ? entry.rating : rating;
+      await putMany(storeFor(entry), [{
+        ...entry, ...extra,
+        reflection: reflectionVal,
+        rating: ratingVal,
+        overrides: Object.keys(clean).length ? clean : undefined,
+        participants,
+      }]);
       toast.success("Entry saved");
     } catch (err) {
       toast.error(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
@@ -297,7 +311,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             {v.kind === "leg" && (time(v.start) || time(v.end)) && (
               <span className="font-mono text-xs text-muted-foreground">{time(v.start)}–{time(v.end)}</span>
             )}
-            {"rating" in entry && <StarRating rating={entry.rating} className="self-center" />}
+            <StarRating rating={entry.rating} locked={ratingLocked} className="self-center" />
             {entry.overrides && <Badge variant="outline" className="h-4 px-1 text-[10px]">edited</Badge>}
             {trip && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trip.title}</Badge>}
           </div>
@@ -314,7 +328,53 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
               {v.setlist.map((s, i) => <li key={i}>{s}</li>)}
             </ol>
           )}
-          <Textarea value={reflection} onChange={(e) => setReflection(e.target.value)} placeholder="Write a reflection…" className="font-serif" />
+
+          {/* Reflection — locked (source provenance) or editable */}
+          {reflectionLocked ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-muted-foreground">Reflection</p>
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+                  <Lock className="h-2.5 w-2.5" />
+                  <SourceIcon source={entry.source} />
+                  {sourceLabel(entry.source)}
+                </span>
+              </div>
+              {entry.reflection && (
+                <blockquote className="border-l-2 border-amber-400/60 pl-3 font-serif text-sm italic text-foreground/80">
+                  {entry.reflection}
+                </blockquote>
+              )}
+            </div>
+          ) : (
+            <Textarea
+              value={reflection}
+              onChange={(e) => setReflection(e.target.value)}
+              placeholder="Write a reflection…"
+              className="font-serif"
+            />
+          )}
+
+          {/* Rating — locked (source provenance) or editable for all entry kinds */}
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground">Rating</p>
+            {ratingLocked ? (
+              <span className="inline-flex items-center gap-1.5">
+                <StarRating rating={entry.rating} locked />
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+                  <Lock className="h-2.5 w-2.5" />
+                  <SourceIcon source={entry.source} />
+                  {sourceLabel(entry.source)}
+                </span>
+              </span>
+            ) : (
+              <StarRating
+                rating={rating}
+                onChange={setRating}
+                className="py-0.5"
+              />
+            )}
+          </div>
           <details className="text-sm">
             <summary className="cursor-pointer py-2 text-muted-foreground">Manual corrections (always win over imported data)</summary>
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">

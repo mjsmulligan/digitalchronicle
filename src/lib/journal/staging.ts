@@ -120,8 +120,11 @@ export async function commitBatch(b: StagingBatch) {
   for (const r of b.records) {
     if (!r.selected) continue;
     let e: Entry;
-    if (r.status === "new") e = r.entry;
-    else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
+    if (r.status === "new") {
+      // Assign sourceLocked based on the connector that produced this entry
+      const locks = sourceLocks(r.entry);
+      e = locks.length > 0 ? { ...r.entry, sourceLocked: locks } : r.entry;
+    } else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
       const old = byId.get(r.matchId)!;
       // Replace source data but keep sovereign overrides, reflection & trip link
       // Source-supplied rating/review win (provenance); otherwise the user's values are kept.

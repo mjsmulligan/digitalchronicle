@@ -97,12 +97,13 @@ export default function NewTripScreen() {
     saveButtonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
   }), [colors, fonts]);
 
-  const [title, setTitle]     = useState("");
-  const [start, setStart]     = useState(today());
-  const [end, setEnd]         = useState(today());
-  const [purpose, setPurpose] = useState<Purpose | undefined>(undefined);
-  const [notes, setNotes]     = useState("");
-  const [saving, setSaving]   = useState(false);
+  const [title, setTitle]         = useState("");
+  const [start, setStart]         = useState(today());
+  const [end, setEnd]             = useState(today());
+  const [purpose, setPurpose]     = useState<Purpose | undefined>(undefined);
+  const [reflection, setReflection] = useState("");
+  const [rating, setRating]       = useState<number | undefined>(undefined);
+  const [saving, setSaving]       = useState(false);
   const dialog = useDialog();
 
   const canSave = title.trim().length > 0 && isValidDate(start) && isValidDate(end) && start <= end;
@@ -116,10 +117,11 @@ export default function NewTripScreen() {
         title: title.trim(),
         start,
         end,
-        notes: notes.trim(),
         cover: "",
         createdAt: new Date().toISOString(),
         ...(purpose ? { purpose } : {}),
+        ...(reflection.trim() ? { reflection: reflection.trim() } : {}),
+        ...(rating !== undefined ? { rating } : {}),
       };
       await putMany("trips", [trip]);
       router.replace(`/trip/${trip.id}`);
@@ -206,13 +208,36 @@ export default function NewTripScreen() {
         ))}
       </View>
 
-      {/* Notes */}
-      <Text style={styles.label}>Notes <Text style={styles.optional}>(optional)</Text></Text>
+      {/* Rating */}
+      <Text style={styles.label}>Rating <Text style={styles.optional}>(optional)</Text></Text>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {[2, 4, 6, 8, 10].map((val) => (
+          <Pressable
+            key={val}
+            onPress={() => setRating(rating === val ? undefined : val)}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: rating !== undefined && rating >= val ? colors.accent : colors.border,
+              backgroundColor: rating !== undefined && rating >= val ? colors.surfaceAccent : colors.surface,
+            }}
+          >
+            <Text style={{ fontFamily: fonts.mono, fontSize: 12, color: rating !== undefined && rating >= val ? colors.accentSubtle : colors.textTertiary }}>
+              {"★".repeat(val / 2)}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {/* Reflection */}
+      <Text style={styles.label}>Reflection <Text style={styles.optional}>(optional)</Text></Text>
       <TextInput
         style={[styles.input, styles.inputMultiline]}
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="Any notes about this trip…"
+        value={reflection}
+        onChangeText={setReflection}
+        placeholder="Trip reflection…"
         placeholderTextColor="#475569"
         multiline
         numberOfLines={4}

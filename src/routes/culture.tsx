@@ -1,13 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { useJournal } from "@/lib/journal/db";
+import { toast } from "sonner";
+import { Pencil, Check, X } from "lucide-react";
+import { useJournal, putMany } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
 import { StarRating } from "@/components/journal/StarRating";
 import { AddEntryDialog } from "@/components/journal/AddEntryDialog";
 import { PersonFilter } from "@/components/journal/PersonFilter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { day, view, type Film, type Episode, type Book, type JEvent, type Entry, type Person } from "@/lib/journal/types";
+import { Textarea } from "@/components/ui/textarea";
+import { day, view, uid, type Film, type Episode, type Book, type JEvent, type Entry, type Person, type Series } from "@/lib/journal/types";
 import { cn } from "@/lib/utils";
 
 function entryHasPerson(e: Entry, person: Person): boolean {
@@ -94,6 +97,98 @@ function groupEpisodesByShow(episodes: Episode[]): ShowGroup[] {
       return { showTitle, episodes: sorted, latestDate: sortDate(sorted[0]) };
     })
     .sort((a, b) => b.latestDate.localeCompare(a.latestDate));
+}
+
+// ── Series container editor ───────────────────────────────────────────────────
+
+/**
+ * Inline editor for a container-level rating and reflection on a TV show or
+ * book series group. Finds or creates the Series record by title.
+ */
+function SeriesEditor({
+  title,
+  mediaType,
+  seriesRecord,
+}: {
+  title: string;
+  mediaType: "tv" | "book";
+  seriesRecord?: Series;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [rating, setRating] = useState<number | undefined>(seriesRecord?.rating);
+  const [reflection, setReflection] = useState(seriesRecord?.reflection ?? "");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const next: Series = {
+        id: seriesRecord?.id ?? uid(),
+        kind: "series",
+        title,
+        mediaType,
+        rating,
+        reflection: reflection.trim() || undefined,
+        createdAt: seriesRecord?.createdAt ?? new Date().toISOString(),
+      };
+      await putMany("series", [next]);
+      setEditing(false);
+      toast.success("Series saved.");
+    } catch (err) {
+      toast.error(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => {
+    setRating(seriesRecord?.rating);
+    setReflection(seriesRecord?.reflection ?? "");
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        {seriesRecord?.rating !== undefined && (
+          <StarRating rating={seriesRecord.rating} className="inline-flex" />
+        )}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="rounded p-0.5 text-muted-foreground/50 hover:text-muted-foreground"
+          aria-label="Edit series rating and reflection"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      </span>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2 rounded-md border border-border bg-card p-3">
+      <div className="flex items-center gap-2">
+        <p className="text-xs text-muted-foreground">Series rating</p>
+        <StarRating rating={rating} onChange={setRating} />
+      </div>
+      <Textarea
+        value={reflection}
+        onChange={(e) => setReflection(e.target.value)}
+        placeholder="Series reflection…"
+        className="font-serif text-sm"
+        rows={3}
+      />
+      <div className="flex gap-2">
+        <Button size="sm" onClick={save} disabled={saving}>
+          <Check className="mr-1 h-3.5 w-3.5" />
+          {saving ? "Saving…" : "Save"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={cancel}>
+          <X className="mr-1 h-3.5 w-3.5" />Cancel
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 // ── Main component ──────────────────────────────────────────────────────────
@@ -379,6 +474,7 @@ function FilmsSection({ films, showHeading }: { films: Film[]; showHeading: bool
 // ── Episodes section ──────────────────────────────────────────────────────────
 
 function EpisodesSection({ episodes, showHeading }: { episodes: Episode[]; showHeading: boolean }) {
+  const s = useJournal();
   const shows = useMemo(() => groupEpisodesByShow(episodes), [episodes]);
 
   return (
@@ -389,19 +485,26 @@ function EpisodesSection({ episodes, showHeading }: { episodes: Episode[]; showH
         </h2>
       )}
       <div className="space-y-6">
-        {shows.map(({ showTitle, episodes: eps }) => (
-          <div key={showTitle}>
-            <h3 className="mb-2 flex items-center gap-2">
-              <span className="font-medium">{showTitle}</span>
-              <span className="font-mono text-xs text-muted-foreground">{eps.length} ep</span>
-            </h3>
-            <div className="space-y-2">
-              {eps.map((ep) => (
-                <EntryCard key={ep.id} entry={ep} compact />
-              ))}
+        {shows.map(({ showTitle, episodes: eps }) => {
+          const seriesRecord = s.series.find((sr) => sr.title === showTitle && sr.mediaType === "tv");
+          return (
+            <div key={showTitle}>
+              <h3 className="mb-2 flex items-center gap-2">
+                <span className="font-medium">{showTitle}</span>
+                <span className="font-mono text-xs text-muted-foreground">{eps.length} ep</span>
+                <SeriesEditor title={showTitle} mediaType="tv" seriesRecord={seriesRecord} />
+              </h3>
+              {seriesRecord?.reflection && (
+                <p className="mb-2 font-serif text-sm italic text-foreground/70">{seriesRecord.reflection}</p>
+              )}
+              <div className="space-y-2">
+                {eps.map((ep) => (
+                  <EntryCard key={ep.id} entry={ep} compact />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -410,6 +513,7 @@ function EpisodesSection({ episodes, showHeading }: { episodes: Episode[]; showH
 // ── Books section ─────────────────────────────────────────────────────────────
 
 function BooksSection({ books, showHeading }: { books: Book[]; showHeading: boolean }) {
+  const s = useJournal();
   const { standalone, series } = useMemo(() => groupBooksBySeries(books), [books]);
 
   // Interleave series and standalone sorted by most-recent entry date
@@ -445,6 +549,7 @@ function BooksSection({ books, showHeading }: { books: Book[]; showHeading: bool
           if (sec.type === "series") {
             const sg = sec.data as SeriesGroup;
             const seriesAvg = avgRating(sg.books);
+            const seriesRecord = s.series.find((sr) => sr.title === sg.name && sr.mediaType === "book");
             return (
               <div key={`series:${sg.name}`}>
                 <h3 className="mb-2 flex flex-wrap items-center gap-2">
@@ -455,7 +560,11 @@ function BooksSection({ books, showHeading }: { books: Book[]; showHeading: bool
                   {seriesAvg !== null && (
                     <StarRating rating={Math.round(seriesAvg * 2) / 2} />
                   )}
+                  <SeriesEditor title={sg.name} mediaType="book" seriesRecord={seriesRecord} />
                 </h3>
+                {seriesRecord?.reflection && (
+                  <p className="mb-2 font-serif text-sm italic text-foreground/70">{seriesRecord.reflection}</p>
+                )}
                 <div className="space-y-2">
                   {sg.books.map((b) => (
                     <EntryCard key={b.id} entry={b} compact />
