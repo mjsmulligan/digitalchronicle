@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
+import { putMany, removeMany, hideMany, storeFor, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { operatorMarkId } from "@/lib/journal/connectors/icons";
@@ -274,9 +274,9 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
 
   const handleDelete = async () => {
     try {
-      await removeMany(storeFor(entry), [entry.id]);
+      await hideMany(storeFor(entry), [entry.id]);
     } catch (err) {
-      toast.error(`Could not delete: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Could not hide: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 

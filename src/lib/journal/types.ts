@@ -71,6 +71,13 @@ interface Base {
   raw?: Record<string, unknown>;
   /** Where this fact came from: filename and row/index within it. */
   sourceRef?: string;
+  /**
+   * Soft-delete flag. When `true` the entry is excluded from all normal views
+   * and helpers (allEntries, feeds, trip linking, etc.) but remains in the
+   * database so it can be restored from Settings → Hidden Entries.
+   * Absent (undefined) means visible — the field is never set to `false`.
+   */
+  hidden?: true;
 }
 
 export interface Leg extends Base {

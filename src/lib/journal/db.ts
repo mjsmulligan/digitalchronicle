@@ -304,6 +304,30 @@ export async function removeMany(store: StoreName, ids: string[]) {
   emit({ [store]: (state[store] as DbRow[]).filter((r) => !set.has(r.id)) } as Partial<State>);
 }
 
+/** Soft-delete: marks entries as hidden without removing them from the DB. */
+export async function hideMany(store: StoreName, ids: string[]) {
+  if (!ids.length) return;
+  const set = new Set(ids);
+  const toHide = (state[store] as (DbRow & { hidden?: true })[])
+    .filter((r) => set.has(r.id))
+    .map((r) => ({ ...r, hidden: true as const }));
+  if (!toHide.length) return;
+  await adapter.putMany(store, toHide);
+  emit({ [store]: (state[store] as (DbRow & { hidden?: true })[]).map((r) => set.has(r.id) ? { ...r, hidden: true as const } : r) } as Partial<State>);
+}
+
+/** Restore soft-deleted entries by removing the hidden flag. */
+export async function unhideMany(store: StoreName, ids: string[]) {
+  if (!ids.length) return;
+  const set = new Set(ids);
+  const toUnhide = (state[store] as (DbRow & { hidden?: true })[])
+    .filter((r) => set.has(r.id))
+    .map((r) => { const { hidden: _h, ...rest } = r; return rest as DbRow & { hidden?: true }; });
+  if (!toUnhide.length) return;
+  await adapter.putMany(store, toUnhide);
+  emit({ [store]: (state[store] as (DbRow & { hidden?: true })[]).map((r) => { if (!set.has(r.id)) return r; const { hidden: _h, ...rest } = r; return rest as DbRow & { hidden?: true }; }) } as Partial<State>);
+}
+
 export async function replaceAll(data: JournalData) {
   if (hasJournalPlaces(data)) await loadStations();
   await adapter.replaceAll(data);
@@ -337,5 +361,14 @@ export function allEntries(s: JournalData): Entry[] {
     ...s.legs, ...s.stays, ...s.events, ...s.films, ...s.episodes, ...s.books,
     ...(s.placeEvents ?? []),                                          // legacy
     ...(s.placeEntries ?? []).filter((e) => e.status === "accepted"), // WP10: pending/dismissed are staging items, not journal entries
-  ];
+  ].filter((e) => !e.hidden);
+}
+
+/** Returns every entry that has been soft-deleted (hidden: true), across all entry stores. */
+export function allHiddenEntries(s: JournalData): Entry[] {
+  return [
+    ...s.legs, ...s.stays, ...s.events, ...s.films, ...s.episodes, ...s.books,
+    ...(s.placeEvents ?? []),
+    ...(s.placeEntries ?? []),
+  ].filter((e) => e.hidden === true);
 }
