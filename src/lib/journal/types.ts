@@ -44,6 +44,11 @@ interface Base {
   /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
   /**
+   * Which evaluation fields are provenance-locked (supplied by an external source
+   * and not user-editable). See `isLocked()` in evaluation.ts.
+   */
+  sourceLocked?: ("rating" | "reflection")[];
+  /**
    * How precisely the date is known.
    * "day"     — full YYYY-MM-DD known (default assumed when omitted)
    * "month"   — only YYYY-MM known (e.g. Goodreads "read" month)
@@ -153,6 +158,10 @@ export interface Series {
   title: string;
   /** "tv" for television shows; "book" for book series */
   mediaType?: "tv" | "book";
+  /** Container-level rating 0–10. Separate from individual episode/book ratings. */
+  rating?: number;
+  /** Container-level reflection prose. */
+  reflection?: string;
   createdAt: string;
 }
 
@@ -357,10 +366,15 @@ export interface Trip {
   title: string;
   start: string;
   end: string;
-  notes: string;
+  /** @deprecated Use `reflection` instead. Kept for migration compatibility. */
+  notes?: string;
   cover: string;
   createdAt: string;
   purpose?: Purpose;
+  /** Trip-level reflection prose. Supersedes the deprecated `notes` field. */
+  reflection?: string;
+  /** Trip-level rating 0–10. */
+  rating?: number;
 }
 
 export type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-duplicate";

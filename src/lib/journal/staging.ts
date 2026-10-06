@@ -4,6 +4,7 @@ import { loadStations } from "./geo";
 import {
   uid, view, type Entry, type Leg, type StagedRecord, type StagingBatch,
 } from "./types";
+import { sourceLocks, mergeEvaluation } from "./evaluation";
 
 /** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
 function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>): Pick<StagedRecord, "status" | "matchId"> {
@@ -118,11 +119,19 @@ export async function commitBatch(b: StagingBatch) {
   for (const r of b.records) {
     if (!r.selected) continue;
     let e: Entry;
-    if (r.status === "new") e = r.entry;
-    else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
+    if (r.status === "new") {
+      // Assign sourceLocked based on the connector that produced this entry
+      const locks = sourceLocks(r.entry);
+      e = locks.length > 0 ? { ...r.entry, sourceLocked: locks } : r.entry;
+    } else if (r.status === "supersedes" && r.matchId && byId.get(r.matchId)) {
       const old = byId.get(r.matchId)!;
-      // Replace source data but keep sovereign overrides, reflection & trip link
-      e = { ...r.entry, id: old.id, tripId: old.tripId, overrides: old.overrides, reflection: old.reflection ?? r.entry.reflection } as Entry;
+      // Assign sourceLocked for the incoming record
+      const locks = sourceLocks(r.entry);
+      const incoming = locks.length > 0 ? { ...r.entry, sourceLocked: locks } : r.entry;
+      // Merge evaluation: locked fields take incoming; unlocked keep the user's existing value
+      const evalFields = mergeEvaluation(incoming, old);
+      // Replace source data but keep sovereign overrides, trip link, and merged evaluation
+      e = { ...incoming, id: old.id, tripId: old.tripId, overrides: old.overrides, ...evalFields } as Entry;
     } else continue;
     writes[storeFor(e)].push(e);
     count++;

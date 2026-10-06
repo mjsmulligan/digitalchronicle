@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
-import { STORES, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch } from "./types";
+import { STORES, type JournalData, type StoreName, type Entry, type Leg, type Stay, type PlaceRecord, type StagingBatch, type Trip } from "./types";
+import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
 import type { StorageAdapter, Row } from "./storage";
 
@@ -214,6 +215,47 @@ async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
   data.stays = updatedStays.filter((s) => !discardStays.has(s.id)).map((s) => stayWriteMap.get(s.id) ?? s);
 }
 
+// ── Boot migration: evaluation fields ────────────────────────────────────────
+
+/**
+ * Idempotent pass that:
+ *  - Promotes legacy `journal` field to `reflection` on all entry kinds.
+ *  - Assigns `sourceLocked` based on the entry's source where not already set.
+ *  - Promotes deprecated `Trip.notes` to `Trip.reflection` where absent.
+ *
+ * Only writes back entries/trips that actually changed (reference-inequality).
+ */
+export async function migrateEvaluationFields(data: Partial<State>): Promise<void> {
+  const entryStores: (keyof JournalData)[] = [
+    "legs", "stays", "events", "films", "episodes", "books", "placeEvents", "placeEntries",
+  ];
+  for (const s of entryStores) {
+    const items = ((data as Record<string, unknown>)[s] ?? []) as Entry[];
+    const writes: Entry[] = [];
+    const migrated = items.map((e) => {
+      const m = migrateEntryEvaluation(e as Parameters<typeof migrateEntryEvaluation>[0]);
+      if (m !== e) { writes.push(m as Entry); return m as Entry; }
+      return e;
+    });
+    if (writes.length) {
+      (data as Record<string, unknown>)[s] = migrated;
+      await adapter.putMany(s as StoreName, writes);
+    }
+  }
+
+  const trips = (data.trips ?? []) as Trip[];
+  const tripWrites: Trip[] = [];
+  const migratedTrips = trips.map((t) => {
+    const m = migrateTripEvaluation(t);
+    if (m !== t) { tripWrites.push(m); return m; }
+    return t;
+  });
+  if (tripWrites.length) {
+    data.trips = migratedTrips;
+    await adapter.putMany("trips", tripWrites);
+  }
+}
+
 let initPromise: Promise<void> | undefined;
 
 export function initJournal(): Promise<void> {
@@ -224,6 +266,7 @@ export function initJournal(): Promise<void> {
       await loadStations();
     }
     await migrateLegStayKeys(data);
+    await migrateEvaluationFields(data);
     emit({ ...data, ready: true });
   })().catch((error: unknown) => {
     initPromise = undefined;
