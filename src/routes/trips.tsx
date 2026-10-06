@@ -72,7 +72,7 @@ function TripCard({ trip }: { trip: Trip }) {
       </div>
       {open && (
         <div className="space-y-4 border-t border-border p-5">
-          {trip.notes && <p className="whitespace-pre-wrap font-serif text-sm text-muted-foreground">{trip.notes}</p>}
+          {trip.reflection && <p className="whitespace-pre-wrap font-serif text-sm text-muted-foreground">{trip.reflection}</p>}
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={gather}>
               Gather entries in these dates{inWindow.length ? ` (${inWindow.length})` : ""}
