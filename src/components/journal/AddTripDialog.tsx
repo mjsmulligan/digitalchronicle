@@ -16,7 +16,7 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
   const today = new Date().toISOString().slice(0, 10);
   const blank = (): Record<string, string> =>
     trip
-      ? { title: trip.title, start: trip.start, end: trip.end, purpose: trip.purpose ?? "", notes: trip.notes ?? "" }
+      ? { title: trip.title, start: trip.start, end: trip.end, purpose: trip.purpose ?? "", reflection: trip.reflection ?? "" }
       : {};
   const [f, setF] = useState<Record<string, string>>(blank);
 
@@ -37,7 +37,7 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
         title: f.title?.trim() || "Untitled trip",
         start,
         end,
-        notes: f.notes ?? "",
+        reflection: f.reflection?.trim() || undefined,
         cover: trip?.cover ?? "",
         createdAt: trip?.createdAt ?? new Date().toISOString(),
         purpose: (f.purpose as Purpose) || undefined,
@@ -83,7 +83,7 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
             {PURPOSES.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}
           </select>
         </div>
-        <Textarea placeholder="Trip reflections…" className="font-serif" value={f.notes ?? ""} onChange={set("notes")} />
+        <Textarea placeholder="Trip reflections…" className="font-serif" value={f.reflection ?? ""} onChange={set("reflection")} />
         <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : trip ? "Save trip" : "Create trip"}</Button>
       </DialogContent>
     </Dialog>
