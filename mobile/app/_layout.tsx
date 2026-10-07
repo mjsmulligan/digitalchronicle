@@ -70,7 +70,7 @@ function looksLikeContactsUri(url: string): boolean {
 // Modal-only screens that should never be the initial route on app boot.
 // If expo-router restores navigation state with one of these as the active
 // screen (a dev-only artefact), we redirect home instead.
-const MODAL_SCREENS = new Set(["import", "settings"]);
+const MODAL_SCREENS = new Set(["import", "settings", "sources"]);
 
 /**
  * Inner layout — runs inside ThemeProvider so it can call useTheme().
@@ -192,7 +192,7 @@ function RootLayoutInner() {
           }}
         />
       </Stack>
-      <StatusBar style="light" />
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
     </>
   );
 }

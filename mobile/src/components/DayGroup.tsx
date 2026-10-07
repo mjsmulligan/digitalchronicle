@@ -17,38 +17,18 @@
  * - Hairline vertical rule separates date column from entry column.
  * - Optional trip label (mono, accentSoft) above the rows.
  * - EntryRow items separated by hairlines (spec: rows, not cards).
- * - "+ reflection for this day" prompt at the bottom; shows serif italic
- *   text when a reflection already exists. Tapping enters inline edit mode.
  *
  * Accepts `colors` and `fonts` as props so it is safe inside FlatList
  * renderItem without calling useTheme() per row.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { type Entry, type Note } from "@chronicle/journal/types";
 import { type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "./ThemeProvider";
 import { EntryRow } from "./EntryRow";
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN",
-                      "JUL","AUG","SEP","OCT","NOV","DEC"];
-const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-
-function parseDay(iso: string) {
-  // Noon to avoid DST edge-cases shifting the date
-  const d = new Date(iso + "T12:00:00");
-  return {
-    num:   d.getDate().toString(),
-    day:   DAYS_SHORT[d.getDay()],
-    month: MONTHS_SHORT[d.getMonth()],
-    year:  d.getFullYear().toString(),
-  };
-}
+import { DateColumn } from "./DateColumn";
 
 // ── styles ────────────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
 
 function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
@@ -58,38 +38,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       paddingHorizontal: spacingScale.base,
       paddingTop: spacingScale.xl,
       paddingBottom: spacingScale.md,
-    },
-
-    // Date column
-    dateCol: {
-      width: DATE_COL_W,
-      alignItems: "flex-end",
-      paddingTop: 2,
-      flexShrink: 0,
-    },
-    dateNum: {
-      fontFamily: fonts.serifBold,
-      fontWeight: "700",
-      ...textScale.dayNum,
-      color: colors.textBright,
-    },
-    dateSub: {
-      fontFamily: fonts.mono,
-      fontSize: 10,
-      fontWeight: "700",
-      letterSpacing: 0.8,
-      color: colors.textTertiary,
-      lineHeight: 15,
-      textTransform: "uppercase" as const,
-    },
-
-    // Vertical rule between date and entries
-    rule: {
-      width: StyleSheet.hairlineWidth,
-      alignSelf: "stretch",
-      backgroundColor: colors.border,
-      marginHorizontal: spacingScale.md,
-      marginTop: 4,
     },
 
     // Entries column
@@ -155,21 +103,12 @@ export interface DayGroupProps {
  * Designed to be the renderItem of a FlatList where each item is one day.
  */
 export function DayGroup({ group, colors, fonts, onEntryPress, showReflection = true }: DayGroupProps) {
-  const { num, day, month, year } = parseDay(group.iso);
-  const styles = createStyles(colors, fonts);
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   return (
     <View style={styles.outer}>
-      {/* Date column */}
-      <View style={styles.dateCol}>
-        <Text style={styles.dateNum}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-
-      {/* Vertical spine rule */}
-      <View style={styles.rule} />
+      {/* Date column + rule */}
+      <DateColumn iso={group.iso} colors={colors} fonts={fonts} align="flex-end" />
 
       {/* Entries column */}
       <View style={styles.entriesCol}>

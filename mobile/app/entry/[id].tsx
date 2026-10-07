@@ -10,7 +10,7 @@ import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View }
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
 import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
-import { mergeEntries } from "@/lib/journal/merge";
+import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
@@ -80,14 +80,14 @@ function Divider({ styles }: { styles: Pick<DetailStyles, "divider"> }) {
 
 // ── per-kind detail blocks ────────────────────────────────────────────────────
 
-function LegDetail({ e, styles, ic }: { e: Leg; styles: DetailStyles; ic: IconColors }) {
+function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "leg") return null;
   return (
     <>
       <Text style={styles.title}>{v.fromName ?? v.from} {"→"} {v.toName ?? v.to}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="leg" subkind={v.mode} size={15} color={ic.secondary} />
+        <KindIcon kind="leg" subkind={v.mode} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{modeLabel(v.mode)}</Text>
       </View>
       <Divider styles={styles} />
@@ -104,14 +104,14 @@ function LegDetail({ e, styles, ic }: { e: Leg; styles: DetailStyles; ic: IconCo
   );
 }
 
-function StayDetail({ e, styles, ic }: { e: Stay; styles: DetailStyles; ic: IconColors }) {
+function StayDetail({ e, styles, iconColors }: { e: Stay; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "stay") return null;
   return (
     <>
       <Text style={styles.title}>{v.place}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="stay" size={15} color={ic.secondary} />
+        <KindIcon kind="stay" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>Stay{v.city ? ` · ${v.city}` : ""}</Text>
       </View>
       <Divider styles={styles} />
@@ -123,19 +123,19 @@ function StayDetail({ e, styles, ic }: { e: Stay; styles: DetailStyles; ic: Icon
   );
 }
 
-function FilmDetail({ e, styles, ic }: { e: Film; styles: DetailStyles; ic: IconColors }) {
+function FilmDetail({ e, styles, iconColors }: { e: Film; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "film") return null;
   return (
     <>
       <Text style={styles.title}>{v.title}{v.year ? ` (${v.year})` : ""}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="film" size={15} color={ic.secondary} />
+        <KindIcon kind="film" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>Film</Text>
       </View>
       {v.rating !== undefined && (
         <View style={styles.ratingRow}>
-          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <StarRating rating={v.rating} color={iconColors.star} size={14} />
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
@@ -147,19 +147,19 @@ function FilmDetail({ e, styles, ic }: { e: Film; styles: DetailStyles; ic: Icon
   );
 }
 
-function EpisodeDetail({ e, styles, ic }: { e: Episode; styles: DetailStyles; ic: IconColors }) {
+function EpisodeDetail({ e, styles, iconColors }: { e: Episode; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "episode") return null;
   return (
     <>
       <Text style={styles.title}>{v.episodeTitle ?? v.showTitle}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="episode" size={15} color={ic.secondary} />
+        <KindIcon kind="episode" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{v.showTitle}{v.season ? ` · ${v.season}` : ""}</Text>
       </View>
       {v.rating !== undefined && (
         <View style={styles.ratingRow}>
-          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <StarRating rating={v.rating} color={iconColors.star} size={14} />
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
@@ -174,19 +174,19 @@ function EpisodeDetail({ e, styles, ic }: { e: Episode; styles: DetailStyles; ic
   );
 }
 
-function BookDetail({ e, styles, ic }: { e: Book; styles: DetailStyles; ic: IconColors }) {
+function BookDetail({ e, styles, iconColors }: { e: Book; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "book") return null;
   return (
     <>
       <Text style={styles.title}>{v.title}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="book" size={15} color={ic.secondary} />
+        <KindIcon kind="book" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{v.author}</Text>
       </View>
       {v.rating !== undefined && (
         <View style={styles.ratingRow}>
-          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <StarRating rating={v.rating} color={iconColors.star} size={14} />
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
@@ -200,7 +200,7 @@ function BookDetail({ e, styles, ic }: { e: Book; styles: DetailStyles; ic: Icon
   );
 }
 
-function PlaceDetail({ e, styles, ic }: { e: PlaceEvent; styles: DetailStyles; ic: IconColors }) {
+function PlaceDetail({ e, styles, iconColors }: { e: PlaceEvent; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   if (v.kind !== "place") return null;
@@ -209,7 +209,7 @@ function PlaceDetail({ e, styles, ic }: { e: PlaceEvent; styles: DetailStyles; i
     <>
       <Text style={styles.title}>{v.locality}{v.country ? `, ${v.country}` : ""}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="place" size={15} color={ic.secondary} />
+        <KindIcon kind="place" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>Place{v.region ? ` · ${v.region}` : ""}</Text>
       </View>
       <Divider styles={styles} />
@@ -244,12 +244,12 @@ function PlaceDetail({ e, styles, ic }: { e: PlaceEvent; styles: DetailStyles; i
 }
 
 function PlaceEntryDetail({
-  e, place, styles, ic,
+  e, place, styles, iconColors,
 }: {
   e: PlaceEntry;
   place?: { locality: string; region?: string; country?: string };
   styles: DetailStyles;
-  ic: IconColors;
+  iconColors: IconColors;
 }) {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const evidence = e.photoEvidence.filter((r) => !r.missing && r.uri);
@@ -269,7 +269,7 @@ function PlaceEntryDetail({
     <>
       <Text style={styles.title}>{locality}{country ? `, ${country}` : ""}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="place" size={15} color={ic.secondary} />
+        <KindIcon kind="place" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>Place{region ? ` · ${region}` : ""}</Text>
       </View>
       <Divider styles={styles} />
@@ -302,14 +302,14 @@ function PlaceEntryDetail({
   );
 }
 
-function EventDetail({ e, styles, ic }: { e: JEvent; styles: DetailStyles; ic: IconColors }) {
+function EventDetail({ e, styles, iconColors }: { e: JEvent; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "event") return null;
   return (
     <>
       <Text style={styles.title}>{v.artist}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="event" subkind={v.category} size={15} color={ic.secondary} />
+        <KindIcon kind="event" subkind={v.category} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{CATEGORY_LABEL[v.category]}</Text>
       </View>
       <Divider styles={styles} />
@@ -421,7 +421,7 @@ export default function EntryDetailScreen() {
     mergeEmpty: { ...text.base, color: colors.textTertiary, textAlign: "center" as const, padding: spacing.xl },
   }), [colors, fonts]);
 
-  const ic = useMemo<IconColors>(
+  const iconColors = useMemo<IconColors>(
     () => ({ secondary: colors.textSecondary, star: colors.star }),
     [colors],
   );
@@ -541,14 +541,14 @@ export default function EntryDetailScreen() {
       />
 
       <View style={styles.card}>
-        {entry.kind === "leg"         && <LegDetail         e={entry as Leg}        styles={styles} ic={ic} />}
-        {entry.kind === "stay"        && <StayDetail        e={entry as Stay}       styles={styles} ic={ic} />}
-        {entry.kind === "place"       && <PlaceDetail       e={entry as PlaceEvent} styles={styles} ic={ic} />}
-        {entry.kind === "place-entry" && <PlaceEntryDetail  e={entry as PlaceEntry} place={placeContainer} styles={styles} ic={ic} />}
-        {entry.kind === "film"        && <FilmDetail        e={entry as Film}       styles={styles} ic={ic} />}
-        {entry.kind === "episode"     && <EpisodeDetail     e={entry as Episode}    styles={styles} ic={ic} />}
-        {entry.kind === "book"        && <BookDetail        e={entry as Book}       styles={styles} ic={ic} />}
-        {entry.kind === "event"       && <EventDetail       e={entry as JEvent}     styles={styles} ic={ic} />}
+        {entry.kind === "leg"         && <LegDetail         e={entry as Leg}        styles={styles} iconColors={iconColors} />}
+        {entry.kind === "stay"        && <StayDetail        e={entry as Stay}       styles={styles} iconColors={iconColors} />}
+        {entry.kind === "place"       && <PlaceDetail       e={entry as PlaceEvent} styles={styles} iconColors={iconColors} />}
+        {entry.kind === "place-entry" && <PlaceEntryDetail  e={entry as PlaceEntry} place={placeContainer} styles={styles} iconColors={iconColors} />}
+        {entry.kind === "film"        && <FilmDetail        e={entry as Film}       styles={styles} iconColors={iconColors} />}
+        {entry.kind === "episode"     && <EpisodeDetail     e={entry as Episode}    styles={styles} iconColors={iconColors} />}
+        {entry.kind === "book"        && <BookDetail        e={entry as Book}       styles={styles} iconColors={iconColors} />}
+        {entry.kind === "event"       && <EventDetail       e={entry as JEvent}     styles={styles} iconColors={iconColors} />}
       </View>
 
       {/* Reflection */}

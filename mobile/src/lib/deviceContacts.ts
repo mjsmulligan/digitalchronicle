@@ -5,7 +5,7 @@
  * Read-only and fully on-device: nothing is written back to the address book
  * and nothing leaves the phone.
  */
-import * as Contacts from "expo-contacts";
+import * as Contacts from "expo-contacts/legacy";
 import type { ContactDraft } from "@chronicle/journal/contacts";
 
 export type DeviceContactsResult =
