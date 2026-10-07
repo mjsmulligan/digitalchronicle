@@ -58,26 +58,21 @@ async function imageToBase64(image: Contacts.Image): Promise<string | null> {
     }
   }
 
-  // 3. content:// (Android) or any other scheme — use fetch + FileReader
+  // 3. content:// (Android) — fetch() can't handle content-provider URIs.
+  //    Copy to the Expo cache dir first (uses Android ContentResolver), then
+  //    read the cached file as base64.
   try {
-    const response = await fetch(uri);
-    if (!response.ok) {
-      console.log("[contacts] fetch failed, status:", response.status);
-      return null;
-    }
-    const blob = await response.blob();
-    return await new Promise<string | null>((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result;
-        console.log("[contacts] FileReader result type:", typeof result, "length:", typeof result === "string" ? result.length : 0);
-        resolve(typeof result === "string" && result.length > 0 ? result : null);
-      };
-      reader.onerror = () => { console.log("[contacts] FileReader error"); resolve(null); };
-      reader.readAsDataURL(blob);
+    const dest = `${FileSystem.cacheDirectory}contact_photo_${Date.now()}.jpg`;
+    await FileSystem.copyAsync({ from: uri, to: dest });
+    const b64 = await FileSystem.readAsStringAsync(dest, {
+      encoding: FileSystem.EncodingType.Base64,
     });
+    // Clean up — fire-and-forget, failure is harmless
+    FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
+    console.log("[contacts] content:// copy+read ok, length:", b64?.length ?? 0);
+    return b64 ? `data:image/jpeg;base64,${b64}` : null;
   } catch (e) {
-    console.log("[contacts] fetch/FileReader failed:", e);
+    console.log("[contacts] content:// copy failed:", e);
     return null;
   }
 }
