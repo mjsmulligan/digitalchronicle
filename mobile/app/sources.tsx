@@ -51,7 +51,7 @@ import type { Person } from "@chronicle/journal/types";
 import { readDeviceContacts } from "../src/lib/deviceContacts";
 import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTheme, spacing, radius } from "../src/components/ThemeProvider";
+import { useTheme, spacing, radius, type ThemeColors, type ThemeFonts } from "../src/components/ThemeProvider";
 import { KindIcon } from "../src/components/KindIcon";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { PhotoSourceEntry } from "../src/components/PhotoSourceEntry";
@@ -145,8 +145,8 @@ function RecordRow({
 }: {
   record: StagedRecord;
   onToggle: (selected: boolean) => void;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   const v = view(record.entry);
   const selectable = isSelectable(record.status);
@@ -229,8 +229,8 @@ function BatchReview({
   onCommit: (count: number) => void;
   onDiscard: () => void;
   onError: (title: string, message: string) => void;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   const [b, setB] = useState(batch);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
@@ -344,7 +344,7 @@ function BatchReview({
           disabled={!selected}
           onPress={handleCommit}
         >
-          <Text style={[br.commitBtnText, { fontFamily: fonts.sans }]}>
+          <Text style={[br.commitBtnText, { fontFamily: fonts.sans, color: colors.white }]}>
             Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
           </Text>
         </Pressable>
@@ -415,7 +415,7 @@ const br = StyleSheet.create({
     paddingVertical: 13,
     alignItems: "center",
   },
-  commitBtnText: { fontSize: 14, color: "#fff", fontWeight: "700" },
+  commitBtnText: { fontSize: 14, fontWeight: "700" },
   loadMore: {
     padding: spacing.md,
     alignItems: "center",
@@ -465,8 +465,8 @@ function SourceCard({
   progressPct: number; // 0–1, only shown when active
   action: React.ReactNode;
   children?: React.ReactNode;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const loopRef = useRef<Animated.CompositeAnimation | null>(null);
@@ -570,7 +570,7 @@ const sc = StyleSheet.create({
 
 // ─── Section label ────────────────────────────────────────────────────────────
 
-function SectionLabel({ label, colors }: { label: string; colors: any }) {
+function SectionLabel({ label, colors }: { label: string; colors: ThemeColors }) {
   return (
     <Text
       style={{
@@ -601,8 +601,8 @@ function SrcButton({
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
   variant?: "primary" | "ghost";
 }) {
   return (
@@ -621,7 +621,7 @@ function SrcButton({
         style={[
           sb.label,
           { fontFamily: fonts.sansMedium ?? fonts.sans },
-          variant === "ghost" ? { color: colors.textSecondary } : { color: "#fff" },
+          variant === "ghost" ? { color: colors.textSecondary } : { color: colors.white },
         ]}
       >
         {label}
@@ -653,8 +653,8 @@ function CalendarSourceCard({
   active: boolean;
   disabled: boolean;
   onSync: () => void;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   return (
     <SourceCard
@@ -702,8 +702,8 @@ function ContactsSourceCard({
   disabled: boolean;
   onImportFromDevice: () => void;
   onPickFile: () => void;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   const parsing = phase === "parsing" || phase === "committing";
   return (
@@ -768,8 +768,8 @@ function ContactsReviewPanel({
   onDeselectAll: () => void;
   onCommit: () => void;
   onDiscard: () => void;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   const newCount = contacts.filter((c) => c.status === "new").length;
   const selectedCount = contacts.filter((c) => c.selected).length;
@@ -889,8 +889,8 @@ function GoodreadsSourceCard({
   onCancelEdit: () => void;
   onSaveId: () => void;
   onForget: () => void;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   return (
     <SourceCard
@@ -996,8 +996,8 @@ function FileSourceCard({
   active: boolean;
   disabled: boolean;
   onPickFile: () => void;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   return (
     <SourceCard
@@ -1057,8 +1057,8 @@ function PlaceStagingCard({
   hub: ReturnType<typeof useStagingHub>;
   router: ReturnType<typeof useRouter>;
   onConfirm: (title: string, msg: string, cta: string, fn: () => void) => void;
-  colors: any;
-  fonts: any;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
   const allPendingIds = useMemo(
     () => new Set(hub.hierarchy.flatMap(pscCountryIds)),
@@ -1178,7 +1178,7 @@ function PlaceStagingCard({
           disabled={!selectedCount}
           onPress={handleCommit}
         >
-          <Text style={[br.commitBtnText, { fontFamily: fonts.sans }]}>
+          <Text style={[br.commitBtnText, { fontFamily: fonts.sans, color: colors.white }]}>
             Accept {selectedCount} {selectedCount === 1 ? "place" : "places"} to journal
           </Text>
         </Pressable>

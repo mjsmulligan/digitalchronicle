@@ -11,7 +11,7 @@
  * Accepts `colors` and `fonts` as props so it can be used inside FlatList
  * renderItem without calling useTheme() on every row.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   entryTitle,
@@ -156,7 +156,7 @@ export interface EntryRowProps {
  */
 export function EntryRow({ entry, colors, fonts, onPress, onLongPress }: EntryRowProps) {
   const v = view(entry);
-  const styles = createStyles(colors, fonts);
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
   const title = entryTitle(v);
   const subtitle = entryMeta(v);
   const label = entryLabel(v);
