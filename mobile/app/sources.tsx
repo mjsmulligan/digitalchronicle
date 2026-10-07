@@ -715,6 +715,7 @@ export default function SourcesScreen() {
         id: uid(),
         name: draft.name,
         ...(draft.aliases?.length ? { aliases: draft.aliases } : {}),
+        ...(draft.photo ? { photo: draft.photo } : {}),
         createdAt: now,
       }));
       await putMany("people", people);

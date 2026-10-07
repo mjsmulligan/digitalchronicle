@@ -6,6 +6,7 @@
  * and nothing leaves the phone.
  */
 import * as Contacts from "expo-contacts/legacy";
+import * as FileSystem from "expo-file-system";
 import type { ContactDraft } from "@chronicle/journal/contacts";
 
 export type DeviceContactsResult =
@@ -15,6 +16,22 @@ export type DeviceContactsResult =
 
 function clean(s: string | null | undefined): string {
   return (s ?? "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Reads a contact image URI and returns it as a base64 data URI string.
+ * Returns null silently on any failure — a missing photo is never fatal.
+ */
+async function fetchPhotoBase64(uri: string): Promise<string | null> {
+  try {
+    const b64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (!b64) return null;
+    return `data:image/jpeg;base64,${b64}`;
+  } catch {
+    return null;
+  }
 }
 
 export function toDraft(c: Contacts.Contact): ContactDraft | null {
@@ -49,19 +66,36 @@ export async function readDeviceContacts(): Promise<DeviceContactsResult> {
       Contacts.Fields.LastName,
       Contacts.Fields.Nickname,
       Contacts.Fields.MaidenName,
+      Contacts.Fields.Image,
     ],
     sort: Contacts.SortTypes.FirstName,
   });
 
+  // Build drafts (synchronous pass)
   const seen = new Set<string>();
-  const contacts: { draft: ContactDraft; sourceRow: number }[] = [];
+  const rawContacts: { draft: ContactDraft; sourceRow: number; imageUri?: string }[] = [];
   data.forEach((c, i) => {
     const draft = toDraft(c);
     if (!draft) return;
     const key = draft.name.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    contacts.push({ draft, sourceRow: i + 1 });
+    rawContacts.push({
+      draft,
+      sourceRow: i + 1,
+      imageUri: c.imageAvailable && c.image?.uri ? c.image.uri : undefined,
+    });
   });
+
+  // Fetch photos in parallel — failures are silently ignored
+  await Promise.all(
+    rawContacts.map(async (entry) => {
+      if (!entry.imageUri) return;
+      const photo = await fetchPhotoBase64(entry.imageUri);
+      if (photo) entry.draft = { ...entry.draft, photo };
+    }),
+  );
+
+  const contacts = rawContacts.map(({ draft, sourceRow }) => ({ draft, sourceRow }));
   return { status: "ok", contacts };
 }

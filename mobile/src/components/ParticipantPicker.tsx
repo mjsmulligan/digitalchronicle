@@ -39,6 +39,7 @@ import {
   spacing as spacingScale,
   radius as radiusScale,
 } from "./ThemeProvider";
+import { PersonAvatar } from "./PersonAvatar";
 
 // ── styles factory ─────────────────────────────────────────────────────────────
 
@@ -307,12 +308,6 @@ export function ParticipantPicker({
               keyboardShouldPersistTaps="handled"
               renderItem={({ item: p }) => {
                 const isSelected = localSelected.includes(p.id);
-                const initials = p.name
-                  .split(" ")
-                  .map((w) => w[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase();
                 return (
                   <Pressable
                     style={({ pressed }) => [
@@ -321,9 +316,7 @@ export function ParticipantPicker({
                     ]}
                     onPress={() => toggle(p.id)}
                   >
-                    <View style={[styles.avatar, p.isSelf && styles.avatarSelf]}>
-                      <Text style={styles.avatarText}>{initials}</Text>
-                    </View>
+                    <PersonAvatar person={p} size={36} colors={colors} fonts={fonts} />
                     <Text style={styles.name} numberOfLines={1}>
                       {p.name}
                     </Text>

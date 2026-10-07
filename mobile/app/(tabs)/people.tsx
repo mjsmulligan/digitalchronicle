@@ -9,6 +9,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Person } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
+import { PersonAvatar } from "../../src/components/PersonAvatar";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -109,22 +110,15 @@ function PersonRow({
   entryCount: number;
   styles: Styles;
 }) {
-  const initials = person.name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
   const router = useRouter();
+  const { colors, fonts } = useTheme();
 
   return (
     <Pressable
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={() => router.push(`/person/${person.id}`)}
     >
-      <View style={[styles.avatar, person.isSelf && styles.avatarSelf]}>
-        <Text style={styles.avatarText}>{initials}</Text>
-      </View>
+      <PersonAvatar person={person} size={40} colors={colors} fonts={fonts} />
       <View style={styles.rowBody}>
         <View style={styles.nameRow}>
           <Text style={styles.name}>{person.name}</Text>

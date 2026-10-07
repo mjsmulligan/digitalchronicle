@@ -9,6 +9,7 @@ import { useJournal, allEntries } from "@chronicle/journal/db";
 import { type Entry, type Person } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { DayGroup, type DayGroupData } from "../../src/components/DayGroup";
+import { PersonAvatar } from "../../src/components/PersonAvatar";
 
 // ── styles factory ────────────────────────────────────────────────────────────
 
@@ -123,9 +124,6 @@ export default function PersonDetailScreen() {
     );
   }
 
-  const initials = person.name
-    .split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-
   const totalEntries = groups.reduce((n, g) => n + g.items.length, 0);
 
   return (
@@ -149,9 +147,7 @@ export default function PersonDetailScreen() {
 
           {/* Profile card */}
           <View style={styles.profileCard}>
-            <View style={[styles.avatar, person.isSelf && styles.avatarSelf]}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
+            <PersonAvatar person={person} size={56} colors={colors} fonts={fonts} />
             <View style={styles.profileBody}>
               <View style={styles.nameRow}>
                 <Text style={styles.name}>{person.name}</Text>
