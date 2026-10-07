@@ -19,16 +19,51 @@ function clean(s: string | null | undefined): string {
 }
 
 /**
- * Reads a contact image URI and returns it as a base64 data URI string.
+ * Converts a contact Image object to a base64 data URI.
+ *
+ * Strategy:
+ *   1. Use image.base64 directly if expo-contacts already decoded it.
+ *   2. Try FileSystem.readAsStringAsync on file:// URIs (iOS).
+ *   3. Try fetch() → blob → FileReader for content:// URIs (Android).
+ *
  * Returns null silently on any failure — a missing photo is never fatal.
  */
-async function fetchPhotoBase64(uri: string): Promise<string | null> {
+async function imageToBase64(image: Contacts.Image): Promise<string | null> {
+  // 1. Already decoded
+  if (image.base64) {
+    const b64 = image.base64.replace(/^data:image\/[^;]+;base64,/, "");
+    return b64 ? `data:image/jpeg;base64,${b64}` : null;
+  }
+
+  const uri = image.uri;
+  if (!uri) return null;
+
+  // 2. file:// — FileSystem handles this on both platforms
+  if (uri.startsWith("file://")) {
+    try {
+      const b64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return b64 ? `data:image/jpeg;base64,${b64}` : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // 3. content:// (Android) or any other scheme — use fetch + FileReader
   try {
-    const b64 = await FileSystem.readAsStringAsync(uri, {
-      encoding: FileSystem.EncodingType.Base64,
+    const response = await fetch(uri);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result;
+        resolve(typeof result === "string" && result.length > 0 ? result : null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
     });
-    if (!b64) return null;
-    return `data:image/jpeg;base64,${b64}`;
   } catch {
     return null;
   }
@@ -73,7 +108,7 @@ export async function readDeviceContacts(): Promise<DeviceContactsResult> {
 
   // Build drafts (synchronous pass)
   const seen = new Set<string>();
-  const rawContacts: { draft: ContactDraft; sourceRow: number; imageUri?: string }[] = [];
+  const rawContacts: { draft: ContactDraft; sourceRow: number; image?: Contacts.Image }[] = [];
   data.forEach((c, i) => {
     const draft = toDraft(c);
     if (!draft) return;
@@ -83,15 +118,15 @@ export async function readDeviceContacts(): Promise<DeviceContactsResult> {
     rawContacts.push({
       draft,
       sourceRow: i + 1,
-      imageUri: c.imageAvailable && c.image?.uri ? c.image.uri : undefined,
+      image: c.imageAvailable && c.image ? c.image : undefined,
     });
   });
 
-  // Fetch photos in parallel — failures are silently ignored
+  // Resolve photos in parallel — failures are silently ignored
   await Promise.all(
     rawContacts.map(async (entry) => {
-      if (!entry.imageUri) return;
-      const photo = await fetchPhotoBase64(entry.imageUri);
+      if (!entry.image) return;
+      const photo = await imageToBase64(entry.image);
       if (photo) entry.draft = { ...entry.draft, photo };
     }),
   );
