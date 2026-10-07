@@ -62,6 +62,7 @@ async function imageToBase64(image: Contacts.Image): Promise<string | null> {
   //    Copy to the Expo cache dir first (uses Android ContentResolver), then
   //    read the cached file as base64.
   try {
+    console.log("[contacts] content:// full uri:", uri);
     const dest = `${FileSystem.cacheDirectory}contact_photo_${Date.now()}.jpg`;
     await FileSystem.copyAsync({ from: uri, to: dest });
     const b64 = await FileSystem.readAsStringAsync(dest, {
