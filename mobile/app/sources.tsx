@@ -707,21 +707,38 @@ export default function SourcesScreen() {
 
   const commitContacts = async () => {
     const toAdd = contactsReview.filter((c) => c.selected);
-    if (!toAdd.length) return;
+
+    // For duplicate contacts that came from the device and carry a photo,
+    // patch the existing Person record if it doesn't have a photo yet.
+    const photoUpdates: Person[] = contactsReview
+      .filter((c) => c.status === "duplicate" && c.matchId && c.draft.photo)
+      .flatMap((c) => {
+        const existing = journal.people.find((p) => p.id === c.matchId);
+        if (!existing || existing.photo) return [];
+        return [{ ...existing, photo: c.draft.photo! }];
+      });
+
+    if (!toAdd.length && !photoUpdates.length) return;
     setContactsPhase("committing");
     try {
       const now = new Date().toISOString();
-      const people: Person[] = toAdd.map(({ draft }) => ({
+      const newPeople: Person[] = toAdd.map(({ draft }) => ({
         id: uid(),
         name: draft.name,
         ...(draft.aliases?.length ? { aliases: draft.aliases } : {}),
+        ...(draft.photo ? { photo: draft.photo } : {}),
         createdAt: now,
       }));
-      await putMany("people", people);
+
+      await putMany("people", [...newPeople, ...photoUpdates]);
       setContactsReview([]);
       setContactsPhase("idle");
       setActiveSource(null);
-      dialog.alert("Import complete", `${people.length} ${people.length === 1 ? "person" : "people"} added.`);
+
+      const parts: string[] = [];
+      if (newPeople.length) parts.push(`${newPeople.length} ${newPeople.length === 1 ? "person" : "people"} added`);
+      if (photoUpdates.length) parts.push(`${photoUpdates.length} photo${photoUpdates.length === 1 ? "" : "s"} updated`);
+      dialog.alert("Import complete", parts.join(", ") + ".");
     } catch (err) {
       dialog.alert("Commit failed", String(err));
       setContactsPhase("review");
@@ -938,6 +955,12 @@ export default function SourcesScreen() {
           <ContactsReviewPanel
             contacts={contactsReview}
             parseErrors={contactsParseErrors}
+            photoUpdateCount={
+              contactsReview.filter(
+                (c) => c.status === "duplicate" && c.matchId && c.draft.photo &&
+                  !journal.people.find((p) => p.id === c.matchId)?.photo,
+              ).length
+            }
             onToggle={toggleContactSelected}
             onSelectAll={() => setContactsReview((prev) => prev.map((c) => ({ ...c, selected: c.status === "new" })))}
             onDeselectAll={() => setContactsReview((prev) => prev.map((c) => ({ ...c, selected: false })))}

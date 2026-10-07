@@ -350,6 +350,12 @@ export interface Person {
   notes?: string;
   /** Marks the journal owner. Exactly one Person should have isSelf: true. */
   isSelf?: boolean;
+  /**
+   * Base64 data URI of a contact photo, e.g. "data:image/jpeg;base64,…".
+   * Captured at import time from the device address book. Absent for people
+   * created manually or imported from file.
+   */
+  photo?: string;
   createdAt: string;
 }
 

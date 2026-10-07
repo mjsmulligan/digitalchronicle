@@ -628,6 +628,7 @@ export default function EditEntryScreen() {
   const [fieldPatch, setFieldPatch] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
 
+
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
     content: { padding: spacing.lg, paddingBottom: spacing["3xl"], gap: 6 },

@@ -2,13 +2,15 @@
  * Person detail screen — profile card + all shared entries grouped by day
  * in the two-column journal layout.
  */
-import { useMemo } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState } from "react";
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useJournal, allEntries } from "@chronicle/journal/db";
+import { useJournal, allEntries, removeMany, putMany, storeFor } from "@chronicle/journal/db";
 import { type Entry, type Person } from "@chronicle/journal/types";
+import { Ionicons } from "@expo/vector-icons";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { DayGroup, type DayGroupData } from "../../src/components/DayGroup";
+import { PersonAvatar } from "../../src/components/PersonAvatar";
 
 // ── styles factory ────────────────────────────────────────────────────────────
 
@@ -123,10 +125,41 @@ export default function PersonDetailScreen() {
     );
   }
 
-  const initials = person.name
-    .split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-
   const totalEntries = groups.reduce((n, g) => n + g.items.length, 0);
+
+  const handleDelete = () => {
+    Alert.alert(
+      `Remove ${person.name}?`,
+      "This removes them from your people list and from all entries. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            // Scrub this person's ID from every entry that references them
+            const affected = allEntries(journal).filter(
+              (e) => e.participants?.includes(person.id),
+            );
+            if (affected.length > 0) {
+              await Promise.all(
+                affected.map((e) => {
+                  const remaining = e.participants!.filter((pid) => pid !== person.id);
+                  const updated = {
+                    ...e,
+                    participants: remaining.length > 0 ? remaining : undefined,
+                  };
+                  return putMany(storeFor(e), [updated]);
+                }),
+              );
+            }
+            await removeMany("people", [person.id]);
+            router.back();
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <FlatList
@@ -145,13 +178,21 @@ export default function PersonDetailScreen() {
       ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
       ListHeaderComponent={
         <>
-          <Stack.Screen options={{ title: "", ...common.header }} />
+          <Stack.Screen
+            options={{
+              title: "",
+              ...common.header,
+              headerRight: () => (
+                <Pressable onPress={handleDelete} hitSlop={12}>
+                  <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+                </Pressable>
+              ),
+            }}
+          />
 
           {/* Profile card */}
           <View style={styles.profileCard}>
-            <View style={[styles.avatar, person.isSelf && styles.avatarSelf]}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
+            <PersonAvatar person={person} size={56} colors={colors} fonts={fonts} />
             <View style={styles.profileBody}>
               <View style={styles.nameRow}>
                 <Text style={styles.name}>{person.name}</Text>
