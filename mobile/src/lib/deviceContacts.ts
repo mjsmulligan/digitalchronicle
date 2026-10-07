@@ -132,11 +132,13 @@ export async function readDeviceContacts(): Promise<DeviceContactsResult> {
     const key = draft.name.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    // Don't gate on imageAvailable — request Fields.Image and use whatever comes back
+    // Only attempt photo fetch when imageAvailable is explicitly true.
+    // The contacts/X/photo URI always returns a small system placeholder even
+    // for contacts with no real photo, so gating on imageAvailable is essential.
     rawContacts.push({
       draft,
       sourceRow: i + 1,
-      image: c.image ?? undefined,
+      image: c.imageAvailable ? (c.image ?? undefined) : undefined,
     });
   });
 
