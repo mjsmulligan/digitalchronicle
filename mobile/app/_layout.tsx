@@ -70,7 +70,7 @@ function looksLikeContactsUri(url: string): boolean {
 // Modal-only screens that should never be the initial route on app boot.
 // If expo-router restores navigation state with one of these as the active
 // screen (a dev-only artefact), we redirect home instead.
-const MODAL_SCREENS = new Set(["import", "import-people", "settings"]);
+const MODAL_SCREENS = new Set(["import", "settings"]);
 
 /**
  * Inner layout — runs inside ThemeProvider so it can call useTheme().
@@ -117,7 +117,7 @@ function RootLayoutInner() {
         // Handle initial URL (app opened via share intent before JS was running)
         const initial = await Linking.getInitialURL();
         if (initial && looksLikeImportUri(initial)) {
-          const dest = looksLikeContactsUri(initial) ? "/import-people" : "/import";
+          const dest = looksLikeContactsUri(initial) ? "/sources" : "/import";
           router.push(`${dest}?uri=${encodeURIComponent(initial)}`);
         }
       } catch (err) {
@@ -150,7 +150,7 @@ function RootLayoutInner() {
   useEffect(() => {
     const sub = Linking.addEventListener("url", ({ url }) => {
       if (url && looksLikeImportUri(url)) {
-        const dest = looksLikeContactsUri(url) ? "/import-people" : "/import";
+        const dest = looksLikeContactsUri(url) ? "/sources" : "/import";
         router.push(`${dest}?uri=${encodeURIComponent(url)}`);
       }
     });
@@ -179,13 +179,6 @@ function RootLayoutInner() {
         {/* Import screens slide up as modal sheets */}
         <Stack.Screen
           name="import"
-          options={{
-            presentation: "modal",
-            contentStyle: { backgroundColor: colors.bg },
-          }}
-        />
-        <Stack.Screen
-          name="import-people"
           options={{
             presentation: "modal",
             contentStyle: { backgroundColor: colors.bg },

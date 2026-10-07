@@ -172,7 +172,7 @@ export default function PeopleScreen() {
         <Text style={styles.emptyHint}>
           Add people from your phone contacts or a .vcf / contacts CSV file.
         </Text>
-        <Link href="/import-people" asChild>
+        <Link href="/sources" asChild>
           <Pressable style={styles.ctaBtn}>
             <Ionicons name="add" size={18} color="white" />
             <Text style={styles.ctaBtnText}>Import contacts</Text>
@@ -191,7 +191,7 @@ export default function PeopleScreen() {
         <PersonRow person={person} entryCount={entryCount} styles={styles} />
       )}
       ListHeaderComponent={
-        <Link href="/import-people" asChild>
+        <Link href="/sources" asChild>
           <Pressable style={styles.listAction}>
             <Text style={styles.listActionText}>Import contacts</Text>
           </Pressable>
