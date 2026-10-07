@@ -51,6 +51,8 @@ export function buildReviewContacts(
 export interface ContactsReviewPanelProps {
   contacts: ReviewContact[];
   parseErrors: string[];
+  /** Number of existing people whose photo will be silently updated on commit. */
+  photoUpdateCount?: number;
   onToggle: (idx: number, selected: boolean) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
@@ -63,6 +65,7 @@ export interface ContactsReviewPanelProps {
 export function ContactsReviewPanel({
   contacts,
   parseErrors,
+  photoUpdateCount = 0,
   onToggle,
   onSelectAll,
   onDeselectAll,
@@ -73,6 +76,11 @@ export function ContactsReviewPanel({
 }: ContactsReviewPanelProps) {
   const newCount = contacts.filter((c) => c.status === "new").length;
   const selectedCount = contacts.filter((c) => c.selected).length;
+
+  const commitParts: string[] = [];
+  if (selectedCount > 0) commitParts.push(`Add ${selectedCount}`);
+  if (photoUpdateCount > 0) commitParts.push(`update ${photoUpdateCount} photo${photoUpdateCount === 1 ? "" : "s"}`);
+  const commitLabel = commitParts.length ? commitParts.join(", ") : "Nothing to add";
 
   return (
     <ReviewPanel
@@ -85,9 +93,9 @@ export function ContactsReviewPanel({
         { label: `Select new (${newCount})`, onPress: onSelectAll },
         { label: "Deselect all", onPress: onDeselectAll },
       ]}
-      commitLabel={`Add ${selectedCount} ${selectedCount === 1 ? "person" : "people"}`}
+      commitLabel={commitLabel}
       onCommit={onCommit}
-      commitDisabled={selectedCount === 0}
+      commitDisabled={selectedCount === 0 && photoUpdateCount === 0}
       colors={colors}
       fonts={fonts}
     >
