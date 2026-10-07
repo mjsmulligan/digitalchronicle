@@ -13,24 +13,12 @@ import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
 import { Ionicons } from "@expo/vector-icons";
+import { DateColumn } from "../../src/components/DateColumn";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun",
-                      "Jul","Aug","Sep","Oct","Nov","Dec"];
-const MONTHS_FULL  = ["January","February","March","April","May","June",
-                      "July","August","September","October","November","December"];
-const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-
-function parseDay(iso: string) {
-  const d = new Date(iso + "T12:00:00");
-  return {
-    num:   d.getDate().toString(),
-    day:   DAYS_SHORT[d.getDay()],
-    month: MONTHS_SHORT[d.getMonth()].toUpperCase(),
-    year:  d.getFullYear().toString(),
-  };
-}
+const MONTHS_FULL = ["January","February","March","April","May","June",
+                     "July","August","September","October","November","December"];
 
 function fmt(iso: string): string {
   const d = new Date(iso + "T12:00:00");
@@ -69,8 +57,6 @@ interface TripDayGroup {
 }
 
 // ── styles factory ────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
 
 function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
@@ -128,39 +114,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       paddingHorizontal: spacingScale.base,
       paddingTop: spacingScale.xl,
       paddingBottom: spacingScale.sm,
-    },
-
-    // Date column
-    dateCol: {
-      width: DATE_COL_W,
-      alignItems: "center",
-      paddingTop: 2,
-      flexShrink: 0,
-    },
-    dateNum: {
-      fontFamily: fonts.serifBold,
-      fontWeight: "700",
-      ...textScale.dayNum,
-      color: colors.textBright,
-    },
-    dateNumDim: { color: colors.textTertiary },
-    dateSub: {
-      fontFamily: fonts.mono,
-      fontSize: 10,
-      fontWeight: "700",
-      letterSpacing: 0.8,
-      color: colors.textTertiary,
-      lineHeight: 15,
-      textTransform: "uppercase" as const,
-    },
-
-    // Vertical rule
-    dateRule: {
-      width: 1,
-      alignSelf: "stretch",
-      backgroundColor: colors.border,
-      marginHorizontal: spacingScale.md,
-      marginTop: 4,
     },
 
     // Entries column (linked) — no gap; EntryRow provides its own paddingVertical
@@ -280,16 +233,9 @@ function SuggestionCard({
 
 /** Two-column date row for linked entries — uses shared EntryRow */
 function EntryDayGroup({ group, styles, colors, fonts, router, onRemove }: { group: TripDayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter>; onRemove?: (entry: Entry) => void }) {
-  const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
-      <View style={styles.dateCol}>
-        <Text style={styles.dateNum}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-      <View style={styles.dateRule} />
+      <DateColumn iso={group.iso} colors={colors} fonts={fonts} align="center" />
       <View style={styles.cardsCol}>
         {group.items.map((e, idx) => (
           <React.Fragment key={e.id}>
@@ -315,23 +261,18 @@ function SuggestionDayGroup({
   onAdd,
   styles,
   colors,
+  fonts,
 }: {
   group: TripDayGroup;
   addingId: string | null;
   onAdd: (entry: Entry) => void;
   styles: Styles;
   colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
-  const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
-      <View style={styles.dateCol}>
-        <Text style={[styles.dateNum, styles.dateNumDim]}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-      <View style={styles.dateRule} />
+      <DateColumn iso={group.iso} colors={colors} fonts={fonts} align="center" dim />
       <View style={styles.cardsCol}>
         {group.items.map((e) => (
           <SuggestionCard
@@ -461,19 +402,20 @@ export default function TripDetailScreen() {
   };
 
   // Build flat list: grouped entry days + optional suggestions section
-  const entryGroups  = groupByDay(entries);
-  const suggestGroups = groupByDay(suggestions);
-
   type ListItem =
     | { kind: "entryDay";      group: TripDayGroup }
     | { kind: "suggestHeader" }
     | { kind: "suggestDay";    group: TripDayGroup };
 
-  const listData: ListItem[] = [
-    ...entryGroups.map((g) => ({ kind: "entryDay" as const, group: g })),
-    ...(suggestGroups.length > 0 ? [{ kind: "suggestHeader" as const }] : []),
-    ...suggestGroups.map((g) => ({ kind: "suggestDay" as const, group: g })),
-  ];
+  const listData = useMemo<ListItem[]>(() => {
+    const entryGroups   = groupByDay(entries);
+    const suggestGroups = groupByDay(suggestions);
+    return [
+      ...entryGroups.map((g) => ({ kind: "entryDay" as const, group: g })),
+      ...(suggestGroups.length > 0 ? [{ kind: "suggestHeader" as const }] : []),
+      ...suggestGroups.map((g) => ({ kind: "suggestDay" as const, group: g })),
+    ];
+  }, [entries, suggestions]);
 
   return (
     <>
@@ -515,6 +457,7 @@ export default function TripDetailScreen() {
             onAdd={addEntry}
             styles={styles}
             colors={colors}
+            fonts={fonts}
           />
         );
       }}

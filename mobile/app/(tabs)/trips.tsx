@@ -12,22 +12,8 @@ import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Trip, Leg } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN",
-                      "JUL","AUG","SEP","OCT","NOV","DEC"];
-const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-
-function parseDay(iso: string) {
-  const d = new Date(iso + "T12:00:00");
-  return {
-    num:   d.getDate().toString(),
-    day:   DAYS_SHORT[d.getDay()],
-    month: MONTHS_SHORT[d.getMonth()],
-    year:  d.getFullYear().toString(),
-  };
-}
+import { MONTHS_SHORT } from "../../src/lib/dateHelpers";
+import { DateColumn } from "../../src/components/DateColumn";
 
 function fmtEnd(iso: string): string {
   const d = new Date(iso + "T12:00:00");
@@ -42,8 +28,6 @@ function nights(trip: Trip): number {
 }
 
 // ── styles factory ────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
 
 function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
@@ -69,38 +53,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       paddingHorizontal: spacingScale.base,
       paddingTop: spacingScale.xl,
       paddingBottom: spacingScale.sm,
-    },
-
-    // Date column
-    dateCol: {
-      width: DATE_COL_W,
-      alignItems: "center",
-      paddingTop: 2,
-      flexShrink: 0,
-    },
-    dateNum: {
-      fontFamily: fonts.serifBold,
-      fontWeight: "700",
-      ...textScale.dayNum,
-      color: colors.textBright,
-    },
-    dateSub: {
-      fontFamily: fonts.mono,
-      fontSize: 10,
-      fontWeight: "700",
-      letterSpacing: 0.8,
-      color: colors.textTertiary,
-      lineHeight: 15,
-      textTransform: "uppercase" as const,
-    },
-
-    // Vertical rule
-    dateRule: {
-      width: 1,
-      alignSelf: "stretch",
-      backgroundColor: colors.border,
-      marginHorizontal: spacingScale.md,
-      marginTop: 4,
     },
 
     // Card column
@@ -210,9 +162,8 @@ interface TripItem {
   suggested: number;
 }
 
-function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; colors: ThemeColors }) {
+function TripRow({ item, styles, colors, fonts }: { item: TripItem; styles: Styles; colors: ThemeColors; fonts: ThemeFonts }) {
   const { trip, entryCount, flights, trains, stays, events, suggested } = item;
-  const { num, day, month, year } = parseDay(trip.start);
   const n = nights(trip);
   const router = useRouter();
 
@@ -225,16 +176,8 @@ function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; col
 
   return (
     <View style={styles.row}>
-      {/* Left: start date */}
-      <View style={styles.dateCol}>
-        <Text style={styles.dateNum}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-
-      {/* Centre: vertical rule */}
-      <View style={styles.dateRule} />
+      {/* Left: start date + rule */}
+      <DateColumn iso={trip.start} colors={colors} fonts={fonts} align="center" />
 
       {/* Right: trip card */}
       <View style={styles.cardCol}>
@@ -356,7 +299,7 @@ export default function TripsScreen() {
       style={styles.list}
       data={trips}
       keyExtractor={({ trip }) => trip.id}
-      renderItem={({ item }) => <TripRow item={item} styles={styles} colors={colors} />}
+      renderItem={({ item }) => <TripRow item={item} styles={styles} colors={colors} fonts={fonts} />}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       contentContainerStyle={styles.listContent}
       ListHeaderComponent={
