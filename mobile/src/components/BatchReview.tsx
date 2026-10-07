@@ -83,14 +83,6 @@ function RecordRow({
         !selectable && rr.dim,
       ]}
     >
-      <Switch
-        value={record.selected}
-        onValueChange={onToggle}
-        disabled={!selectable}
-        trackColor={{ true: colors.accent, false: colors.border }}
-        thumbColor={record.selected ? colors.accentSubtle : colors.textMuted}
-        style={rr.sw}
-      />
       <View style={rr.iconWrap}>
         <KindIcon
           kind={record.entry.kind}
@@ -115,6 +107,14 @@ function RecordRow({
           )}
         </View>
       </View>
+      <Switch
+        value={record.selected}
+        onValueChange={onToggle}
+        disabled={!selectable}
+        trackColor={{ true: colors.accent, false: colors.border }}
+        thumbColor={record.selected ? colors.accentSubtle : colors.textMuted}
+        style={rr.sw}
+      />
     </View>
   );
 }

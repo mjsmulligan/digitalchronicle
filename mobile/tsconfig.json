@@ -25,6 +25,9 @@
       ],
       "@chronicle/journal/evaluation": [
         "../src/lib/journal/evaluation"
+      ],
+      "@chronicle/journal/merge": [
+        "../src/lib/journal/merge"
       ]
     }
   },
