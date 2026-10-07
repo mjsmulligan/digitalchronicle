@@ -31,12 +31,18 @@ function clean(s: string | null | undefined): string {
 async function imageToBase64(image: Contacts.Image): Promise<string | null> {
   // 1. Already decoded
   if (image.base64) {
+    console.log("[contacts] using base64 field directly");
     const b64 = image.base64.replace(/^data:image\/[^;]+;base64,/, "");
     return b64 ? `data:image/jpeg;base64,${b64}` : null;
   }
 
   const uri = image.uri;
-  if (!uri) return null;
+  if (!uri) {
+    console.log("[contacts] image has no uri and no base64");
+    return null;
+  }
+
+  console.log("[contacts] image uri scheme:", uri.slice(0, 20));
 
   // 2. file:// — FileSystem handles this on both platforms
   if (uri.startsWith("file://")) {
@@ -44,8 +50,10 @@ async function imageToBase64(image: Contacts.Image): Promise<string | null> {
       const b64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
+      console.log("[contacts] FileSystem read ok, length:", b64?.length ?? 0);
       return b64 ? `data:image/jpeg;base64,${b64}` : null;
-    } catch {
+    } catch (e) {
+      console.log("[contacts] FileSystem read failed:", e);
       return null;
     }
   }
@@ -53,18 +61,23 @@ async function imageToBase64(image: Contacts.Image): Promise<string | null> {
   // 3. content:// (Android) or any other scheme — use fetch + FileReader
   try {
     const response = await fetch(uri);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.log("[contacts] fetch failed, status:", response.status);
+      return null;
+    }
     const blob = await response.blob();
     return await new Promise<string | null>((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const result = reader.result;
+        console.log("[contacts] FileReader result type:", typeof result, "length:", typeof result === "string" ? result.length : 0);
         resolve(typeof result === "string" && result.length > 0 ? result : null);
       };
-      reader.onerror = () => resolve(null);
+      reader.onerror = () => { console.log("[contacts] FileReader error"); resolve(null); };
       reader.readAsDataURL(blob);
     });
-  } catch {
+  } catch (e) {
+    console.log("[contacts] fetch/FileReader failed:", e);
     return null;
   }
 }
@@ -101,10 +114,18 @@ export async function readDeviceContacts(): Promise<DeviceContactsResult> {
       Contacts.Fields.LastName,
       Contacts.Fields.Nickname,
       Contacts.Fields.MaidenName,
+      Contacts.Fields.ImageAvailable,
       Contacts.Fields.Image,
     ],
     sort: Contacts.SortTypes.FirstName,
   });
+
+  // DEBUG — log first contact's image fields to confirm shape
+  if (data.length > 0) {
+    const sample = data[0];
+    console.log("[contacts] sample imageAvailable:", sample.imageAvailable);
+    console.log("[contacts] sample image:", JSON.stringify(sample.image));
+  }
 
   // Build drafts (synchronous pass)
   const seen = new Set<string>();
@@ -115,10 +136,11 @@ export async function readDeviceContacts(): Promise<DeviceContactsResult> {
     const key = draft.name.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
+    // Don't gate on imageAvailable — request Fields.Image and use whatever comes back
     rawContacts.push({
       draft,
       sourceRow: i + 1,
-      image: c.imageAvailable && c.image ? c.image : undefined,
+      image: c.image ?? undefined,
     });
   });
 
