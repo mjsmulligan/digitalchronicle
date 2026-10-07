@@ -6,7 +6,7 @@
  * and nothing leaves the phone.
  */
 import * as Contacts from "expo-contacts/legacy";
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import type { ContactDraft } from "@chronicle/journal/contacts";
 
 export type DeviceContactsResult =
