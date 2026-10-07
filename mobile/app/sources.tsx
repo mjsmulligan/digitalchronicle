@@ -713,6 +713,14 @@ export default function SourcesScreen() {
   const [contactsParseErrors, setContactsParseErrors] = useState<string[]>([]);
   const [contactsError, setContactsError] = useState<string | null>(null);
 
+  // If sources was restored as the navigation root (Expo Go dev reload),
+  // redirect to the tab root so the back button is available.
+  useEffect(() => {
+    if (!router.canGoBack()) {
+      router.replace("/(tabs)");
+    }
+  }, []);
+
   // Goodreads state
   const [grId, setGrId] = useState<string | null>(null);
   const [grInput, setGrInput] = useState("");

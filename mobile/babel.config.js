@@ -14,6 +14,7 @@ module.exports = function (api) {
             "@chronicle/journal/staging": "../src/lib/journal/staging",
             "@chronicle/journal/connectors": "../src/lib/journal/connectors",
             "@chronicle/journal/contacts": "../src/lib/journal/contacts",
+            "@chronicle/journal/merge": "../src/lib/journal/merge",
           },
           extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
         },

@@ -10,7 +10,8 @@
  * wired-up reflection editing (handled inline inside DayGroup).
  */
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import { type Entry, type JEvent, type Person, entryTitle } from "@chronicle/journal/types";
@@ -132,14 +133,40 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       padding: spacingScale["2xl"],
     },
     emptyTitle: {
-      ...textScale.xl,
+      fontSize: textScale.xl.fontSize,
+      // Omit lineHeight on Android — Lora SemiBold clips wrapped lines when
+      // lineHeight is constrained; letting Android use the font's natural
+      // metrics avoids this.
+      lineHeight: Platform.OS === "android" ? undefined : textScale.xl.lineHeight,
       fontFamily: fonts.serifSemiBold,
       fontWeight: "600",
       color: colors.textPrimary,
+      textAlign: "center",
       marginTop: spacingScale.base,
       marginBottom: spacingScale.sm,
     },
-    emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+    emptyHint: {
+      ...textScale.md,
+      color: colors.textTertiary,
+      textAlign: "center",
+    },
+    emptyHintRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      flexWrap: "wrap",
+      gap: 4,
+      paddingHorizontal: spacingScale.lg,
+    },
+    emptyExplainer: {
+      ...textScale.md,
+      fontFamily: fonts.sans,
+      color: colors.textSecondary,
+      textAlign: "center",
+      lineHeight: 22,
+      marginTop: spacingScale.xl,
+      paddingHorizontal: spacingScale.md,
+    },
   });
 }
 
@@ -279,8 +306,16 @@ export default function ChronicleScreen() {
       <View style={styles.empty}>
         <KindIcon kind="book" size={48} color={colors.textTertiary} accessibilityLabel="" />
         <Text style={styles.emptyTitle}>Your chronicle is empty</Text>
-        <Text style={styles.emptyHint}>
-          Tap the import icon above to add your first entries.
+        <View style={styles.emptyHintRow}>
+          <Text style={styles.emptyHint}>Tap</Text>
+          <Ionicons name="layers-outline" size={16} color={colors.textTertiary} />
+          <Text style={styles.emptyHint}>above to add your first entries.</Text>
+        </View>
+        <Text style={styles.emptyExplainer}>
+          Chronicle is a passive journal. Rather than writing entries yourself, Chronicle builds your journal by importing data already on your phone — calendar events, photos, and more. You can also import CSV files from services like Goodreads or Netflix.
+        </Text>
+        <Text style={[styles.emptyExplainer, { marginTop: spacingScale.md, color: colors.textTertiary }]}>
+          Data imported into Chronicle never leaves your phone. Your journal is stored only on this device.
         </Text>
       </View>
     );
