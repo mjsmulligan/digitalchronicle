@@ -8,7 +8,6 @@
  */
 import React, { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Switch,
@@ -19,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { type ThemeColors, type ThemeFonts, spacing } from "./ThemeProvider";
 import { useStagingHub, type CountryGroup, type RegionGroup } from "../lib/exif/useStagingHub";
-import { br } from "./reviewCard.styles";
+import { ReviewPanel } from "./ReviewPanel";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -126,81 +125,24 @@ export function PlaceStagingCard({
       },
     );
 
-  // ── Progress state — replaces card content while committing ──────────────────
-  if (commitProg) {
-    const pct = commitProg.total > 0 ? commitProg.done / commitProg.total : 0;
-    return (
-      <View style={[br.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={br.commitTop}>
-          <ActivityIndicator size="small" color={colors.accent} />
-          <View style={{ flex: 1 }}>
-            <Text style={[br.filename, { color: colors.textPrimary, fontFamily: fonts.sans }]}>
-              Photo library suggestions
-            </Text>
-            <Text style={[br.commitCount, { color: colors.textTertiary }]}>
-              Saving {commitProg.done} of {commitProg.total}{" "}
-              {commitProg.total === 1 ? "place" : "places"}…
-            </Text>
-          </View>
-        </View>
-        <View style={[br.track, { backgroundColor: colors.border }]}>
-          <View
-            style={[
-              br.fill,
-              { width: `${Math.round(pct * 100)}%`, backgroundColor: colors.accent },
-            ]}
-          />
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={[br.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      {/* Header — matches BatchReview */}
-      <View style={[br.header, { borderBottomColor: colors.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[br.filename, { color: colors.textPrimary, fontFamily: fonts.sans }]}>
-            Photo library suggestions
-          </Text>
-          <Text style={[br.meta, { color: colors.textTertiary }]}>
-            {allPendingIds.size} pending · {selectedCount} selected
-          </Text>
-        </View>
-        <Pressable onPress={handleDiscardAll} style={{ padding: 4 }}>
-          <Ionicons name="trash-outline" size={18} color={colors.error} />
-        </Pressable>
-      </View>
-
-      {/* Quick actions */}
-      <View style={[br.quick, { borderBottomColor: colors.borderFaint }]}>
-        <Pressable onPress={() => setDeselected(new Set())}>
-          <Text style={[br.quickText, { color: colors.accent }]}>
-            Select all ({allPendingIds.size})
-          </Text>
-        </Pressable>
-        <Pressable onPress={() => setDeselected(new Set(allPendingIds))}>
-          <Text style={[br.quickText, { color: colors.accent }]}>Deselect all</Text>
-        </Pressable>
-      </View>
-
-      {/* Commit bar */}
-      <View style={br.commitBar}>
-        <Pressable
-          style={[
-            br.commitBtn,
-            { backgroundColor: colors.accentBold },
-            !selectedCount && { opacity: 0.4 },
-          ]}
-          disabled={!selectedCount}
-          onPress={handleCommit}
-        >
-          <Text style={[br.commitBtnText, { fontFamily: fonts.sans, color: colors.white }]}>
-            Accept {selectedCount} {selectedCount === 1 ? "place" : "places"} to journal
-          </Text>
-        </Pressable>
-      </View>
-
+    <ReviewPanel
+      title="Photo library suggestions"
+      meta={`${allPendingIds.size} pending · ${selectedCount} selected`}
+      onDiscard={handleDiscardAll}
+      bulkActions={[
+        { label: `Select all (${allPendingIds.size})`, onPress: () => setDeselected(new Set()) },
+        { label: "Deselect all", onPress: () => setDeselected(new Set(allPendingIds)) },
+      ]}
+      commitLabel={`Accept ${selectedCount} ${selectedCount === 1 ? "place" : "places"} to journal`}
+      onCommit={handleCommit}
+      commitDisabled={!selectedCount}
+      committing={!!commitProg}
+      commitDone={commitProg?.done}
+      commitTotal={commitProg?.total}
+      colors={colors}
+      fonts={fonts}
+    >
       {/* Hierarchy */}
       {hub.hierarchy
         .filter((cg) => cg.pendingCount > 0)
@@ -401,7 +343,7 @@ export function PlaceStagingCard({
             </View>
           );
         })}
-    </View>
+    </ReviewPanel>
   );
 }
 
