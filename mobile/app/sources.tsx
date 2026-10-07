@@ -34,18 +34,22 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { useJournal, removeMany, type CommitProgress } from "@chronicle/journal/db";
+import { useJournal, removeMany, putMany, type CommitProgress } from "@chronicle/journal/db";
 import { stageFile, saveBatch, commitBatch } from "@chronicle/journal/staging";
 import {
   entryTitle,
   view,
+  uid,
   type StagingBatch,
   type StagedRecord,
   type StageStatus,
 } from "@chronicle/journal/types";
+import type { Person } from "@chronicle/journal/types";
+import { readDeviceContacts } from "../src/lib/deviceContacts";
+import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, spacing, radius } from "../src/components/ThemeProvider";
 import { KindIcon } from "../src/components/KindIcon";
@@ -65,7 +69,40 @@ import type { CountryGroup, RegionGroup, PlaceGroup } from "../src/lib/exif/useS
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ActiveSource = "calendar" | "goodreads" | "file" | null;
+type ActiveSource = "calendar" | "goodreads" | "file" | "contacts" | null;
+
+type ContactStatus = "new" | "duplicate";
+
+interface ReviewContact {
+  draft: ContactDraft;
+  sourceRow: number;
+  status: ContactStatus;
+  matchId?: string;
+  selected: boolean;
+}
+
+type ContactsPhase = "idle" | "parsing" | "review" | "committing";
+
+// ─── Contact helpers ──────────────────────────────────────────────────────────
+
+function normContactName(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+function buildReviewContacts(
+  contacts: { draft: ContactDraft; sourceRow: number }[],
+  existing: Person[],
+): ReviewContact[] {
+  const byName = new Map(existing.map((p) => [normContactName(p.name), p]));
+  const seenInBatch = new Set<string>();
+  return contacts.map(({ draft, sourceRow }) => {
+    const key = normContactName(draft.name);
+    const match = byName.get(key);
+    const isDupe = seenInBatch.has(key) || !!match;
+    seenInBatch.add(key);
+    return { draft, sourceRow, status: isDupe ? "duplicate" : "new", matchId: match?.id, selected: !isDupe };
+  });
+}
 
 // ─── Batch review helpers (same as old import.tsx) ────────────────────────────
 
@@ -653,41 +690,174 @@ function CalendarSourceCard({
 
 function ContactsSourceCard({
   peopleCount,
+  phase,
   disabled,
-  onManage,
+  onImportFromDevice,
+  onPickFile,
   colors,
   fonts,
 }: {
   peopleCount: number;
+  phase: ContactsPhase;
   disabled: boolean;
-  onManage: () => void;
+  onImportFromDevice: () => void;
+  onPickFile: () => void;
   colors: any;
   fonts: any;
 }) {
+  const parsing = phase === "parsing" || phase === "committing";
   return (
     <SourceCard
       icon="people-outline"
       title="Phone contacts"
       statusText={
-        peopleCount > 0
+        parsing
+          ? phase === "parsing" ? "Reading contacts…" : "Saving…"
+          : peopleCount > 0
           ? `${peopleCount} ${peopleCount === 1 ? "person" : "people"} added`
           : "Add people from your address book to tag them in entries"
       }
-      active={false}
+      active={parsing}
       progressPct={0}
       colors={colors}
       fonts={fonts}
       action={
-        <SrcButton
-          label="Manage"
-          onPress={onManage}
-          disabled={disabled}
-          colors={colors}
-          fonts={fonts}
-          variant="ghost"
-        />
+        parsing ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : (
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <SrcButton
+              label="From device"
+              onPress={onImportFromDevice}
+              disabled={disabled}
+              colors={colors}
+              fonts={fonts}
+            />
+            <SrcButton
+              label="File"
+              onPress={onPickFile}
+              disabled={disabled}
+              colors={colors}
+              fonts={fonts}
+              variant="ghost"
+            />
+          </View>
+        )
       }
     />
+  );
+}
+
+// ─── Contacts review panel ────────────────────────────────────────────────────
+
+function ContactsReviewPanel({
+  contacts,
+  parseErrors,
+  onToggle,
+  onSelectAll,
+  onDeselectAll,
+  onCommit,
+  onDiscard,
+  colors,
+  fonts,
+}: {
+  contacts: ReviewContact[];
+  parseErrors: string[];
+  onToggle: (idx: number, selected: boolean) => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onCommit: () => void;
+  onDiscard: () => void;
+  colors: any;
+  fonts: any;
+}) {
+  const newCount = contacts.filter((c) => c.status === "new").length;
+  const selectedCount = contacts.filter((c) => c.selected).length;
+
+  return (
+    <View style={{
+      marginHorizontal: spacing.lg,
+      marginBottom: spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+    }}>
+      {/* Header */}
+      <View style={{ padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+        <Text style={{ fontSize: 13, color: colors.textSecondary, fontFamily: fonts.sans }}>
+          {contacts.length} contacts · {newCount} new · {selectedCount} selected
+        </Text>
+        <Pressable onPress={onDiscard} hitSlop={8}>
+          <Ionicons name="close" size={16} color={colors.textMuted} />
+        </Pressable>
+      </View>
+
+      {/* Quick actions */}
+      <View style={{ flexDirection: "row", gap: spacing.base, padding: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <Pressable onPress={onSelectAll}><Text style={{ fontSize: 12, color: colors.accent, fontWeight: "600" }}>Select new ({newCount})</Text></Pressable>
+        <Pressable onPress={onDeselectAll}><Text style={{ fontSize: 12, color: colors.accent, fontWeight: "600" }}>Deselect all</Text></Pressable>
+      </View>
+
+      {/* Parse errors */}
+      {parseErrors.length > 0 && (
+        <View style={{ backgroundColor: colors.errorBg, padding: spacing.sm, paddingHorizontal: spacing.md }}>
+          {parseErrors.slice(0, 3).map((e, i) => (
+            <Text key={i} style={{ fontSize: 12, color: colors.errorLight, marginBottom: 2 }}>{e}</Text>
+          ))}
+          {parseErrors.length > 3 && <Text style={{ fontSize: 12, color: colors.errorLight }}>…and {parseErrors.length - 3} more</Text>}
+        </View>
+      )}
+
+      {/* Contact list */}
+      {contacts.map((contact, idx) => {
+        const isNew = contact.status === "new";
+        return (
+          <View key={idx} style={{
+            flexDirection: "row", alignItems: "center",
+            paddingHorizontal: spacing.md, paddingVertical: 10,
+            borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
+            gap: 10, opacity: isNew ? 1 : 0.45,
+          }}>
+            <Switch
+              value={contact.selected}
+              onValueChange={(v) => onToggle(idx, v)}
+              disabled={!isNew}
+              trackColor={{ true: colors.accent, false: colors.border }}
+              thumbColor={contact.selected ? colors.accentSoft : colors.textMuted}
+              style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, color: colors.textPrimary, fontWeight: "500", fontFamily: fonts.sans }}>{contact.draft.name}</Text>
+              {contact.draft.aliases?.length ? (
+                <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }} numberOfLines={1}>{contact.draft.aliases.join(", ")}</Text>
+              ) : null}
+            </View>
+            <Text style={{ fontSize: 11, fontWeight: "700", textTransform: "uppercase", color: isNew ? colors.success : colors.textMuted }}>
+              {isNew ? "new" : "exists"}
+            </Text>
+          </View>
+        );
+      })}
+
+      {/* Commit bar */}
+      <View style={{ padding: spacing.md }}>
+        <Pressable
+          style={{
+            backgroundColor: selectedCount > 0 ? colors.accentBold : colors.border,
+            borderRadius: radius.lg, paddingVertical: 14, alignItems: "center",
+            opacity: selectedCount > 0 ? 1 : 0.5,
+          }}
+          onPress={onCommit}
+          disabled={selectedCount === 0}
+        >
+          <Text style={{ fontSize: 15, color: "#fff", fontWeight: "700", fontFamily: fonts.sansMedium ?? fonts.sans }}>
+            Add {selectedCount} {selectedCount === 1 ? "person" : "people"}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -1186,6 +1356,7 @@ const pscS = StyleSheet.create({
 
 export default function SourcesScreen() {
   const router = useRouter();
+  const { uri: incomingUri } = useLocalSearchParams<{ uri?: string }>();
   const { top } = useSafeAreaInsets();
   const { colors, fonts } = useTheme();
   const journal = useJournal();
@@ -1195,6 +1366,12 @@ export default function SourcesScreen() {
   const [activeSource, setActiveSource] = useState<ActiveSource>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [freshBatch, setFreshBatch] = useState<StagingBatch | null>(null);
+
+  // Contacts state
+  const [contactsPhase, setContactsPhase] = useState<ContactsPhase>("idle");
+  const [contactsReview, setContactsReview] = useState<ReviewContact[]>([]);
+  const [contactsParseErrors, setContactsParseErrors] = useState<string[]>([]);
+  const [contactsError, setContactsError] = useState<string | null>(null);
 
   // Goodreads state
   const [grId, setGrId] = useState<string | null>(null);
@@ -1248,6 +1425,127 @@ export default function SourcesScreen() {
       setParseError(String(err));
     }
   };
+
+  const importContactsFromDevice = async () => {
+    setActiveSource("contacts");
+    setContactsPhase("parsing");
+    setContactsError(null);
+    try {
+      const res = await readDeviceContacts();
+      if (res.status === "unavailable") {
+        dialog.alert("Not available", "Phone contacts can't be read on this device. Use a contacts file instead.");
+        setContactsPhase("idle");
+        setActiveSource(null);
+        return;
+      }
+      if (res.status === "denied") {
+        dialog.alert(
+          "Contacts access needed",
+          res.canAskAgain
+            ? "Chronicle needs permission to read your contacts. Nothing leaves your phone."
+            : "Contacts access is turned off. Enable it for Chronicle in your phone's Settings, then try again.",
+          res.canAskAgain ? undefined : () => { Linking.openSettings(); },
+        );
+        setContactsPhase("idle");
+        setActiveSource(null);
+        return;
+      }
+      if (!res.contacts.length) {
+        dialog.alert("No contacts found", "Your phone's address book has no named contacts.");
+        setContactsPhase("idle");
+        setActiveSource(null);
+        return;
+      }
+      setContactsReview(buildReviewContacts(res.contacts, journal.people));
+      setContactsParseErrors([]);
+      setContactsPhase("review");
+    } catch (err) {
+      setContactsError(String(err));
+      setContactsPhase("idle");
+      setActiveSource(null);
+    }
+  };
+
+  const importContactsFromFile = async (uri: string, filename: string) => {
+    setActiveSource("contacts");
+    setContactsPhase("parsing");
+    setContactsError(null);
+    await new Promise<void>((r) => setTimeout(r, 50));
+    try {
+      const response = await fetch(uri);
+      if (!response.ok) throw new Error(`Could not read file (HTTP ${response.status})`);
+      const text = await response.text();
+      await new Promise<void>((r) => setTimeout(r, 0));
+      const result = parseContacts(filename, text);
+      if (!result.contacts.length && result.errors.length) throw new Error(result.errors[0]);
+      setContactsReview(buildReviewContacts(result.contacts, journal.people));
+      setContactsParseErrors(result.errors);
+      setContactsPhase("review");
+    } catch (err) {
+      setContactsError(String(err));
+      setContactsPhase("idle");
+      setActiveSource(null);
+    }
+  };
+
+  const pickContactsFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["text/vcard", "text/x-vcard", "text/csv", "*/*"],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const { uri, name } = result.assets[0];
+      await importContactsFromFile(uri, name ?? "contacts");
+    } catch (err) {
+      setContactsError(String(err));
+    }
+  };
+
+  const commitContacts = async () => {
+    const toAdd = contactsReview.filter((c) => c.selected);
+    if (!toAdd.length) return;
+    setContactsPhase("committing");
+    try {
+      const now = new Date().toISOString();
+      const people: Person[] = toAdd.map(({ draft }) => ({
+        id: uid(),
+        name: draft.name,
+        ...(draft.aliases?.length ? { aliases: draft.aliases } : {}),
+        createdAt: now,
+      }));
+      await putMany("people", people);
+      setContactsReview([]);
+      setContactsPhase("idle");
+      setActiveSource(null);
+      dialog.alert("Import complete", `${people.length} ${people.length === 1 ? "person" : "people"} added.`);
+    } catch (err) {
+      dialog.alert("Commit failed", String(err));
+      setContactsPhase("review");
+    }
+  };
+
+  const toggleContactSelected = (idx: number, selected: boolean) => {
+    setContactsReview((prev) => prev.map((c, i) => (i === idx ? { ...c, selected } : c)));
+  };
+
+  const discardContactsReview = () => {
+    setContactsReview([]);
+    setContactsPhase("idle");
+    setActiveSource(null);
+  };
+
+  useEffect(() => {
+    if (!incomingUri) return;
+    const filename = incomingUri.split("/").pop() ?? "shared-file";
+    const lower = filename.toLowerCase();
+    if (lower.endsWith(".vcf") || lower.endsWith(".vcard")) {
+      void importContactsFromFile(incomingUri, filename);
+    } else {
+      void processUri(incomingUri, filename);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingUri]);
 
   const importFromCalendar = async () => {
     setActiveSource("calendar");
@@ -1424,11 +1722,33 @@ export default function SourcesScreen() {
 
         <ContactsSourceCard
           peopleCount={journal.people.length}
-          disabled={anyActive}
-          onManage={() => router.push("/import-people")}
+          phase={contactsPhase}
+          disabled={anyActive && activeSource !== "contacts"}
+          onImportFromDevice={importContactsFromDevice}
+          onPickFile={pickContactsFile}
           colors={colors}
           fonts={fonts}
         />
+
+        {/* Contacts review */}
+        {contactsPhase === "review" && contactsReview.length > 0 && (
+          <ContactsReviewPanel
+            contacts={contactsReview}
+            parseErrors={contactsParseErrors}
+            onToggle={toggleContactSelected}
+            onSelectAll={() => setContactsReview((prev) => prev.map((c) => ({ ...c, selected: c.status === "new" })))}
+            onDeselectAll={() => setContactsReview((prev) => prev.map((c) => ({ ...c, selected: false })))}
+            onCommit={commitContacts}
+            onDiscard={discardContactsReview}
+            colors={colors}
+            fonts={fonts}
+          />
+        )}
+        {contactsError && contactsPhase === "idle" && (
+          <View style={{ backgroundColor: colors.errorBg, borderRadius: radius.md, padding: spacing.md, marginHorizontal: spacing.lg, marginBottom: spacing.md }}>
+            <Text style={{ color: colors.errorLight, fontSize: 13 }}>{contactsError}</Text>
+          </View>
+        )}
 
         {/* ── Online ──────────────────────────────────────────────────────── */}
         <SectionLabel label="Online" colors={colors} />
