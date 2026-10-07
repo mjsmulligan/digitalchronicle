@@ -10,7 +10,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 import { clearAll, allHiddenEntries, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
-// useExifScan removed — scan has moved to Sources page (WP15)
 
 export default function SettingsScreen() {
   const journal = useJournal();
@@ -65,52 +64,6 @@ export default function SettingsScreen() {
       color: colors.textMuted,
       textAlign: "center",
     },
-
-    // ── Photo library section ─────────────────────────────────────────
-    scanBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: spacing.sm,
-      backgroundColor: colors.accent,
-      borderRadius: radius.xl,
-      paddingVertical: 14,
-      marginBottom: spacing.sm,
-    },
-    scanBtnDisabled: { opacity: 0.5 },
-    scanBtnText: { ...text.base, color: colors.white, fontWeight: "600" },
-
-    cancelBtn: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: spacing.sm,
-      backgroundColor: colors.surface,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingVertical: 14,
-      marginBottom: spacing.sm,
-    },
-    cancelBtnText: { ...text.base, color: colors.textPrimary, fontWeight: "600" },
-
-    scanStatus: {
-      ...text.sm,
-      color: colors.textMuted,
-      textAlign: "center",
-      marginBottom: spacing.sm,
-    },
-    scanStatusDone: { color: colors.accent },
-    scanStatusError: { color: colors.error },
-
-    progressRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: spacing.sm,
-      justifyContent: "center",
-      marginBottom: spacing.sm,
-    },
-    progressText: { ...text.sm, color: colors.textDim },
 
     // ── Appearance section ────────────────────────────────────────────
     themeRow: {

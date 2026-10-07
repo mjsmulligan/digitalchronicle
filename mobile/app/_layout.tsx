@@ -192,7 +192,7 @@ function RootLayoutInner() {
           }}
         />
       </Stack>
-      <StatusBar style="light" />
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
     </>
   );
 }

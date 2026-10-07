@@ -23,7 +23,7 @@
  * Accepts `colors` and `fonts` as props so it is safe inside FlatList
  * renderItem without calling useTheme() per row.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { type Entry, type Note } from "@chronicle/journal/types";
 import { type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "./ThemeProvider";
@@ -156,7 +156,7 @@ export interface DayGroupProps {
  */
 export function DayGroup({ group, colors, fonts, onEntryPress, showReflection = true }: DayGroupProps) {
   const { num, day, month, year } = parseDay(group.iso);
-  const styles = createStyles(colors, fonts);
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   return (
     <View style={styles.outer}>

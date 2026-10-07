@@ -9,7 +9,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import type { Trip } from "@chronicle/journal/types";
+import type { Trip, Leg } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
 
@@ -307,9 +307,10 @@ export default function TripsScreen() {
       if (!statMap.has(e.tripId)) statMap.set(e.tripId, { count: 0, flights: 0, trains: 0, stays: 0, events: 0 });
       const s = statMap.get(e.tripId)!;
       s.count++;
-      if (e.kind === "leg" && (e as any).mode === "air")  s.flights++;
-      else if (e.kind === "leg" && (e as any).mode === "rail") s.trains++;
-      else if (e.kind === "stay")  s.stays++;
+      if (e.kind === "leg") {
+        if ((e as Leg).mode === "air") s.flights++;
+        else if ((e as Leg).mode === "rail") s.trains++;
+      } else if (e.kind === "stay")  s.stays++;
       else if (e.kind === "event") s.events++;
     }
 

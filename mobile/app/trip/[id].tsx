@@ -8,7 +8,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, storeFor } from "@chronicle/journal/db";
-import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
+import { entryTitle, view, type Entry, type Trip, type Leg } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
@@ -552,8 +552,8 @@ export default function TripDetailScreen() {
           {/* Trip summary card */}
           {(() => {
             const headerStats: { kind: string; subkind?: string; count: number }[] = [
-              { kind: "leg",   subkind: "air",  count: entries.filter((e) => e.kind === "leg"   && (e as any).mode === "air").length  },
-              { kind: "leg",   subkind: "rail", count: entries.filter((e) => e.kind === "leg"   && (e as any).mode === "rail").length },
+              { kind: "leg",   subkind: "air",  count: entries.filter((e) => e.kind === "leg"   && (e as Leg).mode === "air").length  },
+              { kind: "leg",   subkind: "rail", count: entries.filter((e) => e.kind === "leg"   && (e as Leg).mode === "rail").length },
               { kind: "stay",                   count: entries.filter((e) => e.kind === "stay").length  },
               { kind: "event",                  count: entries.filter((e) => e.kind === "event").length },
             ].filter((s) => s.count > 0);
