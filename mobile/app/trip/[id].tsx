@@ -47,7 +47,7 @@ function entrySubkind(e: Entry): string | undefined {
   return undefined;
 }
 
-function groupByDay(entries: Entry[]): DayGroup[] {
+function groupByDay(entries: Entry[]): TripDayGroup[] {
   const map = new Map<string, Entry[]>();
   for (const e of entries) {
     const day = e.start.slice(0, 10);
@@ -63,7 +63,7 @@ const PURPOSE_KIND: Record<string, string> = {
 
 // ── data ──────────────────────────────────────────────────────────────────────
 
-interface DayGroup {
+interface TripDayGroup {
   iso: string;
   items: Entry[];
 }
@@ -279,7 +279,7 @@ function SuggestionCard({
 }
 
 /** Two-column date row for linked entries — uses shared EntryRow */
-function EntryDayGroup({ group, styles, colors, fonts, router, onRemove }: { group: DayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter>; onRemove?: (entry: Entry) => void }) {
+function EntryDayGroup({ group, styles, colors, fonts, router, onRemove }: { group: TripDayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter>; onRemove?: (entry: Entry) => void }) {
   const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
@@ -316,7 +316,7 @@ function SuggestionDayGroup({
   styles,
   colors,
 }: {
-  group: DayGroup;
+  group: TripDayGroup;
   addingId: string | null;
   onAdd: (entry: Entry) => void;
   styles: Styles;
@@ -465,9 +465,9 @@ export default function TripDetailScreen() {
   const suggestGroups = groupByDay(suggestions);
 
   type ListItem =
-    | { kind: "entryDay";      group: DayGroup }
+    | { kind: "entryDay";      group: TripDayGroup }
     | { kind: "suggestHeader" }
-    | { kind: "suggestDay";    group: DayGroup };
+    | { kind: "suggestDay";    group: TripDayGroup };
 
   const listData: ListItem[] = [
     ...entryGroups.map((g) => ({ kind: "entryDay" as const, group: g })),
