@@ -3,11 +3,10 @@
  *
  * Shows a list of parsed StagedRecords with a Switch per row. The user
  * selects which entries to keep, then commits them to the journal.
- * While committing, the card collapses to a slim animated progress bar.
+ * While committing, ReviewPanel collapses the card to a slim progress bar.
  */
 import React, { useCallback, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   StyleSheet,
@@ -15,7 +14,6 @@ import {
   Text,
   View,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import { saveBatch, commitBatch } from "@chronicle/journal/staging";
 import {
   entryTitle,
@@ -27,7 +25,7 @@ import {
 import type { CommitProgress } from "@chronicle/journal/db";
 import { type ThemeColors, type ThemeFonts, spacing, radius } from "./ThemeProvider";
 import { KindIcon } from "./KindIcon";
-import { br } from "./reviewCard.styles";
+import { ReviewPanel } from "./ReviewPanel";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -163,11 +161,6 @@ export function BatchReview({
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
 
   const committing = commitProgress?.batchId === batch.id;
-  const progressPct =
-    committing && commitProgress!.total > 0
-      ? commitProgress!.done / commitProgress!.total
-      : 0;
-
   const selected = b.records.filter((r) => r.selected).length;
   const importable = b.records.filter((r) => isSelectable(r.status)).length;
   const visibleRecords = b.records.slice(0, visibleCount);
@@ -197,87 +190,25 @@ export function BatchReview({
     }
   };
 
-  // Committing → slim progress card
-  if (committing) {
-    return (
-      <View style={[br.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={br.commitTop}>
-          <ActivityIndicator size="small" color={colors.accent} />
-          <View style={{ flex: 1 }}>
-            <Text style={[br.filename, { color: colors.textPrimary, fontFamily: fonts.sans }]} numberOfLines={1}>
-              {b.filename}
-            </Text>
-            <Text style={[br.commitCount, { color: colors.textTertiary }]}>
-              Saving {commitProgress!.done} of {commitProgress!.total} entries…
-            </Text>
-          </View>
-        </View>
-        <View style={[br.track, { backgroundColor: colors.border }]}>
-          <View style={[br.fill, { width: `${Math.round(progressPct * 100)}%`, backgroundColor: colors.accent }]} />
-        </View>
-      </View>
-    );
-  }
-
   return (
-    <View style={[br.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      {/* Header */}
-      <View style={[br.header, { borderBottomColor: colors.border }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={[br.filename, { color: colors.textPrimary, fontFamily: fonts.sans }]} numberOfLines={1}>
-            {b.filename}
-          </Text>
-          <Text style={[br.meta, { color: colors.textTertiary }]}>
-            {b.records.length} parsed · {b.errors.length} errors · {selected} selected
-          </Text>
-        </View>
-        <Pressable onPress={onDiscard} style={{ padding: 4 }}>
-          <Ionicons name="trash-outline" size={18} color={colors.error} />
-        </Pressable>
-      </View>
-
-      {/* Parse errors */}
-      {b.errors.length > 0 && (
-        <View style={[br.errBox, { backgroundColor: colors.errorBg, borderBottomColor: colors.border }]}>
-          {b.errors.slice(0, 3).map((e, i) => (
-            <Text key={i} style={[br.errText, { color: colors.errorLight }]} numberOfLines={2}>
-              {e}
-            </Text>
-          ))}
-          {b.errors.length > 3 && (
-            <Text style={[br.errText, { color: colors.errorLight }]}>
-              …and {b.errors.length - 3} more
-            </Text>
-          )}
-        </View>
-      )}
-
-      {/* Quick actions */}
-      <View style={[br.quick, { borderBottomColor: colors.borderFaint }]}>
-        <Pressable onPress={selectImportable}>
-          <Text style={[br.quickText, { color: colors.accent }]}>
-            Select importable ({importable})
-          </Text>
-        </Pressable>
-        <Pressable onPress={deselectAll}>
-          <Text style={[br.quickText, { color: colors.accent }]}>Deselect all</Text>
-        </Pressable>
-      </View>
-
-      {/* Commit bar */}
-      <View style={br.commitBar}>
-        <Pressable
-          style={[br.commitBtn, { backgroundColor: colors.accentBold }, !selected && { opacity: 0.4 }]}
-          disabled={!selected}
-          onPress={handleCommit}
-        >
-          <Text style={[br.commitBtnText, { fontFamily: fonts.sans, color: colors.white }]}>
-            Commit {selected} {selected === 1 ? "entry" : "entries"} to journal
-          </Text>
-        </Pressable>
-      </View>
-
-      {/* Record list */}
+    <ReviewPanel
+      title={b.filename}
+      meta={`${b.records.length} parsed · ${b.errors.length} errors · ${selected} selected`}
+      onDiscard={onDiscard}
+      errors={b.errors}
+      bulkActions={[
+        { label: `Select importable (${importable})`, onPress: selectImportable },
+        { label: "Deselect all", onPress: deselectAll },
+      ]}
+      commitLabel={`Commit ${selected} ${selected === 1 ? "entry" : "entries"} to journal`}
+      onCommit={handleCommit}
+      commitDisabled={!selected}
+      committing={committing}
+      commitDone={commitProgress?.done}
+      commitTotal={commitProgress?.total}
+      colors={colors}
+      fonts={fonts}
+    >
       <FlatList
         data={visibleRecords}
         keyExtractor={(r) => r.entry.id}
@@ -293,16 +224,21 @@ export function BatchReview({
         ListFooterComponent={
           hiddenCount > 0 ? (
             <Pressable
-              style={[br.loadMore, { borderTopColor: colors.border }]}
+              style={[lm.btn, { borderTopColor: colors.border }]}
               onPress={() => setVisibleCount((n) => n + INITIAL_VISIBLE)}
             >
-              <Text style={[br.loadMoreText, { color: colors.accent }]}>
+              <Text style={[lm.text, { color: colors.accent }]}>
                 Show next {Math.min(INITIAL_VISIBLE, hiddenCount)} of {hiddenCount} remaining
               </Text>
             </Pressable>
           ) : null
         }
       />
-    </View>
+    </ReviewPanel>
   );
 }
+
+const lm = StyleSheet.create({
+  btn: { padding: spacing.md, alignItems: "center", borderTopWidth: StyleSheet.hairlineWidth },
+  text: { fontSize: 13, fontWeight: "600" },
+});

@@ -29,7 +29,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -48,9 +47,9 @@ import { readDeviceContacts } from "../src/lib/deviceContacts";
 import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, spacing, radius, type ThemeColors, type ThemeFonts } from "../src/components/ThemeProvider";
-import { KindIcon } from "../src/components/KindIcon";
 import { BatchReview } from "../src/components/BatchReview";
 import { PlaceStagingCard } from "../src/components/PlaceStagingCard";
+import { ContactsReviewPanel, type ReviewContact, buildReviewContacts } from "../src/components/ContactsReviewPanel";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { PhotoSourceEntry } from "../src/components/PhotoSourceEntry";
 import { readDeviceCalendar } from "../src/lib/deviceCalendar";
@@ -68,38 +67,7 @@ import { useStagingHub } from "../src/lib/exif/useStagingHub";
 
 type ActiveSource = "calendar" | "goodreads" | "file" | "contacts" | null;
 
-type ContactStatus = "new" | "duplicate";
-
-interface ReviewContact {
-  draft: ContactDraft;
-  sourceRow: number;
-  status: ContactStatus;
-  matchId?: string;
-  selected: boolean;
-}
-
 type ContactsPhase = "idle" | "parsing" | "review" | "committing";
-
-// ─── Contact helpers ──────────────────────────────────────────────────────────
-
-function normContactName(s: string): string {
-  return s.trim().toLowerCase();
-}
-
-function buildReviewContacts(
-  contacts: { draft: ContactDraft; sourceRow: number }[],
-  existing: Person[],
-): ReviewContact[] {
-  const byName = new Map(existing.map((p) => [normContactName(p.name), p]));
-  const seenInBatch = new Set<string>();
-  return contacts.map(({ draft, sourceRow }) => {
-    const key = normContactName(draft.name);
-    const match = byName.get(key);
-    const isDupe = seenInBatch.has(key) || !!match;
-    seenInBatch.add(key);
-    return { draft, sourceRow, status: isDupe ? "duplicate" : "new", matchId: match?.id, selected: !isDupe };
-  });
-}
 
 // ─── Source card chrome ───────────────────────────────────────────────────────
 //
@@ -406,119 +374,6 @@ function ContactsSourceCard({
         )
       }
     />
-  );
-}
-
-// ─── Contacts review panel ────────────────────────────────────────────────────
-
-function ContactsReviewPanel({
-  contacts,
-  parseErrors,
-  onToggle,
-  onSelectAll,
-  onDeselectAll,
-  onCommit,
-  onDiscard,
-  colors,
-  fonts,
-}: {
-  contacts: ReviewContact[];
-  parseErrors: string[];
-  onToggle: (idx: number, selected: boolean) => void;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
-  onCommit: () => void;
-  onDiscard: () => void;
-  colors: ThemeColors;
-  fonts: ThemeFonts;
-}) {
-  const newCount = contacts.filter((c) => c.status === "new").length;
-  const selectedCount = contacts.filter((c) => c.selected).length;
-
-  return (
-    <View style={{
-      marginHorizontal: spacing.lg,
-      marginBottom: spacing.md,
-      backgroundColor: colors.surface,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      borderColor: colors.border,
-      overflow: "hidden",
-    }}>
-      {/* Header */}
-      <View style={{ padding: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <Text style={{ fontSize: 13, color: colors.textSecondary, fontFamily: fonts.sans }}>
-          {contacts.length} contacts · {newCount} new · {selectedCount} selected
-        </Text>
-        <Pressable onPress={onDiscard} hitSlop={8}>
-          <Ionicons name="close" size={16} color={colors.textMuted} />
-        </Pressable>
-      </View>
-
-      {/* Quick actions */}
-      <View style={{ flexDirection: "row", gap: spacing.base, padding: spacing.sm, paddingHorizontal: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-        <Pressable onPress={onSelectAll}><Text style={{ fontSize: 12, color: colors.accent, fontWeight: "600" }}>Select new ({newCount})</Text></Pressable>
-        <Pressable onPress={onDeselectAll}><Text style={{ fontSize: 12, color: colors.accent, fontWeight: "600" }}>Deselect all</Text></Pressable>
-      </View>
-
-      {/* Parse errors */}
-      {parseErrors.length > 0 && (
-        <View style={{ backgroundColor: colors.errorBg, padding: spacing.sm, paddingHorizontal: spacing.md }}>
-          {parseErrors.slice(0, 3).map((e, i) => (
-            <Text key={i} style={{ fontSize: 12, color: colors.errorLight, marginBottom: 2 }}>{e}</Text>
-          ))}
-          {parseErrors.length > 3 && <Text style={{ fontSize: 12, color: colors.errorLight }}>…and {parseErrors.length - 3} more</Text>}
-        </View>
-      )}
-
-      {/* Contact list */}
-      {contacts.map((contact, idx) => {
-        const isNew = contact.status === "new";
-        return (
-          <View key={idx} style={{
-            flexDirection: "row", alignItems: "center",
-            paddingHorizontal: spacing.md, paddingVertical: 10,
-            borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,
-            gap: 10, opacity: isNew ? 1 : 0.45,
-          }}>
-            <Switch
-              value={contact.selected}
-              onValueChange={(v) => onToggle(idx, v)}
-              disabled={!isNew}
-              trackColor={{ true: colors.accent, false: colors.border }}
-              thumbColor={contact.selected ? colors.accentSoft : colors.textMuted}
-              style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 14, color: colors.textPrimary, fontWeight: "500", fontFamily: fonts.sans }}>{contact.draft.name}</Text>
-              {contact.draft.aliases?.length ? (
-                <Text style={{ fontSize: 12, color: colors.textTertiary, marginTop: 2 }} numberOfLines={1}>{contact.draft.aliases.join(", ")}</Text>
-              ) : null}
-            </View>
-            <Text style={{ fontSize: 11, fontWeight: "700", textTransform: "uppercase", color: isNew ? colors.success : colors.textMuted }}>
-              {isNew ? "new" : "exists"}
-            </Text>
-          </View>
-        );
-      })}
-
-      {/* Commit bar */}
-      <View style={{ padding: spacing.md }}>
-        <Pressable
-          style={{
-            backgroundColor: selectedCount > 0 ? colors.accentBold : colors.border,
-            borderRadius: radius.lg, paddingVertical: 14, alignItems: "center",
-            opacity: selectedCount > 0 ? 1 : 0.5,
-          }}
-          onPress={onCommit}
-          disabled={selectedCount === 0}
-        >
-          <Text style={{ fontSize: 15, color: "#fff", fontWeight: "700", fontFamily: fonts.sansMedium ?? fonts.sans }}>
-            Add {selectedCount} {selectedCount === 1 ? "person" : "people"}
-          </Text>
-        </Pressable>
-      </View>
-    </View>
   );
 }
 
