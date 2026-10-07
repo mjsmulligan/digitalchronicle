@@ -31,18 +31,12 @@ function clean(s: string | null | undefined): string {
 async function imageToBase64(image: Contacts.Image): Promise<string | null> {
   // 1. Already decoded
   if (image.base64) {
-    console.log("[contacts] using base64 field directly");
     const b64 = image.base64.replace(/^data:image\/[^;]+;base64,/, "");
     return b64 ? `data:image/jpeg;base64,${b64}` : null;
   }
 
   const uri = image.uri;
-  if (!uri) {
-    console.log("[contacts] image has no uri and no base64");
-    return null;
-  }
-
-  console.log("[contacts] image uri scheme:", uri.slice(0, 20));
+  if (!uri) return null;
 
   // 2. file:// — FileSystem handles this on both platforms
   if (uri.startsWith("file://")) {
@@ -50,10 +44,8 @@ async function imageToBase64(image: Contacts.Image): Promise<string | null> {
       const b64 = await FileSystem.readAsStringAsync(uri, {
         encoding: FileSystem.EncodingType.Base64,
       });
-      console.log("[contacts] FileSystem read ok, length:", b64?.length ?? 0);
       return b64 ? `data:image/jpeg;base64,${b64}` : null;
-    } catch (e) {
-      console.log("[contacts] FileSystem read failed:", e);
+    } catch {
       return null;
     }
   }
@@ -62,7 +54,6 @@ async function imageToBase64(image: Contacts.Image): Promise<string | null> {
   //    Copy to the Expo cache dir first (uses Android ContentResolver), then
   //    read the cached file as base64.
   try {
-    console.log("[contacts] content:// full uri:", uri);
     const dest = `${FileSystem.cacheDirectory}contact_photo_${Date.now()}.jpg`;
     await FileSystem.copyAsync({ from: uri, to: dest });
     const b64 = await FileSystem.readAsStringAsync(dest, {
@@ -70,10 +61,8 @@ async function imageToBase64(image: Contacts.Image): Promise<string | null> {
     });
     // Clean up — fire-and-forget, failure is harmless
     FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
-    console.log("[contacts] content:// copy+read ok, length:", b64?.length ?? 0);
     return b64 ? `data:image/jpeg;base64,${b64}` : null;
-  } catch (e) {
-    console.log("[contacts] content:// copy failed:", e);
+  } catch {
     return null;
   }
 }
@@ -115,13 +104,6 @@ export async function readDeviceContacts(): Promise<DeviceContactsResult> {
     ],
     sort: Contacts.SortTypes.FirstName,
   });
-
-  // DEBUG — log first contact's image fields to confirm shape
-  if (data.length > 0) {
-    const sample = data[0];
-    console.log("[contacts] sample imageAvailable:", sample.imageAvailable);
-    console.log("[contacts] sample image:", JSON.stringify(sample.image));
-  }
 
   // Build drafts (synchronous pass)
   const seen = new Set<string>();
