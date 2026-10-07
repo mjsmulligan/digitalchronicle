@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
+import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
 import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
@@ -336,6 +337,7 @@ export default function EntryDetailScreen() {
   const dialog = useDialog();
   const [mergeVisible, setMergeVisible] = useState(false);
   const [mergeSaving, setMergeSaving] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
@@ -491,6 +493,20 @@ export default function EntryDetailScreen() {
     );
   };
 
+  const handleParticipantsConfirm = async (ids: string[]) => {
+    if (!entry) return;
+    try {
+      const updated = {
+        ...entry,
+        participants: ids.length > 0 ? ids : undefined,
+      };
+      await putMany(storeFor(entry), [updated]);
+    } catch (err) {
+      dialog.alert("Could not save", String(err));
+    }
+    setPickerVisible(false);
+  };
+
   if (!entry) {
     return (
       <View style={styles.notFound}>
@@ -500,8 +516,8 @@ export default function EntryDetailScreen() {
     );
   }
 
-  const participants = entry.participants
-    ?.map((pid) => journal.people.find((p) => p.id === pid)?.name ?? pid)
+  const participantNames = (entry.participants ?? [])
+    .map((pid) => journal.people.find((p) => p.id === pid)?.name ?? pid)
     .join(", ");
 
   const reflection = entry.reflection ?? (entry as any).journal;
@@ -566,12 +582,21 @@ export default function EntryDetailScreen() {
         </View>
       )}
 
-      {/* People */}
-      {participants && (
-        <View style={styles.metaCard}>
-          <Field label="With" value={participants} styles={styles} />
+      {/* People — always visible; tap to edit */}
+      <Pressable
+        style={({ pressed }) => [styles.metaCard, pressed && { opacity: 0.7 }]}
+        onPress={() => setPickerVisible(true)}
+      >
+        <View style={styles.sourceFieldRow}>
+          <Text style={styles.fieldLabel}>With</Text>
+          <View style={[styles.sourceValue, { gap: 4 }]}>
+            <Text style={[styles.fieldValue, !participantNames && { color: colors.textMuted }]} numberOfLines={1}>
+              {participantNames || "Add people…"}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+          </View>
         </View>
-      )}
+      </Pressable>
 
       {/* Source */}
       <View style={styles.metaCard}>
@@ -633,6 +658,13 @@ export default function EntryDetailScreen() {
       </Pressable>
     </Modal>
 
+    <ParticipantPicker
+      visible={pickerVisible}
+      selected={entry.participants ?? []}
+      people={journal.people}
+      onConfirm={handleParticipantsConfirm}
+      onDismiss={() => setPickerVisible(false)}
+    />
     <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>
   );
