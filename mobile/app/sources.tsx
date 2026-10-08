@@ -272,6 +272,18 @@ const sb = StyleSheet.create({
 
 // ─── Calendar source card ─────────────────────────────────────────────────────
 
+type CalScope = "last-year" | "all-time";
+
+const CAL_SCOPE_DAYS: Record<CalScope, number> = {
+  "last-year": 365,
+  "all-time":  36500,
+};
+
+const CAL_SCOPE_LABELS: Record<CalScope, string> = {
+  "last-year": "Last year",
+  "all-time":  "All time",
+};
+
 function CalendarSourceCard({
   active,
   disabled,
@@ -281,19 +293,18 @@ function CalendarSourceCard({
 }: {
   active: boolean;
   disabled: boolean;
-  onSync: () => void;
+  onSync: (pastDays: number) => void;
   colors: ThemeColors;
   fonts: ThemeFonts;
 }) {
+  const [scope, setScope] = useState<CalScope>("last-year");
+  const [pickerOpen, setPickerOpen] = useState(false);
+
   return (
     <SourceCard
       icon="calendar-outline"
       title="Device calendar"
-      statusText={
-        active
-          ? "Syncing…"
-          : "Imports one-off events from the past year and next 30 days"
-      }
+      statusText={active ? "Syncing…" : "Imports one-off events from your calendar"}
       active={active}
       progressPct={0}
       colors={colors}
@@ -304,14 +315,69 @@ function CalendarSourceCard({
         ) : (
           <SrcButton
             label="Sync"
-            onPress={onSync}
+            onPress={() => onSync(CAL_SCOPE_DAYS[scope])}
             disabled={disabled}
             colors={colors}
             fonts={fonts}
           />
         )
       }
-    />
+    >
+      {/* Scope row */}
+      <Pressable
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.xs,
+          paddingVertical: spacing.xs,
+          marginTop: spacing.sm,
+        }}
+        onPress={() => setPickerOpen((v) => !v)}
+      >
+        <Ionicons name="options-outline" size={14} color={colors.textMuted} />
+        <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
+          {CAL_SCOPE_LABELS[scope]}
+        </Text>
+        <Ionicons
+          name={pickerOpen ? "chevron-up" : "chevron-down"}
+          size={13}
+          color={colors.textMuted}
+        />
+      </Pressable>
+
+      {/* Scope picker */}
+      {pickerOpen && (
+        <View
+          style={{
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: colors.borderFaint,
+            marginBottom: spacing.sm,
+            paddingTop: spacing.sm,
+            gap: spacing.xs,
+          }}
+        >
+          {(["last-year", "all-time"] as CalScope[]).map((s) => (
+            <Pressable
+              key={s}
+              style={[
+                { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md },
+                scope === s && { backgroundColor: colors.accentSubtle },
+              ]}
+              onPress={() => { setScope(s); setPickerOpen(false); }}
+            >
+              <Text
+                style={[
+                  { fontSize: 13, color: colors.textSecondary },
+                  scope === s && { color: colors.accent },
+                ]}
+              >
+                {CAL_SCOPE_LABELS[s]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </SourceCard>
   );
 }
 
@@ -767,12 +833,12 @@ export default function SourcesScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incomingUri]);
 
-  const importFromCalendar = async () => {
+  const importFromCalendar = async (pastDays: number) => {
     setActiveSource("calendar");
     setParseError(null);
     await new Promise<void>((r) => setTimeout(r, 50));
     try {
-      const res = await readDeviceCalendar();
+      const res = await readDeviceCalendar(pastDays, 0);
       if (res.status === "unavailable") {
         dialog.alert("Calendar unavailable", "This device doesn't expose a calendar.");
         return;
@@ -791,7 +857,7 @@ export default function SourcesScreen() {
         return;
       }
       if (!res.count) {
-        dialog.alert("No events found", "No one-off events in the past year or next 30 days.");
+        dialog.alert("No events found", "No one-off events found in that time range.");
         return;
       }
       const batch = await stageFile("device-calendar.ics", res.ics, "icalendar");
