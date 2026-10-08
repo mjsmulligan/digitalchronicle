@@ -4,12 +4,14 @@
  * The date column shows the trip's start date (big serif number) so the tab
  * reads chronologically like the Chronicle and Culture tabs.
  */
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { Link, useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Trip, Leg } from "@chronicle/journal/types";
+import { suggestTrips, type TripSuggestion } from "../../src/lib/tripSuggestion";
+import { getHomePrefs } from "../../src/lib/homePrefs";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
 import { MONTHS_SHORT } from "../../src/lib/dateHelpers";
@@ -117,6 +119,46 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       ...textScale.sm,
       color: colors.accentSoft,
       fontWeight: "600",
+    },
+
+    // Suggestion banner
+    suggestSection: {
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.lg,
+      paddingBottom: spacingScale.sm,
+    },
+    suggestHeading: {
+      ...textScale.label,
+      color: colors.textTertiary,
+      marginBottom: spacingScale.sm,
+    },
+    suggestCard: {
+      backgroundColor: colors.surfaceAccent,
+      borderRadius: radiusScale.lg,
+      borderWidth: 1,
+      borderColor: colors.accentSubtle,
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm,
+      marginBottom: spacingScale.sm,
+    },
+    suggestCardPressed: { opacity: 0.65 },
+    suggestTitle: {
+      flex: 1,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      ...textScale.base,
+      color: colors.accentSoft,
+    },
+    suggestMeta: {
+      ...textScale.sm,
+      color: colors.textSecondary,
+    },
+    suggestChevron: {
+      color: colors.accentSoft,
+      fontSize: 16,
     },
 
     empty: {
@@ -235,10 +277,31 @@ function TripRow({ item, styles, colors, fonts }: { item: TripItem; styles: Styl
 
 // ── screen ───────────────────────────────────────────────────────────────────
 
+// ── MONTHS helper for suggestion date formatting ──────────────────────────────
+const MONTHS_SHORT_LOCAL = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtSuggestDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  return `${d.getDate()} ${MONTHS_SHORT_LOCAL[d.getMonth()]}`;
+}
+
 export default function TripsScreen() {
   const journal = useJournal();
   const { colors, fonts } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
+
+  // Reload home prefs every time this tab gains focus so changes made in
+  // Settings are picked up without needing to restart the app.
+  const [homeAirports, setHomeAirports] = useState<string[]>([]);
+  useFocusEffect(
+    useCallback(() => {
+      getHomePrefs().then((p) => setHomeAirports(p.homeAirports));
+    }, [])
+  );
+
+  const suggestions = useMemo<TripSuggestion[]>(
+    () => suggestTrips(journal, homeAirports),
+    [journal, homeAirports]
+  );
 
   const trips = useMemo<TripItem[]>(() => {
     const entries = allEntries(journal);
@@ -278,18 +341,48 @@ export default function TripsScreen() {
 
   const router = useRouter();
 
+  const SuggestionBanner = suggestions.length > 0 ? (
+    <View style={styles.suggestSection}>
+      <Text style={styles.suggestHeading}>Suggested from your unlinked flights</Text>
+      {suggestions.map((s, i) => (
+        <Pressable
+          key={i}
+          style={({ pressed }) => [styles.suggestCard, pressed && styles.suggestCardPressed]}
+          onPress={() =>
+            router.push(
+              `/trip/confirm?title=${encodeURIComponent(s.title)}&start=${s.start}&end=${s.end}`
+            )
+          }
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.suggestTitle}>{s.title}</Text>
+            <Text style={styles.suggestMeta}>
+              {fmtSuggestDate(s.start)}
+              {s.start !== s.end ? ` – ${fmtSuggestDate(s.end)}` : ""}
+              {s.entryCount > 0 ? `  ·  ${s.entryCount} ${s.entryCount === 1 ? "entry" : "entries"}` : ""}
+            </Text>
+          </View>
+          <Text style={styles.suggestChevron}>›</Text>
+        </Pressable>
+      ))}
+    </View>
+  ) : null;
+
   if (!trips.length) {
     return (
-      <View style={styles.empty}>
-        <KindIcon kind="leg" subkind="air" size={48} color={colors.textTertiary} accessibilityLabel="" />
-        <Text style={styles.emptyTitle}>No trips yet</Text>
-        <Text style={styles.emptyHint}>
-          Import a Viaduct or iCalendar file to populate your trips.
-        </Text>
-        <Pressable style={styles.newTripBtn} onPress={() => router.push("/trip/new")}>
-          <Ionicons name="add" size={18} color="white" />
-          <Text style={styles.newTripBtnText}>New trip</Text>
-        </Pressable>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {SuggestionBanner}
+        <View style={styles.empty}>
+          <KindIcon kind="leg" subkind="air" size={48} color={colors.textTertiary} accessibilityLabel="" />
+          <Text style={styles.emptyTitle}>No trips yet</Text>
+          <Text style={styles.emptyHint}>
+            Import a Viaduct or iCalendar file to populate your trips.
+          </Text>
+          <Pressable style={styles.newTripBtn} onPress={() => router.push("/trip/new")}>
+            <Ionicons name="add" size={18} color="white" />
+            <Text style={styles.newTripBtnText}>New trip</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -309,6 +402,7 @@ export default function TripsScreen() {
           </Pressable>
         </Link>
       }
+      ListFooterComponent={SuggestionBanner}
     />
   );
 }

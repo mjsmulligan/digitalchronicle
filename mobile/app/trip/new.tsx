@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { DateField } from "../../src/components/DateField";
-import { Stack, useRouter } from "expo-router";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { putMany } from "@chronicle/journal/db";
 import { uid } from "@chronicle/journal/types";
 import { useTheme } from "../../src/components/ThemeProvider";
@@ -31,6 +31,8 @@ function isValidDate(s: string): boolean {
 
 export default function NewTripScreen() {
   const router = useRouter();
+  // Optional pre-fill params from trip suggestion (title, start, end)
+  const params = useLocalSearchParams<{ title?: string; start?: string; end?: string }>();
   const { colors, fonts, text, spacing, radius, common } = useTheme();
 
   const styles = useMemo(() => StyleSheet.create({
@@ -70,9 +72,9 @@ export default function NewTripScreen() {
     saveButtonText: { color: colors.white, fontSize: 16, fontWeight: "700" },
   }), [colors, fonts]);
 
-  const [title, setTitle]         = useState("");
-  const [start, setStart]         = useState(today());
-  const [end, setEnd]             = useState(today());
+  const [title, setTitle]         = useState(params.title ?? "");
+  const [start, setStart]         = useState(isValidDate(params.start ?? "") ? params.start! : today());
+  const [end, setEnd]             = useState(isValidDate(params.end ?? "") ? params.end! : today());
   const [reflection, setReflection] = useState("");
   const [rating, setRating]       = useState<number | undefined>(undefined);
   const [saving, setSaving]       = useState(false);

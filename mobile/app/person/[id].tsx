@@ -11,6 +11,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { DayGroup, type DayGroupData } from "../../src/components/DayGroup";
 import { PersonAvatar } from "../../src/components/PersonAvatar";
+import { entrySortKey } from "../../src/lib/dateHelpers";
 
 // ── styles factory ────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ export default function PersonDetailScreen() {
     if (!person) return [];
     const matched = allEntries(journal)
       .filter((e) => e.participants?.includes(person.id))
-      .sort((a, b) => b.start.localeCompare(a.start));
+      .sort((a, b) => entrySortKey(b).localeCompare(entrySortKey(a)));
     const map = new Map<string, Entry[]>();
     for (const e of matched) {
       const day = e.start.slice(0, 10);

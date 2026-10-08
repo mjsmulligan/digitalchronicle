@@ -13,6 +13,7 @@ import { entryTitle, view, CATEGORY_LABEL, type Entry } from "@chronicle/journal
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../src/components/ThemeProvider";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { KindIcon } from "../src/components/KindIcon";
+import { entrySortKey } from "../src/lib/dateHelpers";
 
 // ── Two-column layout constants (mirrors Chronicle feed) ─────────────────────
 const DATE_COL_W = 52;
@@ -116,7 +117,7 @@ type DayGroup = { day: string; entries: Entry[] };
 
 function groupByDay(entries: Entry[]): DayGroup[] {
   const map = new Map<string, Entry[]>();
-  for (const e of [...entries].sort((a, b) => b.start.localeCompare(a.start))) {
+  for (const e of [...entries].sort((a, b) => entrySortKey(b).localeCompare(entrySortKey(a)))) {
     const key = e.start.slice(0, 10);
     (map.get(key) ?? map.set(key, []).get(key)!).push(e);
   }

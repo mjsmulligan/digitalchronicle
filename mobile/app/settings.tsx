@@ -3,13 +3,14 @@
  * Reachable via the gear icon in the Chronicle header.
  */
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
 import { clearAll, allHiddenEntries, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
+import { useHomePrefs } from "../src/lib/useHomePrefs";
 
 export default function SettingsScreen() {
   const journal = useJournal();
@@ -18,6 +19,10 @@ export default function SettingsScreen() {
   const [exporting, setExporting] = useState(false);
   const dialog = useDialog();
   const { colors, fonts, text, spacing, radius, themeId, setThemeId } = useTheme();
+  const { prefs: homePrefs, updatePrefs: updateHomePrefs } = useHomePrefs();
+  // Local draft state for the About you fields — committed on blur
+  const [draftName, setDraftName] = useState<string | null>(null);
+  const [draftAirports, setDraftAirports] = useState<string | null>(null);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
@@ -63,6 +68,27 @@ export default function SettingsScreen() {
       ...text.sm,
       color: colors.textMuted,
       textAlign: "center",
+    },
+
+    // ── About you section ─────────────────────────────────────────────
+    inputRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing.base,
+      paddingVertical: 10,
+    },
+    inputLabel: { ...text.sm, color: colors.textSecondary, width: 96 },
+    input: {
+      flex: 1,
+      ...text.base,
+      color: colors.textPrimary,
+      paddingVertical: 4,
+    },
+    inputHint: {
+      ...text.xs,
+      color: colors.textMuted,
+      paddingHorizontal: spacing.base,
+      paddingBottom: spacing.sm,
     },
 
     // ── Appearance section ────────────────────────────────────────────
@@ -214,6 +240,52 @@ export default function SettingsScreen() {
       style={styles.container}
       contentContainerStyle={styles.content}
     >
+
+      {/* ── About you ──────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>About you</Text>
+      <View style={[styles.card, { marginBottom: spacing.sm }]}>
+        <View style={styles.inputRow}>
+          <Text style={styles.inputLabel}>Your name</Text>
+          <TextInput
+            style={styles.input}
+            value={draftName ?? homePrefs.displayName}
+            onChangeText={setDraftName}
+            onBlur={() => {
+              const val = (draftName ?? homePrefs.displayName).trim();
+              updateHomePrefs({ displayName: val });
+              setDraftName(null);
+            }}
+            placeholder="e.g. Mike"
+            placeholderTextColor={colors.textMuted}
+            returnKeyType="done"
+          />
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.inputRow}>
+          <Text style={styles.inputLabel}>Home airport</Text>
+          <TextInput
+            style={[styles.input, { textTransform: "uppercase" }]}
+            value={draftAirports ?? homePrefs.homeAirports.join(", ")}
+            onChangeText={setDraftAirports}
+            onBlur={() => {
+              const raw = draftAirports ?? homePrefs.homeAirports.join(", ");
+              const codes = raw
+                .split(/[,\s]+/)
+                .map((s) => s.trim().toUpperCase())
+                .filter(Boolean);
+              updateHomePrefs({ homeAirports: codes });
+              setDraftAirports(null);
+            }}
+            placeholder="e.g. DUB"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="characters"
+            returnKeyType="done"
+          />
+        </View>
+      </View>
+      <Text style={[styles.inputHint, { marginBottom: spacing.lg }]}>
+        Used to suggest trips from your unlinked flights and trains. Enter multiple codes separated by commas.
+      </Text>
 
       {/* ── Appearance ─────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Appearance</Text>

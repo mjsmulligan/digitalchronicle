@@ -47,23 +47,21 @@ function fmtRelative(iso: string): string {
 }
 
 function scopeLabel(scope: ScanScope): string {
-  if (scope.kind === "all")        return "All photos";
+  if (scope.kind === "all")        return "All time";
   if (scope.kind === "date-range") return `${scope.start} – ${scope.end}`;
   return `${scope.albumIds.length} album${scope.albumIds.length !== 1 ? "s" : ""}`;
 }
 
 const SCOPES: { label: string; value: ScanScope }[] = [
-  { label: "All photos",    value: { kind: "all" } },
-  // date-range and albums would be added by the user in a real UI;
-  // for now we expose only "all" and a recent-30-days option.
   {
-    label: "Last 30 days",
+    label: "Last year",
     value: {
       kind: "date-range",
-      start: new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10),
+      start: new Date(Date.now() - 365 * 86400_000).toISOString().slice(0, 10),
       end:   new Date().toISOString().slice(0, 10),
     },
   },
+  { label: "All time", value: { kind: "all" } },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────

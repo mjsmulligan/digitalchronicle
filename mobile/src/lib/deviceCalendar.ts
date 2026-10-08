@@ -40,8 +40,8 @@ export function eventsToIcs(events: Calendar.Event[], tz: string): string {
   return lines.join("\r\n");
 }
 
-/** Reads all event calendars for a window (default: past year → next 30 days). */
-export async function readDeviceCalendar(pastDays = 365, futureDays = 30): Promise<DeviceCalendarResult> {
+/** Reads all event calendars for a window (default: past year, no future days). */
+export async function readDeviceCalendar(pastDays = 365, futureDays = 0): Promise<DeviceCalendarResult> {
   if (!(await Calendar.isAvailableAsync())) return { status: "unavailable" };
   const perm = await Calendar.requestCalendarPermissionsAsync();
   if (perm.status !== "granted") return { status: "denied", canAskAgain: perm.canAskAgain };

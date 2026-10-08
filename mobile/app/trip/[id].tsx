@@ -14,6 +14,7 @@ import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
 import { Ionicons } from "@expo/vector-icons";
 import { DateColumn } from "../../src/components/DateColumn";
+import { compareEntriesChronological } from "../../src/lib/dateHelpers";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -123,6 +124,16 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     rowSeparator: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: colors.border,
+    },
+
+    // Visible remove button on each linked entry row
+    entryRowWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    removeBtn: {
+      padding: 8,
+      marginRight: -4,
     },
 
     // Suggestion card — kept as a bordered card to distinguish from linked entries
@@ -240,13 +251,27 @@ function EntryDayGroup({ group, styles, colors, fonts, router, onRemove }: { gro
         {group.items.map((e, idx) => (
           <React.Fragment key={e.id}>
             {idx > 0 && <View style={styles.rowSeparator} />}
-            <EntryRow
-              entry={e}
-              colors={colors}
-              fonts={fonts}
-              onPress={() => router.push(`/entry/${e.id}`)}
-              onLongPress={onRemove ? () => onRemove(e) : undefined}
-            />
+            <View style={styles.entryRowWrap}>
+              <View style={{ flex: 1 }}>
+                <EntryRow
+                  entry={e}
+                  colors={colors}
+                  fonts={fonts}
+                  onPress={() => router.push(`/entry/${e.id}`)}
+                  onLongPress={onRemove ? () => onRemove(e) : undefined}
+                />
+              </View>
+              {onRemove && (
+                <Pressable
+                  style={styles.removeBtn}
+                  onPress={() => onRemove(e)}
+                  accessibilityLabel="Remove from trip"
+                  hitSlop={4}
+                >
+                  <Ionicons name="remove-circle-outline" size={20} color={colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
           </React.Fragment>
         ))}
       </View>
@@ -311,7 +336,7 @@ export default function TripDetailScreen() {
     if (!trip) return [];
     return allEntries(journal)
       .filter((e) => e.tripId === trip.id)
-      .sort((a, b) => a.start.localeCompare(b.start));
+      .sort(compareEntriesChronological);
   }, [journal, trip]);
 
   const suggestions = useMemo<Entry[]>(() => {
@@ -320,8 +345,25 @@ export default function TripDetailScreen() {
       .filter((e) => !e.tripId
         && e.start.slice(0, 10) >= trip.start
         && e.start.slice(0, 10) <= trip.end)
-      .sort((a, b) => a.start.localeCompare(b.start));
+      .sort(compareEntriesChronological);
   }, [journal, trip]);
+
+  // Build flat list: grouped entry days + optional suggestions section.
+  // NOTE: must be declared BEFORE any early returns to satisfy Rules of Hooks.
+  type ListItem =
+    | { kind: "entryDay";      group: TripDayGroup }
+    | { kind: "suggestHeader" }
+    | { kind: "suggestDay";    group: TripDayGroup };
+
+  const listData = useMemo<ListItem[]>(() => {
+    const entryGroups   = groupByDay(entries);
+    const suggestGroups = groupByDay(suggestions);
+    return [
+      ...entryGroups.map((g) => ({ kind: "entryDay" as const, group: g })),
+      ...(suggestGroups.length > 0 ? [{ kind: "suggestHeader" as const }] : []),
+      ...suggestGroups.map((g) => ({ kind: "suggestDay" as const, group: g })),
+    ];
+  }, [entries, suggestions]);
 
   if (!trip) {
     return (
@@ -400,22 +442,6 @@ export default function TripDetailScreen() {
       setAddingAll(false);
     }
   };
-
-  // Build flat list: grouped entry days + optional suggestions section
-  type ListItem =
-    | { kind: "entryDay";      group: TripDayGroup }
-    | { kind: "suggestHeader" }
-    | { kind: "suggestDay";    group: TripDayGroup };
-
-  const listData = useMemo<ListItem[]>(() => {
-    const entryGroups   = groupByDay(entries);
-    const suggestGroups = groupByDay(suggestions);
-    return [
-      ...entryGroups.map((g) => ({ kind: "entryDay" as const, group: g })),
-      ...(suggestGroups.length > 0 ? [{ kind: "suggestHeader" as const }] : []),
-      ...suggestGroups.map((g) => ({ kind: "suggestDay" as const, group: g })),
-    ];
-  }, [entries, suggestions]);
 
   return (
     <>
