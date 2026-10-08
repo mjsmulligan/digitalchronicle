@@ -482,7 +482,7 @@ function GoodreadsSourceCard({
         active
           ? "Syncing…"
           : grId
-          ? `Connected — ID ${grId}`
+          ? `Connected — ${grId}`
           : "Sync your read-shelf via public RSS"
       }
       active={active}
@@ -531,12 +531,12 @@ function GoodreadsSourceCard({
       {grEditing && (
         <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
           <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>
-            Paste your Goodreads profile link. Your profile must be public.
+            Enter your Goodreads username. Your profile must be public.
           </Text>
           <TextInput
             value={grInput}
             onChangeText={onGrInputChange}
-            placeholder="https://www.goodreads.com/user/show/12345678"
+            placeholder="your-username"
             placeholderTextColor={colors.textMuted}
             autoCapitalize="none"
             autoCorrect={false}
@@ -896,7 +896,7 @@ export default function SourcesScreen() {
   const saveGoodreadsId = async () => {
     const id = parseGoodreadsUserId(grInput);
     if (!id) {
-      dialog.alert("Couldn't read that", "Paste your Goodreads profile link or the number in it.");
+      dialog.alert("Couldn't read that", "Enter your Goodreads username (e.g. your-username or a profile URL).");
       return;
     }
     await setGoodreadsUserId(id);
