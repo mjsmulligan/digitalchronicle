@@ -11,10 +11,13 @@ const item = (id: string, title: string) => `<item>
 <book_published>2013</book_published><isbn>0316246638</isbn></item>`;
 
 describe("goodreads rss", () => {
-  it("parses user ids from urls", () => {
+  it("parses user ids and usernames", () => {
     expect(parseGoodreadsUserId("12345")).toBe("12345");
+    expect(parseGoodreadsUserId("janedoe")).toBe("janedoe");
+    expect(parseGoodreadsUserId("jane-doe")).toBe("jane-doe");
     expect(parseGoodreadsUserId("https://www.goodreads.com/user/show/12345-jane-doe")).toBe("12345");
-    expect(parseGoodreadsUserId("hello")).toBeNull();
+    expect(parseGoodreadsUserId("")).toBeNull();
+    expect(parseGoodreadsUserId("not a valid/url")).toBeNull();
   });
 
   it("converts items to export-shaped csv", () => {
