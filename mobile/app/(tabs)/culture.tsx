@@ -10,9 +10,10 @@
  * Series/show groups are collapsible (collapsed by default) for easy scanning.
  * Filter pills narrow to a single category; all sections show when "All" is active.
  */
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import {
   FlatList,
+  Image,
   LayoutAnimation,
   Platform,
   Pressable,
@@ -20,6 +21,7 @@ import {
   StyleSheet,
   Text,
   UIManager,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -46,6 +48,8 @@ import {
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
 import { PosterCard } from "../../src/components/PosterCard";
+import { resolveArtwork } from "@chronicle/journal/artworkEnrichment";
+import { getArtworkProvider } from "@chronicle/journal/artworkProvider";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -170,6 +174,18 @@ function groupEpisodesBySeries(episodes: Episode[], seriesContainers: Series[]):
     .sort((a, b) => b.latestDate.localeCompare(a.latestDate));
 }
 
+// ── poster grid types ─────────────────────────────────────────────────────────
+
+/** One tile in the poster grid — a film, film series, or TV show. */
+interface PosterGridItem {
+  id: string;
+  title: string;
+  /** Artwork cache key — empty string when key cannot be derived */
+  artworkKey: string;
+  /** Entry to navigate to when tapped (latest entry for series/show) */
+  entryId: string;
+}
+
 // ── flat list item types ─────────────────────────────────────────────────────
 
 type ListItem =
@@ -187,9 +203,10 @@ type ListItem =
       seriesKey?: string;
       /** Kind icon to show on the left — only present when collapsible: true */
       kind?: CultureKind;
-      /** Artwork cache key for inline poster (film / tv / book groups only) */
+      /** Artwork cache key for inline poster (book groups only) */
       artworkKey?: string;
     }
+  | { type: "posterGrid"; id: string; items: PosterGridItem[]; kind: "film" | "episode" }
   | { type: "entry";      id: string; entry: CultureEntry }
   | { type: "separator";  id: string }
   | { type: "sectionGap"; id: string }
@@ -320,6 +337,170 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
 
 type Styles = ReturnType<typeof createStyles>;
 
+// ── PosterGrid ────────────────────────────────────────────────────────────────
+
+const NUM_COLS = 3;
+
+function createGridStyles(colors: ThemeColors, fonts: ThemeFonts, cellW: number, cellH: number) {
+  return StyleSheet.create({
+    gridContainer: {
+      paddingHorizontal: spacingScale.base,
+      paddingBottom: spacingScale.md,
+    },
+    grid: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: spacingScale.sm,
+    },
+    cell:        { width: cellW },
+    cellPressed: { opacity: 0.7 },
+    posterBg: {
+      width: cellW,
+      height: cellH,
+      borderRadius: radiusScale.md,
+      backgroundColor: colors.border,
+      overflow: "hidden",
+      marginBottom: spacingScale.xs,
+    },
+    posterImg: { width: cellW, height: cellH },
+    cellTitle: {
+      ...textScale.xs,
+      fontFamily: fonts.sans,
+      color: colors.textSecondary,
+      lineHeight: 16,
+    },
+    // No-artwork rows below the grid
+    noArtSection: {
+      marginTop: spacingScale.md,
+      paddingTop: spacingScale.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.borderFaint,
+    },
+    noArtSep: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.borderFaint,
+    },
+    noArtRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm,
+      paddingVertical: spacingScale.md,
+    },
+    noArtRowPressed: { opacity: 0.55 },
+    noArtTitle: {
+      ...textScale.feedTitle,
+      fontFamily: fonts.serifMedium,
+      fontWeight: "500" as const,
+      color: colors.textSecondary,
+      flex: 1,
+    },
+  });
+}
+
+/**
+ * Resolves artwork for all items in parallel, then renders a 3-column poster
+ * grid. Items whose poster could not be resolved are shown as plain rows below
+ * the grid once resolution is complete.
+ */
+function PosterGrid({
+  items,
+  kind,
+  colors,
+  fonts,
+  onPress,
+}: {
+  items: PosterGridItem[];
+  kind: "film" | "episode";
+  colors: ThemeColors;
+  fonts: ThemeFonts;
+  onPress: (entryId: string) => void;
+}) {
+  const { width: screenW } = useWindowDimensions();
+  const cellW = Math.floor(
+    (screenW - 2 * spacingScale.base - (NUM_COLS - 1) * spacingScale.sm) / NUM_COLS,
+  );
+  const cellH = Math.floor(cellW * 1.5);
+
+  const [uriMap, setUriMap]     = useState<Map<string, string | null>>(new Map());
+  const [resolved, setResolved] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const provider = getArtworkProvider();
+    Promise.all(
+      items.map(async (item) => {
+        const match = item.artworkKey ? await resolveArtwork(item.artworkKey) : null;
+        const uri = match?.poster_path && provider ? provider.imageUrl(match.poster_path) : null;
+        return [item.id, uri] as const;
+      }),
+    ).then((results) => {
+      if (cancelled) return;
+      setUriMap(new Map(results));
+      setResolved(true);
+    });
+    return () => { cancelled = true; };
+  }, [items]);
+
+  // Before resolution: show all as shimmer. After: split poster / no-poster.
+  const posterItems    = resolved ? items.filter((i) => uriMap.get(i.id))  : items;
+  const noArtItems     = resolved ? items.filter((i) => !uriMap.get(i.id)) : [];
+
+  const gs = useMemo(
+    () => createGridStyles(colors, fonts, cellW, cellH),
+    [colors, fonts, cellW, cellH],
+  );
+
+  return (
+    <View style={gs.gridContainer}>
+      <View style={gs.grid}>
+        {posterItems.map((item) => {
+          const uri = uriMap.get(item.id);
+          return (
+            <Pressable
+              key={item.id}
+              style={({ pressed }) => [gs.cell, pressed && gs.cellPressed]}
+              onPress={() => onPress(item.entryId)}
+              accessibilityRole="button"
+              accessibilityLabel={item.title}
+            >
+              <View style={gs.posterBg}>
+                {uri ? (
+                  <Image source={{ uri }} style={gs.posterImg} resizeMode="cover" />
+                ) : null /* shimmer — backgroundColor on posterBg provides the placeholder */}
+              </View>
+              <Text style={gs.cellTitle} numberOfLines={2}>{item.title}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {noArtItems.length > 0 && (
+        <View style={gs.noArtSection}>
+          {noArtItems.map((item, idx) => (
+            <View key={item.id}>
+              {idx > 0 && <View style={gs.noArtSep} />}
+              <Pressable
+                style={({ pressed }) => [gs.noArtRow, pressed && gs.noArtRowPressed]}
+                onPress={() => onPress(item.entryId)}
+                accessibilityRole="button"
+                accessibilityLabel={item.title}
+              >
+                <KindIcon
+                  kind={kind === "episode" ? "episode" : "film"}
+                  size={16}
+                  color={colors.textTertiary}
+                  accessibilityLabel=""
+                />
+                <Text style={gs.noArtTitle}>{item.title}</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── FilterPill ────────────────────────────────────────────────────────────────
 
 function FilterPill({
@@ -427,6 +608,46 @@ export default function CultureScreen() {
     return all.sort((a, b) => b.date.localeCompare(a.date));
   }, [journal.books]);
 
+  /**
+   * Stable grid item lists for PosterGrid — one item per standalone film or
+   * film-series, and one per TV show. Stable references prevent unnecessary
+   * artwork re-resolution when unrelated state (e.g. book toggles) changes.
+   */
+  const filmGridItems = useMemo<PosterGridItem[]>(
+    () =>
+      filmSections.map((sec) => {
+        if (sec.type === "standalone") {
+          const f = sec.data as Film;
+          return {
+            id: f.id,
+            title: entryTitle(view(f)),
+            artworkKey: eventToArtworkKey(f) ?? "",
+            entryId: f.id,
+          };
+        }
+        const sg = sec.data as FilmSeriesGroup;
+        const latest = sg.films[0];
+        return {
+          id: `series:${sg.name}`,
+          title: sg.name,
+          artworkKey: eventToArtworkKey(latest) ?? "",
+          entryId: latest.id,
+        };
+      }),
+    [filmSections],
+  );
+
+  const tvGridItems = useMemo<PosterGridItem[]>(
+    () =>
+      showGroups.map(({ title, episodes: eps }) => ({
+        id: `show:${title}`,
+        title,
+        artworkKey: eventToArtworkKey(eps[0]) ?? "",
+        entryId: eps[0].id,
+      })),
+    [showGroups],
+  );
+
   // ── build flat list ───────────────────────────────────────────────────────
 
   const listItems = useMemo<ListItem[]>(() => {
@@ -514,22 +735,16 @@ export default function CultureScreen() {
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-concerts" });
     }
 
-    // ── Films ─────────────────────────────────────────────────────────────
+    // ── Films (poster grid) ───────────────────────────────────────────────
     if ((filter === "all" || filter === "film") && journal.films.length > 0) {
       if (showHeaders) {
         items.push({ type: "sectionHeader", id: "sh-films", title: `Films · ${journal.films.length}` });
       }
-      pushSeriesSection(
-        filmSections,
-        (g: FilmSeriesGroup) => g.films,
-        (n) => `${n} films`,
-        "film",
-        (films) => eventToArtworkKey(films[0]),
-      );
+      items.push({ type: "posterGrid", id: "grid-films", items: filmGridItems, kind: "film" });
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-films" });
     }
 
-    // ── TV ────────────────────────────────────────────────────────────────
+    // ── TV (poster grid) ──────────────────────────────────────────────────
     if ((filter === "all" || filter === "episode") && journal.episodes.length > 0) {
       if (showHeaders) {
         items.push({
@@ -538,23 +753,7 @@ export default function CultureScreen() {
           title: `TV · ${journal.episodes.length} episodes · ${showGroups.length} shows`,
         });
       }
-      showGroups.forEach(({ title, episodes: eps }, si) => {
-        if (si > 0) items.push({ type: "groupGap", id: `gap-s-${si}` });
-        const key = `show:${title}`;
-        const collapsed = !expandedKeys.has(key);
-        items.push({
-          type: "groupHeader",
-          id: `gh-s-${title}`,
-          title,
-          subtitle: `${eps.length} ep`,
-          collapsible: true,
-          collapsed,
-          seriesKey: key,
-          kind: "episode" as const,
-          artworkKey: eventToArtworkKey(eps[0]) ?? undefined,
-        });
-        if (!collapsed) pushEntries(eps);
-      });
+      items.push({ type: "posterGrid", id: "grid-tv", items: tvGridItems, kind: "episode" });
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-tv" });
     }
 
@@ -573,7 +772,7 @@ export default function CultureScreen() {
     }
 
     return items;
-  }, [filter, allConcerts, concertsByYear, filmSections, showGroups, bookSections, journal, expandedKeys]);
+  }, [filter, allConcerts, concertsByYear, filmGridItems, tvGridItems, bookSections, journal, expandedKeys]);
 
   const isEmpty = counts.all === 0;
 
@@ -625,6 +824,17 @@ export default function CultureScreen() {
                   <View style={styles.sectionHeader}>
                     <Text style={styles.sectionHeaderText}>{item.title}</Text>
                   </View>
+                );
+
+              case "posterGrid":
+                return (
+                  <PosterGrid
+                    items={item.items}
+                    kind={item.kind}
+                    colors={colors}
+                    fonts={fonts}
+                    onPress={(entryId) => router.push(`/entry/${entryId}`)}
+                  />
                 );
 
               case "groupHeader":
