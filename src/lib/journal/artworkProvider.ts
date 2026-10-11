@@ -142,14 +142,14 @@ function extractYear(dateStr: string | undefined): number | undefined {
 }
 
 export class TmdbProvider implements ArtworkProvider {
-  private readonly apiKey: string | undefined;
+  private readonly accessToken: string | undefined;
   /** Promise chain used to serialise requests (throttle). */
   private _queue: Promise<void> = Promise.resolve();
   private _lastRequestAt = 0;
 
-  constructor(apiKey?: string) {
-    this.apiKey = apiKey ?? resolveApiKey();
-    if (!this.apiKey) {
+  constructor(accessToken?: string) {
+    this.accessToken = accessToken ?? resolveApiKey();
+    if (!this.accessToken) {
       console.warn(
         "[TmdbProvider] VITE_TMDB_API_KEY / EXPO_PUBLIC_TMDB_API_KEY is not set — poster lookups are disabled",
       );
@@ -158,7 +158,7 @@ export class TmdbProvider implements ArtworkProvider {
 
   /** True when the provider is operational. */
   get enabled(): boolean {
-    return !!this.apiKey;
+    return !!this.accessToken;
   }
 
   imageUrl(path: string, size: PosterSize = POSTER_SIZE_EVENT): string {
@@ -186,7 +186,9 @@ export class TmdbProvider implements ArtworkProvider {
   }
 
   private async _fetchWithRetry<T>(url: string, attempt = 0): Promise<T> {
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    });
 
     if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
       if (attempt === 0) {
@@ -207,10 +209,9 @@ export class TmdbProvider implements ArtworkProvider {
   // ── ArtworkProvider interface ───────────────────────────────────────────────
 
   async findMovie(normTitle: string, year?: number): Promise<ArtworkProviderResult | null> {
-    if (!this.apiKey) return null;
+    if (!this.accessToken) return null;
 
     const params = new URLSearchParams({
-      api_key: this.apiKey,
       query: normTitle,
       include_adult: "false",
       language: "en-US",
@@ -225,10 +226,9 @@ export class TmdbProvider implements ArtworkProvider {
   }
 
   async findTv(normSeriesTitle: string): Promise<ArtworkProviderResult | null> {
-    if (!this.apiKey) return null;
+    if (!this.accessToken) return null;
 
     const params = new URLSearchParams({
-      api_key: this.apiKey,
       query: normSeriesTitle,
       include_adult: "false",
       language: "en-US",
@@ -246,7 +246,7 @@ export class TmdbProvider implements ArtworkProvider {
     id: string,
     mediaType: ArtworkMediaType,
   ): Promise<ArtworkProviderResult | null> {
-    if (!this.apiKey) return null;
+    if (!this.accessToken) return null;
 
     if (source === "tmdb") {
       // Direct TMDB id — use the movie/tv details endpoint
@@ -271,7 +271,6 @@ export class TmdbProvider implements ArtworkProvider {
 
     // IMDb id — use the /find endpoint
     const params = new URLSearchParams({
-      api_key: this.apiKey,
       external_source: "imdb_id",
       language: "en-US",
     });
