@@ -7,15 +7,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { putMany, removeMany, hideMany, storeFor, useJournal } from "@/lib/journal/db";
-import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person, type AnyOverrides } from "@/lib/journal/types";
+import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person, type AnyOverrides, type Book } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { operatorMarkId } from "@/lib/journal/connectors/icons";
 import { isLocked } from "@/lib/journal/evaluation";
 import { StarRating } from "@/components/journal/StarRating";
 import { cn } from "@/lib/utils";
-import { eventToArtworkKey, type ArtworkMatch } from "@/lib/journal/artwork";
-import { resolveArtwork } from "@/lib/journal/artworkEnrichment";
+import { eventToArtworkKey, bookToArtworkKey, type ArtworkMatch } from "@/lib/journal/artwork";
+import { resolveArtwork, resolveBookCoverForEntry } from "@/lib/journal/artworkEnrichment";
 import { getArtworkProvider } from "@/lib/journal/artworkProvider";
+import { getBookCoverProvider } from "@/lib/journal/bookCoverProvider";
 
 const CAT_ICON: Record<EventCategory, typeof Music> = {
   concert: Music, gathering: Users, celebration: PartyPopper, milestone: Flag, memory: Sparkles, activity: Activity,
@@ -258,6 +259,31 @@ function usePoster(artworkKey: string | null, open: boolean) {
   return { loading, posterUrl };
 }
 
+/**
+ * Resolves a book cover for a Book entry when the card is opened.
+ * Uses resolveBookCoverForEntry (Open Library) rather than resolveArtwork (TMDB).
+ */
+function useBookCover(entry: Entry, open: boolean) {
+  const [match, setMatch] = useState<ArtworkMatch | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || entry.kind !== "book") return;
+    let cancelled = false;
+    setLoading(true);
+    resolveBookCoverForEntry(entry as Book).then((m) => {
+      if (!cancelled) { setMatch(m); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [entry, open]);
+
+  const provider = getBookCoverProvider();
+  const posterUrl =
+    match?.poster_path && provider ? provider.imageUrl(match.poster_path) : null;
+
+  return { loading, posterUrl };
+}
+
 // ── EntryCard ─────────────────────────────────────────────────────────────────
 
 export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean }) {
@@ -272,12 +298,14 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   const { trips, people } = useJournal();
   const v = view(entry);
 
-  // Poster — only for film and episode entries
+  // Poster — film and episode entries use TMDB; book entries use Open Library
   const artworkKey =
     (entry.kind === "film" || entry.kind === "episode")
       ? eventToArtworkKey(entry)
       : null;
-  const { posterUrl } = usePoster(artworkKey, open);
+  const { posterUrl: filmPosterUrl } = usePoster(artworkKey, open);
+  const { posterUrl: bookCoverUrl } = useBookCover(entry, open);
+  const posterUrl = filmPosterUrl ?? bookCoverUrl;
   const Icon = entryIcon(v);
   const trip = trips.find((t) => t.id === entry.tripId);
 
@@ -357,7 +385,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
       </button>
       {open && (
         <div className="space-y-3 border-t border-border p-3">
-          {/* Poster — film and episode only */}
+          {/* Poster / cover — film, episode (TMDB) and book (Open Library) */}
           {posterUrl && (
             <div className="flex justify-center pb-1">
               <img

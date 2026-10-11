@@ -1,30 +1,36 @@
 /**
- * Artwork enrichment service — event posters WP4.
+ * Artwork enrichment service — event posters WP4 + book covers WP3.
  *
- * Two public functions:
+ * Public functions:
  *
- *   resolveArtwork(key)         — single-key lookup: cache → provider → store.
- *   enrichAll(entries, signal)  — background batch for all unmatched entries.
+ *   resolveArtwork(key)              — single-key lookup for films/TV: cache → provider → store.
+ *   resolveBookCoverForEntry(entry)  — book cover lookup: cache → provider → store.
+ *   enrichAll(entries, signal)       — background batch for all unmatched entries (films + books).
  *
- * Both respect the "Fetch posters" toggle (setFetchPostersEnabled).
- * WP5 wires up the toggle to a persisted user preference; WP4 manages the
- * in-memory state so unit tests can flip it without any I/O.
+ * Films/TV respect the "Fetch posters" toggle (setFetchPostersEnabled).
+ * Books respect the "Fetch book covers" toggle (setFetchBookCoversEnabled).
+ * WP5 wires up the toggles to persisted user preferences; this module manages
+ * in-memory state so unit tests can flip them without any I/O.
  *
- * Storage and provider are resolved lazily via the injected singletons from
- * artwork.ts and artworkProvider.ts — callers must call setArtworkStorage()
- * and setArtworkProvider() before the first resolve call.
+ * Storage and providers are resolved lazily via injected singletons:
+ *   artwork.ts         — setArtworkStorage()
+ *   artworkProvider.ts — setArtworkProvider()
+ *   bookCoverProvider.ts — setBookCoverProvider()
  */
 
 import {
   artworkStorage,
   eventToArtworkKey,
+  bookToArtworkKey,
   type ArtworkMatch,
   type ArtworkMediaType,
 } from "./artwork";
 import { getArtworkProvider, CONFIDENCE_THRESHOLD } from "./artworkProvider";
-import type { Entry } from "./types";
+import { getBookCoverProvider } from "./bookCoverProvider";
+import { normaliseTitle } from "./artwork";
+import type { Entry, Book } from "./types";
 
-// ─── Settings toggle ──────────────────────────────────────────────────────────
+// ─── Settings toggles ─────────────────────────────────────────────────────────
 
 /**
  * In-memory "Fetch posters" flag. Default: on.
@@ -42,6 +48,24 @@ export function getFetchPostersEnabled(): boolean {
  */
 export function setFetchPostersEnabled(enabled: boolean): void {
   _fetchEnabled = enabled;
+}
+
+/**
+ * In-memory "Fetch book covers" flag. Default: on.
+ * Book covers WP3 reads the persisted preference at app start and calls this setter.
+ */
+let _fetchBookCoversEnabled = true;
+
+export function getFetchBookCoversEnabled(): boolean {
+  return _fetchBookCoversEnabled;
+}
+
+/**
+ * Flip the book covers toggle. When disabled, resolveBookCoverForEntry and
+ * enrichAll skip book cover lookups; already-cached covers still display.
+ */
+export function setFetchBookCoversEnabled(enabled: boolean): void {
+  _fetchBookCoversEnabled = enabled;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -132,16 +156,96 @@ export async function resolveArtwork(key: string): Promise<ArtworkMatch | null> 
   }
 }
 
+// ─── resolveBookCoverForEntry ─────────────────────────────────────────────────
+
+/**
+ * Resolve a cover image for a single Book entry.
+ *
+ * Resolution order mirrors resolveArtwork:
+ *  1. Return any cached "manual" or "matched" hit immediately (no network).
+ *  2. Return null for a "none" hit younger than STALE_NONE_DAYS.
+ *  3. If the book covers toggle is off, return null.
+ *  4. Fetch from the book cover provider.
+ *
+ * Unlike resolveArtwork this takes the full entry (not just the key) because
+ * findBook requires author and isbn13, which are not encoded in the key.
+ */
+export async function resolveBookCoverForEntry(entry: Book): Promise<ArtworkMatch | null> {
+  const key = bookToArtworkKey(entry);
+  if (!key) return null;
+
+  const storage = artworkStorage();
+
+  // ── 1 & 2: cache check ──────────────────────────────────────────────────────
+  const cached = await storage.getByKey(key);
+  if (cached) {
+    if (cached.status === "manual" || cached.status === "matched") return cached;
+    if (cached.status === "none") {
+      const cutoff = staleCutoff();
+      if (cached.fetched_at >= cutoff) return null;
+      // Stale none: fall through to re-fetch
+    }
+  }
+
+  // ── 3: toggle check ──────────────────────────────────────────────────────────
+  if (!_fetchBookCoversEnabled) return null;
+
+  // ── 4: fetch ─────────────────────────────────────────────────────────────────
+  const provider = getBookCoverProvider();
+  if (!provider) return null;
+
+  const normTitle = normaliseTitle(entry.title);
+  const now = new Date().toISOString();
+
+  try {
+    const result = await provider.findBook(normTitle, entry.author, entry.isbn13);
+
+    if (result !== null && result.confidence >= CONFIDENCE_THRESHOLD) {
+      const match: ArtworkMatch = {
+        id: key,
+        key,
+        media_type: "book",
+        status: "matched",
+        provider: result.provider,
+        poster_path: result.poster_path,
+        title_matched: result.title_matched,
+        confidence: result.confidence,
+        fetched_at: now,
+      };
+      await storage.upsert(match);
+      return match;
+    }
+
+    // No confident match — cache as "none" for STALE_NONE_DAYS
+    const none: ArtworkMatch = {
+      id: key,
+      key,
+      media_type: "book",
+      status: "none",
+      provider: "open_library",
+      fetched_at: now,
+    };
+    await storage.upsert(none);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── enrichAll ────────────────────────────────────────────────────────────────
 
 /**
- * Background enrichment of all unmatched Film and Episode entries.
+ * Background enrichment of all unmatched Film, Episode, and Book entries.
  *
  * Steps:
- *  1. Collect distinct artwork keys across all entries.
- *  2. Skip keys that are already resolved (matched / manual / non-stale none).
- *  3. Resolve remaining keys with up to ENRICH_CONCURRENCY concurrent calls.
+ *  1. Collect distinct film/TV artwork keys; collect unresolved Book entries.
+ *  2. Skip already-resolved keys / entries.
+ *  3. Resolve remaining film/TV keys and book entries with concurrency limits.
  *  4. Abort early if the optional AbortSignal fires.
+ *
+ * Film/TV enrichment requires getArtworkProvider(); book cover enrichment
+ * requires getBookCoverProvider(). Each is skipped independently when its
+ * provider is absent or its toggle is off.
  *
  * Safe to call from import completion hooks and on app start.
  * A partial run leaves already-resolved keys intact.
@@ -150,54 +254,79 @@ export async function enrichAll(
   entries: Entry[],
   signal?: AbortSignal,
 ): Promise<void> {
-  if (!_fetchEnabled) return;
-  if (!getArtworkProvider()) return;
   if (signal?.aborted) return;
 
-  // ── 1: collect distinct keys ──────────────────────────────────────────────
-  const keySet = new Set<string>();
-  for (const entry of entries) {
-    const key = eventToArtworkKey(entry);
-    if (key) keySet.add(key);
-  }
-  if (!keySet.size) return;
-
-  // ── 2: filter to unresolved ────────────────────────────────────────────────
   const storage = artworkStorage();
   const cutoff = staleCutoff();
-  const toResolve: string[] = [];
 
-  for (const key of keySet) {
-    if (signal?.aborted) return;
-    const cached = await storage.getByKey(key);
-    if (!cached) {
-      toResolve.push(key);
-    } else if (cached.status === "none" && cached.fetched_at < cutoff) {
-      toResolve.push(key); // stale negative — eligible for retry
+  // ── Film / TV enrichment ───────────────────────────────────────────────────
+
+  if (_fetchEnabled && getArtworkProvider()) {
+    // 1: collect distinct film/TV keys (eventToArtworkKey now skips books)
+    const filmKeySet = new Set<string>();
+    for (const entry of entries) {
+      if (entry.kind === "book") continue; // books handled separately below
+      const key = eventToArtworkKey(entry);
+      if (key) filmKeySet.add(key);
     }
-    // matched / manual — already done, skip
+
+    if (filmKeySet.size && !signal?.aborted) {
+      // 2: filter to unresolved
+      const toResolve: string[] = [];
+      for (const key of filmKeySet) {
+        if (signal?.aborted) break;
+        const cached = await storage.getByKey(key);
+        if (!cached) toResolve.push(key);
+        else if (cached.status === "none" && cached.fetched_at < cutoff) toResolve.push(key);
+      }
+
+      // 3: resolve with concurrency limit
+      if (toResolve.length && !signal?.aborted) {
+        let i = 0;
+        async function filmWorker(): Promise<void> {
+          while (i < toResolve.length) {
+            if (signal?.aborted) return;
+            await resolveArtwork(toResolve[i++]);
+          }
+        }
+        const wc = Math.min(ENRICH_CONCURRENCY, toResolve.length);
+        await Promise.all(Array.from({ length: wc }, filmWorker));
+      }
+    }
   }
 
-  if (!toResolve.length || signal?.aborted) return;
+  if (signal?.aborted) return;
 
-  // ── 3: resolve with concurrency limit ─────────────────────────────────────
-  //
-  // Classic JS worker-pool: multiple async workers each claim the next index
-  // from a shared counter. Because `i++` is synchronous, no two workers claim
-  // the same item. Workers stop when the counter is exhausted or aborted.
-  //
-  let i = 0;
+  // ── Book cover enrichment ──────────────────────────────────────────────────
 
-  async function worker(): Promise<void> {
-    while (i < toResolve.length) {
-      if (signal?.aborted) return;
-      const key = toResolve[i++];
-      await resolveArtwork(key);
+  if (_fetchBookCoversEnabled && getBookCoverProvider()) {
+    // 1: collect book entries with a resolvable key
+    const bookEntries: Book[] = [];
+    for (const entry of entries) {
+      if (entry.kind !== "book") continue;
+      const key = bookToArtworkKey(entry);
+      if (!key) continue;
+      // 2: filter to unresolved
+      if (signal?.aborted) break;
+      const cached = await storage.getByKey(key);
+      if (!cached || (cached.status === "none" && cached.fetched_at < cutoff)) {
+        bookEntries.push(entry as Book);
+      }
+    }
+
+    // 3: resolve with concurrency limit
+    if (bookEntries.length && !signal?.aborted) {
+      let j = 0;
+      async function bookWorker(): Promise<void> {
+        while (j < bookEntries.length) {
+          if (signal?.aborted) return;
+          await resolveBookCoverForEntry(bookEntries[j++]);
+        }
+      }
+      const wc = Math.min(ENRICH_CONCURRENCY, bookEntries.length);
+      await Promise.all(Array.from({ length: wc }, bookWorker));
     }
   }
-
-  const workerCount = Math.min(ENRICH_CONCURRENCY, toResolve.length);
-  await Promise.all(Array.from({ length: workerCount }, worker));
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -215,11 +344,12 @@ interface ParsedKey {
   year: number | undefined;
 }
 
-/** Decompose an artwork key back into its constituent parts. Returns null for malformed keys. */
+/** Decompose an artwork key back into its constituent parts. Returns null for malformed keys or book keys (books use resolveBookCoverForEntry instead). */
 function parseKey(key: string): ParsedKey | null {
   const parts = key.split("|");
   if (parts.length !== 3) return null;
   const [mediaTypeRaw, normTitle, yearStr] = parts;
+  // Book keys are handled by resolveBookCoverForEntry, not resolveArtwork
   if (mediaTypeRaw !== "movie" && mediaTypeRaw !== "tv") return null;
   if (!normTitle) return null;
   const year = yearStr ? parseInt(yearStr, 10) : undefined;

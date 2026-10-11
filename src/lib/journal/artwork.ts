@@ -20,7 +20,7 @@ import { view } from "./types";
 
 // ─── Core types ───────────────────────────────────────────────────────────────
 
-export type ArtworkMediaType = "movie" | "tv";
+export type ArtworkMediaType = "movie" | "tv" | "book";
 
 /** "matched" = poster found; "none" = no match (cached, retried after 30 days); "manual" = user override */
 export type ArtworkMatchStatus = "matched" | "none" | "manual";

@@ -15,8 +15,9 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { initJournal, useJournal } from "@/lib/journal/db";
 import { IDBartworkStore, setArtworkStorage } from "@/lib/journal/artwork";
 import { TmdbProvider, setArtworkProvider } from "@/lib/journal/artworkProvider";
-import { setFetchPostersEnabled } from "@/lib/journal/artworkEnrichment";
-import { getPosterFetchEnabledPref } from "@/lib/posterPrefs";
+import { OpenLibraryProvider, setBookCoverProvider } from "@/lib/journal/bookCoverProvider";
+import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@/lib/journal/artworkEnrichment";
+import { getPosterFetchEnabledPref, getBookCoverFetchEnabledPref } from "@/lib/posterPrefs";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 
@@ -133,12 +134,15 @@ function RootComponent() {
       if (active) setInitError(error instanceof Error ? error.message : String(error));
     });
 
-    // Artwork / poster init — non-fatal if it fails
+    // Artwork / poster + book cover init — non-fatal if it fails
     try {
       setArtworkStorage(new IDBartworkStore());
       const apiKey = import.meta.env.VITE_TMDB_API_KEY as string | undefined;
       if (apiKey) setArtworkProvider(new TmdbProvider(apiKey));
       setFetchPostersEnabled(getPosterFetchEnabledPref());
+      // Book covers — Open Library requires no API key
+      setBookCoverProvider(new OpenLibraryProvider());
+      setFetchBookCoversEnabled(getBookCoverFetchEnabledPref());
     } catch (err) {
       console.warn("[Chronicle] Artwork init failed:", err);
     }

@@ -8,9 +8,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   resolveArtwork,
+  resolveBookCoverForEntry,
   enrichAll,
   setFetchPostersEnabled,
   getFetchPostersEnabled,
+  setFetchBookCoversEnabled,
+  getFetchBookCoversEnabled,
 } from "../artworkEnrichment";
 import {
   MemoryArtworkStore,
@@ -18,8 +21,9 @@ import {
   type ArtworkMatch,
 } from "../artwork";
 import { setArtworkProvider, type ArtworkProvider, type ArtworkProviderResult } from "../artworkProvider";
+import { setBookCoverProvider, type BookCoverProvider, type BookCoverResult } from "../bookCoverProvider";
 import { uid } from "../types";
-import type { Film, Episode, JEvent } from "../types";
+import type { Film, Episode, JEvent, Book } from "../types";
 
 // ─── Mock provider ────────────────────────────────────────────────────────────
 
@@ -373,5 +377,144 @@ describe("getFetchPostersEnabled", () => {
     expect(getFetchPostersEnabled()).toBe(false);
     setFetchPostersEnabled(true);
     expect(getFetchPostersEnabled()).toBe(true);
+  });
+});
+
+// ─── Book cover enrichment ────────────────────────────────────────────────────
+
+function book(title: string, author: string, year?: number, isbn13?: string): Book {
+  return {
+    id: uid(), kind: "book", source: "goodreads", tier: 2,
+    start: "2024-01-15", dedupeKey: `book|${title.toLowerCase()}|2024-01-15`,
+    title, author, year, isbn13, createdAt: new Date().toISOString(),
+  };
+}
+
+class MockBookCoverProvider implements BookCoverProvider {
+  calls: Array<{ normTitle: string; author: string; isbn13?: string }> = [];
+  private _result: BookCoverResult | null = null;
+
+  willReturn(r: BookCoverResult | null) { this._result = r; return this; }
+
+  readonly enabled = true;
+
+  async findBook(normTitle: string, author: string, isbn13?: string): Promise<BookCoverResult | null> {
+    this.calls.push({ normTitle, author, isbn13 });
+    return this._result;
+  }
+
+  imageUrl(path: string): string { return `https://covers.openlibrary.org${path}.jpg`; }
+}
+
+const MATCHED_BOOK_RESULT: BookCoverResult = {
+  provider: "open_library",
+  cover_id: 9255566,
+  poster_path: "/b/id/9255566-L",
+  title_matched: "Dune",
+  confidence: 0.8,
+};
+
+describe("resolveBookCoverForEntry", () => {
+  let bookProvider: MockBookCoverProvider;
+
+  beforeEach(() => {
+    bookProvider = new MockBookCoverProvider();
+    setBookCoverProvider(bookProvider);
+    setFetchBookCoversEnabled(true);
+  });
+
+  it("fetches and stores a cover on cache miss", async () => {
+    bookProvider.willReturn(MATCHED_BOOK_RESULT);
+    const entry = book("Dune", "Frank Herbert", 1965);
+    const result = await resolveBookCoverForEntry(entry);
+
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("matched");
+    expect(result!.media_type).toBe("book");
+    expect(result!.poster_path).toBe("/b/id/9255566-L");
+    expect(bookProvider.calls).toHaveLength(1);
+    expect(bookProvider.calls[0].normTitle).toBe("dune");
+    expect(bookProvider.calls[0].author).toBe("Frank Herbert");
+  });
+
+  it("passes isbn13 to findBook when present on the entry", async () => {
+    bookProvider.willReturn(MATCHED_BOOK_RESULT);
+    const entry = book("Dune", "Frank Herbert", 1965, "9780441013593");
+    await resolveBookCoverForEntry(entry);
+    expect(bookProvider.calls[0].isbn13).toBe("9780441013593");
+  });
+
+  it("stores a none record and returns null when provider finds nothing", async () => {
+    bookProvider.willReturn(null);
+    const entry = book("Dune", "Frank Herbert");
+    const result = await resolveBookCoverForEntry(entry);
+    expect(result).toBeNull();
+    const cached = await store.getByKey("book|dune|");
+    expect(cached?.status).toBe("none");
+  });
+
+  it("returns cached match without calling provider on second call", async () => {
+    bookProvider.willReturn(MATCHED_BOOK_RESULT);
+    const entry = book("Dune", "Frank Herbert");
+    await resolveBookCoverForEntry(entry);
+    await resolveBookCoverForEntry(entry);
+    expect(bookProvider.calls).toHaveLength(1); // second call served from cache
+  });
+
+  it("respects the book covers toggle — skips fetch when off", async () => {
+    setFetchBookCoversEnabled(false);
+    bookProvider.willReturn(MATCHED_BOOK_RESULT);
+    const result = await resolveBookCoverForEntry(book("Dune", "Frank Herbert"));
+    expect(result).toBeNull();
+    expect(bookProvider.calls).toHaveLength(0);
+  });
+
+  it("returns null when no book cover provider is set", async () => {
+    setBookCoverProvider(null as unknown as MockBookCoverProvider);
+    const result = await resolveBookCoverForEntry(book("Dune", "Frank Herbert"));
+    expect(result).toBeNull();
+  });
+});
+
+describe("enrichAll — book cover enrichment", () => {
+  let bookProvider: MockBookCoverProvider;
+
+  beforeEach(() => {
+    bookProvider = new MockBookCoverProvider().willReturn(MATCHED_BOOK_RESULT);
+    setBookCoverProvider(bookProvider);
+    setFetchBookCoversEnabled(true);
+  });
+
+  it("resolves book entries in enrichAll", async () => {
+    const entries = [book("Dune", "Frank Herbert"), book("1984", "George Orwell")];
+    await enrichAll(entries);
+    expect(bookProvider.calls).toHaveLength(2);
+  });
+
+  it("skips books when book covers toggle is off", async () => {
+    setFetchBookCoversEnabled(false);
+    await enrichAll([book("Dune", "Frank Herbert")]);
+    expect(bookProvider.calls).toHaveLength(0);
+  });
+
+  it("does not call book provider for film entries", async () => {
+    const entries = [film("Dune", 2021), book("Dune", "Frank Herbert")];
+    await enrichAll(entries);
+    // Film handled by film provider, book by book provider
+    expect(bookProvider.calls).toHaveLength(1);
+    expect(bookProvider.calls[0].normTitle).toBe("dune");
+  });
+});
+
+describe("getFetchBookCoversEnabled", () => {
+  it("returns true by default", () => {
+    expect(getFetchBookCoversEnabled()).toBe(true);
+  });
+
+  it("reflects setFetchBookCoversEnabled", () => {
+    setFetchBookCoversEnabled(false);
+    expect(getFetchBookCoversEnabled()).toBe(false);
+    setFetchBookCoversEnabled(true);
+    expect(getFetchBookCoversEnabled()).toBe(true);
   });
 });

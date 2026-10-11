@@ -1,0 +1,18 @@
+{
+  "numFound": 2,
+  "start": 0,
+  "docs": [
+    {
+      "key": "/works/OL45804W",
+      "title": "Dune",
+      "cover_i": 9255566,
+      "edition_count": 100
+    },
+    {
+      "key": "/works/OL45805W",
+      "title": "Dune",
+      "cover_i": 1234567,
+      "edition_count": 40
+    }
+  ]
+}

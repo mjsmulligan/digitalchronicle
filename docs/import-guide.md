@@ -246,6 +246,7 @@ Goodreads is the primary source for book data.
 **Notes:**
 - ISBN data is cleaned of an Excel formatting artifact (`="..."` wrapping) automatically.
 - Ratings of 0 (unrated in Goodreads) are imported without a rating rather than as a zero.
+- If a book has an ISBN-13, it is used to look up a cover image from Open Library. Books without an ISBN fall back to a title + author search. No personal data is sent — only the ISBN or title/author string.
 
 ### Manual entry (tier 1)
 
