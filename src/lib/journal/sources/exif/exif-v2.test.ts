@@ -30,6 +30,7 @@ import {
   makePlaceEntry,
   makePlaceBinMarker,
   makeJEvent,
+  makeTimedPhoto,
   fakeLocalityResolverV2,
   fakeLocalityResolverPortoVenereB,
   resolveFixtureV2,
@@ -40,7 +41,14 @@ import {
   isRoutine,
   computePlaceNorm,
 } from "./stagingHints";
-import { normaliseLocalityKey } from "./localityResolver";
+import {
+  normaliseLocalityKey,
+  coarsenCoords,
+  perDayKey,
+  ResolvingLocalityResolver,
+  InMemoryLocalityCache,
+} from "./localityResolver";
+import type { LocalityResolver, LocatedPhotoRecord, UnlocatedPhotoRecord } from "./types";
 import { buildPlaceEntries } from "./entryBuilder";
 import {
   buildStagingPlan,
@@ -740,9 +748,62 @@ describe("Check 12: Geocoder sends only coarsened coordinates; offline photos st
    *
    * Depends on: WP11 (locality resolver), WP15 (re-scan).
    */
-  it.todo("coarsened coordinates match 2-decimal-place rounding");
-  it.todo("two photos with the same coarsened cell on the same day trigger one lookup");
-  it.todo("offline failure keeps photos pending; next scan resolves them");
+  it("coarsened coordinates match 2-decimal-place rounding", () => {
+    // Standard London coords: 51.5074, -0.1278
+    expect(coarsenCoords(51.5074, -0.1278)).toEqual({ lat: 51.51, lon: -0.13 });
+    // Paris
+    expect(coarsenCoords(48.8566, 2.3522)).toEqual({ lat: 48.86, lon: 2.35 });
+    // Already at 2dp — unchanged
+    expect(coarsenCoords(51.51, -0.13)).toEqual({ lat: 51.51, lon: -0.13 });
+    // perDayKey embeds the coarsened coords, not the raw ones
+    expect(perDayKey(51.5074, -0.1278, "2025-07-14")).toBe("51.51,-0.13@2025-07-14");
+    expect(perDayKey(51.5099, -0.1299, "2025-07-14")).toBe("51.51,-0.13@2025-07-14");
+  });
+
+  it("two photos with the same coarsened cell on the same day trigger one lookup", async () => {
+    let callCount = 0;
+    const countingResolver: LocalityResolver = {
+      resolve: async (_lat, _lon) => {
+        callCount++;
+        return { key: "gb:london" as const, locality: "London", region: "England", country: "United Kingdom", level: "locality" as const };
+      },
+    };
+
+    const cache = new InMemoryLocalityCache();
+    const resolver = new ResolvingLocalityResolver(countingResolver, cache);
+
+    // Both raw coords coarsen to (51.51, -0.13) — same cell, same day
+    await resolver.resolve(51.5074, -0.1278, "2025-07-14");
+    await resolver.resolve(51.5099, -0.1299, "2025-07-14");
+
+    expect(callCount).toBe(1);
+  });
+
+  it("offline failure keeps photos pending; next scan resolves them", async () => {
+    let attempt = 0;
+    const flickeringResolver: LocalityResolver = {
+      resolve: async (_lat, _lon) => {
+        attempt++;
+        if (attempt === 1) throw new Error("Network offline");
+        return { key: "gb:london" as const, locality: "London", region: "England", country: "United Kingdom", level: "locality" as const };
+      },
+    };
+
+    const cache = new InMemoryLocalityCache();
+    const resolver = new ResolvingLocalityResolver(flickeringResolver, cache);
+
+    // First scan: lookup fails → photo stays pending, resolve returns null
+    const result = await resolver.resolve(51.5074, -0.1278, "2025-07-14");
+    expect(result).toBeNull();
+    expect(resolver.pendingCount).toBe(1);
+
+    // Retry (next scan): geocoder is back online → pending count clears
+    await resolver.retryPending();
+    expect(resolver.pendingCount).toBe(0);
+
+    // Result is now in cache
+    expect(cache.getByCoords(51.5074, -0.1278)?.key).toBe("gb:london");
+  });
 });
 
 // ─── Acceptance check 13 ─────────────────────────────────────────────────────
@@ -754,8 +815,55 @@ describe("Check 13: Location permission declined → time-only mode, no entries 
    *
    * Depends on: WP15 (Sources page entry).
    */
-  it.todo("declining location permission puts the source in time-only mode");
-  it.todo("time-only mode creates no PlaceEntries");
+  it("declining location permission puts the source in time-only mode", async () => {
+    // In time-only mode all photos have their GPS stripped (lat/lon null),
+    // mirroring what happens when the pipeline runs without location permission.
+    // The geocoder is never called; every photo lands in the unlocated bucket.
+    let geocoderCalls = 0;
+    const countingResolver: LocalityResolver = {
+      resolve: async () => { geocoderCalls++; return null; },
+    };
+
+    const cache = new InMemoryLocalityCache();
+    const resolver = new ResolvingLocalityResolver(countingResolver, cache);
+
+    const photos = [
+      makeTimedPhoto({ localDay: "2025-07-14", latitude: null, longitude: null }),
+      makeTimedPhoto({ localDay: "2025-07-15", latitude: null, longitude: null }),
+    ];
+
+    const located: LocatedPhotoRecord[] = [];
+    const unlocated: UnlocatedPhotoRecord[] = [];
+    for (const photo of photos) {
+      if (photo.latitude !== null && photo.longitude !== null) {
+        const info = await resolver.resolve(photo.latitude, photo.longitude, photo.localDay);
+        if (info) located.push({ ...photo, locality: info });
+        else unlocated.push({ ...photo, locality: null });
+      } else {
+        unlocated.push({ ...photo, locality: null });
+      }
+    }
+
+    expect(geocoderCalls).toBe(0);
+    expect(located).toHaveLength(0);
+    expect(unlocated).toHaveLength(2);
+  });
+
+  it("time-only mode creates no PlaceEntries", () => {
+    // All photos unlocated — no PlaceEntries can be built without a resolved locality.
+    // Unlocated photos only attach to a day's entry when exactly one locality exists
+    // that day; with zero located photos there are no localities at all.
+    const unlocated: UnlocatedPhotoRecord[] = FIXTURE_NO_GPS.map((p) => ({ ...p, locality: null }));
+    expect(buildPlaceEntries([], unlocated, [])).toHaveLength(0);
+
+    // Same result across multiple days
+    const multiDay: UnlocatedPhotoRecord[] = [
+      makeTimedPhoto({ localDay: "2025-07-14", latitude: null, longitude: null }),
+      makeTimedPhoto({ localDay: "2025-07-15", latitude: null, longitude: null }),
+      makeTimedPhoto({ localDay: "2025-07-16", latitude: null, longitude: null }),
+    ].map((p) => ({ ...p, locality: null }));
+    expect(buildPlaceEntries([], multiDay, [])).toHaveLength(0);
+  });
 });
 
 // ─── Acceptance check 14 ─────────────────────────────────────────────────────

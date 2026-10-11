@@ -104,7 +104,7 @@ describe("TmdbProvider.imageUrl", () => {
 
 describe("disabled provider (no API key)", () => {
   it("findMovie returns null without making any fetch call", async () => {
-    const noKeyProvider = new TmdbProvider(undefined);
+    const noKeyProvider = new TmdbProvider("");
     const mockFn = mockFetch({});
     vi.stubGlobal("fetch", mockFn);
     const result = await noKeyProvider.findMovie("dune", 2021);
@@ -113,7 +113,7 @@ describe("disabled provider (no API key)", () => {
   });
 
   it("findTv returns null without making any fetch call", async () => {
-    const noKeyProvider = new TmdbProvider(undefined);
+    const noKeyProvider = new TmdbProvider("");
     const mockFn = mockFetch({});
     vi.stubGlobal("fetch", mockFn);
     const result = await noKeyProvider.findTv("succession");
@@ -122,7 +122,7 @@ describe("disabled provider (no API key)", () => {
   });
 
   it("byExternalId returns null without making any fetch call", async () => {
-    const noKeyProvider = new TmdbProvider(undefined);
+    const noKeyProvider = new TmdbProvider("");
     const mockFn = mockFetch({});
     vi.stubGlobal("fetch", mockFn);
     const result = await noKeyProvider.byExternalId("imdb", "tt1375666", "movie");
@@ -185,12 +185,12 @@ describe("TmdbProvider.findMovie", () => {
     expect(result).toBeNull();
   });
 
-  it("includes api_key in the request URL", async () => {
+  it("sends Bearer token in Authorization header", async () => {
     const mockFn = mockFetch(searchMovieDune);
     vi.stubGlobal("fetch", mockFn);
     await provider.findMovie("dune", 2021);
-    const url: string = mockFn.mock.calls[0][0] as string;
-    expect(url).toContain("api_key=test_api_key_123");
+    const init = mockFn.mock.calls[0][1] as RequestInit;
+    expect((init?.headers as Record<string, string>)?.Authorization).toBe(`Bearer ${TEST_API_KEY}`);
   });
 
   it("does NOT include any personal identifiers in the URL", async () => {
@@ -198,8 +198,8 @@ describe("TmdbProvider.findMovie", () => {
     vi.stubGlobal("fetch", mockFn);
     await provider.findMovie("dune", 2021);
     const url: string = mockFn.mock.calls[0][0] as string;
-    // Only title, year, api_key, language, include_adult should appear
-    const allowedKeys = new Set(["api_key", "query", "year", "language", "include_adult"]);
+    // Only title, year, language, include_adult should appear — no api_key in URL (uses Bearer header)
+    const allowedKeys = new Set(["query", "year", "language", "include_adult"]);
     const urlObj = new URL(url);
     for (const key of urlObj.searchParams.keys()) {
       expect(allowedKeys).toContain(key);
@@ -227,14 +227,15 @@ describe("TmdbProvider.findTv", () => {
     expect(result).toBeNull();
   });
 
-  it("includes api_key in the request URL and nothing personal", async () => {
+  it("sends Bearer token in Authorization header and nothing personal in URL", async () => {
     const mockFn = mockFetch(searchTvSuccession);
     vi.stubGlobal("fetch", mockFn);
     await provider.findTv("succession");
     const url: string = mockFn.mock.calls[0][0] as string;
-    expect(url).toContain("api_key=test_api_key_123");
+    const init = mockFn.mock.calls[0][1] as RequestInit;
+    expect((init?.headers as Record<string, string>)?.Authorization).toBe(`Bearer ${TEST_API_KEY}`);
     const urlObj = new URL(url);
-    const allowed = new Set(["api_key", "query", "language", "include_adult"]);
+    const allowed = new Set(["query", "language", "include_adult"]);
     for (const key of urlObj.searchParams.keys()) {
       expect(allowed).toContain(key);
     }
