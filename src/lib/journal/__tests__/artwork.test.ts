@@ -1,12 +1,14 @@
 /**
- * Tests for artwork.ts — WP1 (types, storage, key building) and
- * WP2 (normaliseTitle, eventToArtworkKey).
+ * Tests for artwork.ts — WP1 (types, storage, key building),
+ * WP2 (normaliseTitle, eventToArtworkKey), and
+ * book covers WP1 (bookToArtworkKey).
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   normaliseTitle,
   artworkKey,
   eventToArtworkKey,
+  bookToArtworkKey,
   MemoryArtworkStore,
   setArtworkStorage,
   artworkStorage,
@@ -250,8 +252,8 @@ describe("eventToArtworkKey", () => {
       expect(eventToArtworkKey(makeEvent("gathering"))).toBeNull();
     });
 
-    it("book", () => {
-      expect(eventToArtworkKey(makeBook())).toBeNull();
+    it("book returns a book key (delegates to bookToArtworkKey)", () => {
+      expect(eventToArtworkKey(makeBook())).toBe("book|dune|");
     });
 
     it("leg (flight)", () => {
@@ -266,6 +268,55 @@ describe("eventToArtworkKey", () => {
       };
       expect(eventToArtworkKey(stay)).toBeNull();
     });
+  });
+});
+
+// ─── bookToArtworkKey (book covers WP1) ──────────────────────────────────────
+
+describe("bookToArtworkKey", () => {
+  it("returns book|normTitle|year for a book with year", () => {
+    const book: Book = {
+      id: uid(), kind: "book", source: "goodreads", tier: 2,
+      start: "2024-01-15", dedupeKey: "book|dune|2024-01-15",
+      title: "Dune", author: "Frank Herbert", year: 1965,
+      createdAt: new Date().toISOString(),
+    };
+    expect(bookToArtworkKey(book)).toBe("book|dune|1965");
+  });
+
+  it("returns book|normTitle| (empty year) for a book without year", () => {
+    const book: Book = {
+      id: uid(), kind: "book", source: "goodreads", tier: 2,
+      start: "2024-01-15", dedupeKey: "book|dune|2024-01-15",
+      title: "Dune", author: "Frank Herbert",
+      createdAt: new Date().toISOString(),
+    };
+    expect(bookToArtworkKey(book)).toBe("book|dune|");
+  });
+
+  it("strips accents from an accented title", () => {
+    const book: Book = {
+      id: uid(), kind: "book", source: "goodreads", tier: 2,
+      start: "2024-05-01", dedupeKey: "b|2024-05-01",
+      title: "Déjà Vu", author: "Some Author", year: 2000,
+      createdAt: new Date().toISOString(),
+    };
+    expect(bookToArtworkKey(book)).toBe("book|deja vu|2000");
+  });
+
+  it("strips leading 'The' article", () => {
+    const book: Book = {
+      id: uid(), kind: "book", source: "goodreads", tier: 2,
+      start: "2024-05-01", dedupeKey: "b|2024-05-01",
+      title: "The Name of the Wind", author: "Patrick Rothfuss", year: 2007,
+      createdAt: new Date().toISOString(),
+    };
+    expect(bookToArtworkKey(book)).toBe("book|name of the wind|2007");
+  });
+
+  it("returns null for a non-book entry", () => {
+    expect(bookToArtworkKey(makeBook())).toBe("book|dune|");  // makeBook() has no year
+    expect(bookToArtworkKey(makeLeg())).toBeNull();
   });
 });
 
