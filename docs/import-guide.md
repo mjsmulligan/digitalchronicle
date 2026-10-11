@@ -262,3 +262,17 @@ Use **Add entry → Book** in the journal. Fill in title, author, year, series d
 **Re-importing is safe.** Importing the same file twice will mark all entries as duplicates in staging — nothing will be added unless you've since deleted entries from your journal.
 
 **Manual corrections always win.** Any field you've edited manually (via the corrections panel on an entry card) is stored as an override and will survive future re-imports of the same source.
+
+---
+
+## Enrichment layer
+
+After import, the journal can fetch supplemental data that is not part of any connector export. This data is stored in a **separate database** and is never included in your JSON backup — if you restore a backup or import on a new device, enrichment simply re-runs automatically.
+
+### Film and episode posters (TMDB)
+
+When a TMDB API key is configured, the journal automatically fetches poster images for film and episode entries and caches them locally. Posters appear on the entry detail page (mobile) and in the expanded entry card (web). The toggle to enable or disable fetching is in Settings (mobile) and the Backup page (web).
+
+Posters are an enrichment layer: they are not part of your journal data, are not exported, and re-enriching from scratch after a restore is lossless.
+
+**Next enrichment source planned:** book cover images via Goodreads, reusing the same `ArtworkStorage` and `ArtworkProvider` architecture.

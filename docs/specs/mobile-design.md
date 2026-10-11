@@ -302,6 +302,25 @@ Build these once in `mobile/src/components/` and use them everywhere. New screen
 | `PersonChips` | participants display and editor |
 | `ScreenHeaderAction` | quiet text action at the top of a list |
 | `Dialog` (existing) | restyle for Paper |
+| `PosterCard` | poster image for film and episode entries (see below) |
+
+### PosterCard
+
+`mobile/src/components/PosterCard.tsx`
+
+Props: `{ artworkKey: string; title: string }`. Resolves the artwork key via `resolveArtwork` (cache-first: `ArtworkStorage` then `TmdbProvider`) and renders the poster at a fixed 120x180dp.
+
+State machine: `"loading"` (120x180 transparent placeholder to prevent layout jump) | `"found"` (image fades in via `Animated.timing`) | `"none"` (returns null, no space reserved).
+
+Visual: paper-print treatment — `transform: [{ rotate: "-1.5deg" }]` with platform shadow props. The poster is rendered with RN's built-in `Image` component; swap to `expo-image` with `cachePolicy="disk"` once `expo-image` is installed for persistent disk caching across app restarts.
+
+Accessibility: `accessibilityLabel="Poster for {title}"`, `accessibilityRole="image"`.
+
+Used in: `app/entry/[id].tsx` inside `FilmDetail` and `EpisodeDetail`, placed above the `<Divider>`.
+
+The artwork database (`chronicle-artwork.db`) is separate from the main journal database and is excluded from JSON backups. Posters re-enrich automatically after a restore.
+
+TMDB attribution: "This product uses the TMDB API but is not endorsed or certified by TMDB." Displayed in the Posters section of the Settings screen alongside the fetch toggle.
 
 ---
 
@@ -441,7 +460,7 @@ Not in the shared model today. Proposed minimum, to be confirmed in Phase 5:
 | Q2 | Where do `New trip` and `Import contacts` live? | none | Closed: inside their own tabs (Trips and People) as text actions at the top of each list |
 | Q3 | Should Leather remain a supported theme long term? | none | Closed: yes. Theming becomes a user-selectable feature in Settings; further themes are a backlog item (Phase 7) |
 | Q4 | Is a custom launcher icon design needed? | none | Closed: a simple notebook glyph is fine for now; the icon will likely be redesigned later |
-| Q5 | Poster and cover imagery for Culture: in scope for a later spec? | none | Deferred |
+| Q5 | Poster and cover imagery for Culture: in scope for a later spec? | none | Closed: film and episode posters implemented via TMDB (WP5-WP7 on `feat/event-posters-wp5-wp7`). `PosterCard` component on mobile entry detail page; poster image in web `EntryCard`. Book cover images are the next planned enrichment source (see BACKLOG.md section 3). Culture list-view poster thumbnails remain deferred. |
 | Q6 | Which themes, and what palettes and fonts, for the gallery? The user has ideas from an earlier travel app iteration (paper, leather, steampunk, 1950s retro-future, others). | Phase 7 | Open: user to share the earlier designs when ready |
 
 Agents: when a question is answered, change its status to `Closed` with the answer and add a Decision log row.
@@ -463,6 +482,8 @@ Agents: when a question is answered, change its status to `Closed` with the answ
 | 2026-10-03 | Entries are hairline rows, not bordered cards | Paper feel |
 | 2026-10-03 | Theming is a user-selectable feature (Paper, Leather now; steampunk, retro-future and others in Phase 7); themes are data-driven `ThemeDefinition`s and components never branch on theme (Q3) | User wants a themable app; keeps future themes cheap |
 | 2026-10-03 | Agents work sequentially, never in parallel; Claude Code works in tightly defined work packages, each tested and committed, then stops and reports | Proven workflow; avoids conflicts and half-done branches |
+| 2026-10-11 | Artwork (posters, future book covers) stored in a separate database excluded from JSON backups; re-enriches after restore | Backup portability: image bytes should never bloat a JSON backup; re-enrichment is cheap and automatic |
+| 2026-10-11 | `PosterCard` uses RN built-in `Image` for now; swap to `expo-image` with `cachePolicy="disk"` once it is installed | `expo-image` was not installed at the time; built-in `Image` is fully functional; the upgrade path is noted in the component file |
 | 2026-10-03 | Launcher icon: simple notebook glyph for now, expected to change later (Q4) | Not worth design time yet |
 | 2026-10-03 | Moments tab hidden but not removed; moments handling deferred to a later revision (Q1) | Tab will likely return; avoid losing the code |
 | 2026-10-03 | `New trip` and `Import contacts` move into the Trips and People tabs (Q2) | Keeps the top bar to Sources and Settings |
@@ -472,6 +493,8 @@ Agents: when a question is answered, change its status to `Closed` with the answ
 ## 13. Progress log
 
 Newest first. One entry per session.
+
+- **2026-10-11 (WP9 wrap-up: docs and export verification):** Film and episode poster feature (WP5-WP7) fully documented. Added `PosterCard` to the component table and its spec subsection in section 8 (props, state machine, visual treatment, accessibility, TMDB attribution, artwork database separation). Closed Q5. Test suite at 275 passing / 11 todo, no failures. Export verification: `STORES` in `types.ts` does not include any artwork store; `IDBartworkStore` opens a separate `chronicle-artwork` IndexedDB; `SQLiteArtworkStore` opens `chronicle-artwork.db`; neither is touched by `replaceAll`/`clearAll`/`JournalData` in `backup.tsx`. Chronicle export JSON is confirmed artwork-free. Updated `docs/import-guide.md` (Enrichment layer section) and `BACKLOG.md` (posters to Recently completed, new section 3 Enrichment with book covers as next). PR #122 (`feat/event-posters-wp5-wp7`) open for merge.
 
 - **2026-10-03 (WP1.11 complete):** App shell. Generated three assets with PIL: `assets/icon.png` (1024×1024, parchment bg `#F9F3E6`, rust `#A5492B` closed-notebook with spine strip, ruled lines, and bookmark ribbon), `assets/adaptive-icon.png` (1024×1024 RGBA, same mark on transparent background, centred in Android safe zone), `assets/splash.png` (1284×2778 `#F9F3E6` background with centred notebook mark). Updated `app.json`: added `splash.image`, `splash.resizeMode: "contain"`, `android.adaptiveIcon.foregroundImage`, and `android.predictiveBackGestureEnabled: true`. Updated `AndroidManifest.xml`: `android:enableOnBackInvokedCallback` flipped to `"true"` for Android 14+ predictive-back gesture. Updated `MainActivity.kt`: added `WindowCompat.setDecorFitsSystemWindows(window, false)` before `setTheme` (uses `androidx.core` which is already a transitive dependency via `expo-modules-core`) to draw the app behind the status bar and navigation bar. `androidx.core` availability confirmed via `expo-status-bar` and `expo-modules-core` gradle declarations.
 
