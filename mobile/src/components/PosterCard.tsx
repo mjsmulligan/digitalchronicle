@@ -35,8 +35,11 @@ import type { ArtworkMatch } from "@chronicle/journal/artwork";
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const POSTER_WIDTH = 120;
+const POSTER_WIDTH  = 120;
 const POSTER_HEIGHT = 180; // strict 2:3 ratio
+
+const COMPACT_WIDTH  = 80;
+const COMPACT_HEIGHT = 120; // same 2:3 ratio
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -44,11 +47,19 @@ interface Props {
   artworkKey: string;
   /** Title used for the accessible label: "Poster for {title}" */
   title: string;
+  /**
+   * "detail" (default) — large centered poster with tilt and shadow for the
+   *   entry detail screen.
+   * "compact" — smaller (80×120), no tilt, left-aligned, for inline list use
+   *   (culture page group headers and standalone entries).
+   */
+  variant?: "detail" | "compact";
 }
 
 type PosterState = "loading" | "found" | "none";
 
-export function PosterCard({ artworkKey, title }: Props) {
+export function PosterCard({ artworkKey, title, variant = "detail" }: Props) {
+  const compact = variant === "compact";
   const { colors, radius } = useTheme();
   const [state, setState] = useState<PosterState>("loading");
   const [match, setMatch] = useState<ArtworkMatch | null>(null);
@@ -87,35 +98,53 @@ export function PosterCard({ artworkKey, title }: Props) {
   const imageUri =
     match?.poster_path && provider ? provider.imageUrl(match.poster_path) : null;
 
-  const containerStyle: ViewStyle = {
-    width: POSTER_WIDTH,
-    height: POSTER_HEIGHT,
-    borderRadius: radius.lg ?? 10,
-    overflow: "hidden",
-    // Paper-print: gentle counter-clockwise tilt + soft drop shadow
-    transform: [{ rotate: "-1.5deg" }],
-    shadowColor: "#000",
-    shadowOffset: { width: 1, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 6,
-    elevation: 4,
-    alignSelf: "center" as const,
-    marginVertical: 8,
-  };
+  const w = compact ? COMPACT_WIDTH  : POSTER_WIDTH;
+  const h = compact ? COMPACT_HEIGHT : POSTER_HEIGHT;
 
-  const placeholderStyle: ViewStyle = {
-    width: POSTER_WIDTH,
-    height: POSTER_HEIGHT,
-    borderRadius: radius.lg ?? 10,
-    backgroundColor: colors.border,
-    alignSelf: "center" as const,
-    marginVertical: 8,
-  };
+  const containerStyle: ViewStyle = compact
+    ? {
+        width: w,
+        height: h,
+        borderRadius: radius.md ?? 6,
+        overflow: "hidden",
+        alignSelf: "flex-start" as const,
+        marginBottom: 8,
+      }
+    : {
+        width: w,
+        height: h,
+        borderRadius: radius.lg ?? 10,
+        overflow: "hidden",
+        // Paper-print: gentle counter-clockwise tilt + soft drop shadow
+        transform: [{ rotate: "-1.5deg" }],
+        shadowColor: "#000",
+        shadowOffset: { width: 1, height: 3 },
+        shadowOpacity: 0.18,
+        shadowRadius: 6,
+        elevation: 4,
+        alignSelf: "center" as const,
+        marginVertical: 8,
+      };
 
-  const imageStyle: ImageStyle = {
-    width: POSTER_WIDTH,
-    height: POSTER_HEIGHT,
-  };
+  const placeholderStyle: ViewStyle = compact
+    ? {
+        width: w,
+        height: h,
+        borderRadius: radius.md ?? 6,
+        backgroundColor: colors.border,
+        alignSelf: "flex-start" as const,
+        marginBottom: 8,
+      }
+    : {
+        width: w,
+        height: h,
+        borderRadius: radius.lg ?? 10,
+        backgroundColor: colors.border,
+        alignSelf: "center" as const,
+        marginVertical: 8,
+      };
+
+  const imageStyle: ImageStyle = { width: w, height: h };
 
   // While resolving: show a quiet placeholder to reserve space
   if (state === "loading") {
