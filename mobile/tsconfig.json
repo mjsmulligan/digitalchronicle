@@ -37,6 +37,9 @@
       ],
       "@chronicle/journal/artworkProvider": [
         "../src/lib/journal/artworkProvider"
+      ],
+      "@chronicle/journal/bookCoverProvider": [
+        "../src/lib/journal/bookCoverProvider"
       ]
     }
   },

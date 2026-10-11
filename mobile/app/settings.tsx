@@ -13,8 +13,8 @@ import { Stack } from "expo-router";
 import { clearAll, allHiddenEntries, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
 import { useHomePrefs } from "../src/lib/useHomePrefs";
-import { getPosterFetchEnabled, setPosterFetchEnabled } from "../src/lib/posterPrefs";
-import { setFetchPostersEnabled } from "@chronicle/journal/artworkEnrichment";
+import { getPosterFetchEnabled, setPosterFetchEnabled, getBookCoverFetchEnabled, setBookCoverFetchEnabled } from "../src/lib/posterPrefs";
+import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@chronicle/journal/artworkEnrichment";
 
 export default function SettingsScreen() {
   const journal = useJournal();
@@ -30,14 +30,23 @@ export default function SettingsScreen() {
 
   // Posters toggle — loaded from persistent prefs
   const [fetchPosters, setFetchPostersState] = useState(true);
+  // Book covers toggle — loaded from persistent prefs
+  const [fetchBookCovers, setFetchBookCoversState] = useState(true);
   useEffect(() => {
     getPosterFetchEnabled().then(setFetchPostersState);
+    getBookCoverFetchEnabled().then(setFetchBookCoversState);
   }, []);
 
   const handleFetchPostersToggle = async (value: boolean) => {
     setFetchPostersState(value);
     setFetchPostersEnabled(value);      // update in-memory toggle immediately
     await setPosterFetchEnabled(value); // persist for next launch
+  };
+
+  const handleFetchBookCoversToggle = async (value: boolean) => {
+    setFetchBookCoversState(value);
+    setFetchBookCoversEnabled(value);
+    await setBookCoverFetchEnabled(value);
   };
 
   const styles = useMemo(() => StyleSheet.create({
@@ -369,8 +378,8 @@ export default function SettingsScreen() {
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       </Pressable>
 
-      {/* ── Posters ─────────────────────────────────────────────────────── */}
-      <Text style={styles.sectionTitle}>Posters</Text>
+      {/* ── Posters & covers ────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>Posters &amp; covers</Text>
 
       <View style={styles.card}>
         <View style={styles.statRow}>
@@ -382,14 +391,24 @@ export default function SettingsScreen() {
             thumbColor={colors.surface}
           />
         </View>
+        <View style={styles.divider} />
+        <View style={styles.statRow}>
+          <Text style={styles.statLabel}>Fetch book covers</Text>
+          <Switch
+            value={fetchBookCovers}
+            onValueChange={handleFetchBookCoversToggle}
+            trackColor={{ false: colors.border, true: colors.accent }}
+            thumbColor={colors.surface}
+          />
+        </View>
       </View>
       <Text style={[styles.inputHint, { marginBottom: spacing.sm }]}>
-        When on, only film and show titles (and release years) are sent to TMDB to look up poster images. No personal data is included.
+        When on, film/show titles are sent to TMDB for posters; book titles and authors are sent to Open Library for covers. No personal data is included.
       </Text>
 
-      {/* TMDB attribution — required by TMDB API terms */}
+      {/* Attribution */}
       <Text style={[styles.inputHint, { marginBottom: spacing.xl, color: colors.textMuted }]}>
-        This product uses the TMDB API but is not endorsed or certified by TMDB.
+        This product uses the TMDB API but is not endorsed or certified by TMDB.{"\n"}Book cover images from Open Library (openlibrary.org).
       </Text>
 
       {/* ── Database ────────────────────────────────────────────────────── */}

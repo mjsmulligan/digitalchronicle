@@ -22,6 +22,8 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 - [x] **Star rendering** — `rating` (0–10) displayed as half-stars in EntryCard and list views.
 - [x] **Book & Episode in quick-add dialog** — both kinds available in the manual add flow.
 - [x] **`dateStarted` UI** — optional reading-start date on Book entries.
+- [x] **Event posters (film & episode)** — TMDB poster images on Film and Episode entries; cached in a separate SQLite/IDB artwork store; settings toggle; TMDB attribution.
+- [x] **Book covers** — Open Library cover images on Book entries; ISBN probe + title/author search fallback; `isbn13` persisted from Goodreads; no API key required; separate toggle; attribution.
 - [x] **iCalendar connector** (tier 3) — `.ics` files from Google/Apple/Outlook Calendar; multi-day all-day events → Stays; single-day → JEvents with keyword-inferred categories.
 - [x] **Import guide** (`docs/import-guide.md`) — per-source export instructions for all supported connectors.
 - [x] **People store** — `Person` records in IndexedDB with `isSelf` flag for journal owner; `participants?: string[]` on Base (undefined = self implicit, `[]` = self explicitly removed).
@@ -29,6 +31,7 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 - [x] **`/people` route** — self setup, people index with entry counts, contacts import section.
 - [x] **Participant picker on entry cards** — add/remove participants with typeahead search; create person on the fly; self shown by default.
 - [x] **`/people/:id` timeline** — per-person entry timeline with All / Trips / Culture / Moments filter pills; linked from the people index.
+- [x] **Film and episode posters (TMDB)** — `ArtworkStorage` interface (`IDBartworkStore` web, `SQLiteArtworkStore` mobile, `MemoryArtworkStore` tests); `TmdbProvider` with confidence threshold, throttle and retry; `resolveArtwork` (cache-first) and `enrichAll` (worker pool with abort signal); `PosterCard` component on mobile entry detail page; poster image in expanded `EntryCard` on web; settings toggle and TMDB attribution on both platforms. Artwork stored in a separate database (`chronicle-artwork`) excluded from JSON backups; re-enriches automatically after a restore.
 
 ---
 
@@ -56,7 +59,14 @@ All importers feed into the Staging Hub for preview, duplicate detection, and ti
 
 ---
 
-## 3. Direct Local Integrations (Zero-Cloud Sync)
+## 3. Enrichment (Supplemental Data, Not Backup-Included)
+
+Enrichment data is stored in a separate database, excluded from JSON backups, and re-fetched automatically after a restore. The architecture (`ArtworkStorage`, `ArtworkProvider`, `resolveArtwork`, `enrichAll`) is reusable across sources.
+
+- [x] **Film and episode posters** — TMDB API; see Recently completed above.
+- [ ] **Book cover images** — the next planned enrichment source. Reuse `ArtworkStorage` and `ArtworkProvider`; add a `GoodreadsCoversProvider` (or `OpenLibraryProvider`) that looks up covers by ISBN or title. The `artworkKey` format and `normaliseTitle` logic already handle book entries when `kind === "book"`.
+
+## 5. Direct Local Integrations (Zero-Cloud Sync)
 
 Direct browser-to-service connections. All tokens and credentials stay on-device in browser storage.
 
@@ -67,7 +77,7 @@ Direct browser-to-service connections. All tokens and credentials stay on-device
 
 ---
 
-## 4. Data Model (Outstanding)
+## 6. Data Model (Outstanding)
 
 - [ ] **Field-level dedup resolution** — the current tier model assigns precedence to a whole entry. Cross-source imports (e.g. Netflix has the accurate watch date; Letterboxd has the rating and review) could benefit from field-level merging. The `reflection` field is already preserved this way in `commitBatch`; generalise the pattern.
 - [ ] **`Read Count` from Goodreads** — a count > 1 implies re-reads that aren't individually dated. Currently imported as a single entry; consider surfacing the count as metadata or prompting the user to add re-read entries.
@@ -75,7 +85,7 @@ Direct browser-to-service connections. All tokens and credentials stay on-device
 
 ---
 
-## 5. React Native (Expo) — Mobile Companion
+## 7. React Native (Expo) — Mobile Companion
 
 Chronicle is transitioning to a native iOS and Android app via a **pragmatic hybrid monorepo**: the root web app (TanStack Start + Vite + Tailwind + shadcn/ui) stays intact and the `src/lib/journal/` core engine remains the single source of truth, shared with a new `./mobile` Expo project.
 
@@ -126,6 +136,6 @@ digitalchronicle/          ← existing web root (TanStack Start)
 
 ---
 
-## 6. Infrastructure & Developer Experience
+## 8. Infrastructure & Developer Experience
 
 - [ ] **Automated Backup Reminders** — local banner reminding users to export a JSON snapshot after significant batch commits.

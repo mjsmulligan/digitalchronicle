@@ -132,6 +132,7 @@ function parseGoodreads(text: string): ParseResult {
       ...(rating !== undefined && { rating }),
       ...(review && { review }),
       ...(goodreadsId && { goodreadsId }),
+      ...(isbn13 && { isbn13 }),
       ...(series && { series }),
       ...(seriesNumber !== undefined && { seriesNumber }),
       dedupeKey: dedupeKey(norm(title), norm(rawAuthor), dateRead ?? ""),
