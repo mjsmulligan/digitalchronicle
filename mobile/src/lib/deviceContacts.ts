@@ -5,7 +5,8 @@
  * Read-only and fully on-device: nothing is written back to the address book
  * and nothing leaves the phone.
  */
-import * as Contacts from "expo-contacts";
+import * as Contacts from "expo-contacts/legacy";
+import * as FileSystem from "expo-file-system/legacy";
 import type { ContactDraft } from "@chronicle/journal/contacts";
 
 export type DeviceContactsResult =
@@ -15,6 +16,55 @@ export type DeviceContactsResult =
 
 function clean(s: string | null | undefined): string {
   return (s ?? "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Converts a contact Image object to a base64 data URI.
+ *
+ * Strategy:
+ *   1. Use image.base64 directly if expo-contacts already decoded it.
+ *   2. Try FileSystem.readAsStringAsync on file:// URIs (iOS).
+ *   3. Try fetch() → blob → FileReader for content:// URIs (Android).
+ *
+ * Returns null silently on any failure — a missing photo is never fatal.
+ */
+async function imageToBase64(image: Contacts.Image): Promise<string | null> {
+  // 1. Already decoded
+  if (image.base64) {
+    const b64 = image.base64.replace(/^data:image\/[^;]+;base64,/, "");
+    return b64 ? `data:image/jpeg;base64,${b64}` : null;
+  }
+
+  const uri = image.uri;
+  if (!uri) return null;
+
+  // 2. file:// — FileSystem handles this on both platforms
+  if (uri.startsWith("file://")) {
+    try {
+      const b64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      return b64 ? `data:image/jpeg;base64,${b64}` : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // 3. content:// (Android) — fetch() can't handle content-provider URIs.
+  //    Copy to the Expo cache dir first (uses Android ContentResolver), then
+  //    read the cached file as base64.
+  try {
+    const dest = `${FileSystem.cacheDirectory}contact_photo_${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+    await FileSystem.copyAsync({ from: uri, to: dest });
+    const b64 = await FileSystem.readAsStringAsync(dest, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    // Clean up — fire-and-forget, failure is harmless
+    FileSystem.deleteAsync(dest, { idempotent: true }).catch(() => {});
+    return b64 ? `data:image/jpeg;base64,${b64}` : null;
+  } catch {
+    return null;
+  }
 }
 
 export function toDraft(c: Contacts.Contact): ContactDraft | null {
@@ -49,19 +99,40 @@ export async function readDeviceContacts(): Promise<DeviceContactsResult> {
       Contacts.Fields.LastName,
       Contacts.Fields.Nickname,
       Contacts.Fields.MaidenName,
+      Contacts.Fields.ImageAvailable,
+      Contacts.Fields.Image,
     ],
     sort: Contacts.SortTypes.FirstName,
   });
 
+  // Build drafts (synchronous pass)
   const seen = new Set<string>();
-  const contacts: { draft: ContactDraft; sourceRow: number }[] = [];
+  const rawContacts: { draft: ContactDraft; sourceRow: number; image?: Contacts.Image }[] = [];
   data.forEach((c, i) => {
     const draft = toDraft(c);
     if (!draft) return;
     const key = draft.name.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    contacts.push({ draft, sourceRow: i + 1 });
+    // Only attempt photo fetch when imageAvailable is explicitly true.
+    // The contacts/X/photo URI always returns a small system placeholder even
+    // for contacts with no real photo, so gating on imageAvailable is essential.
+    rawContacts.push({
+      draft,
+      sourceRow: i + 1,
+      image: c.imageAvailable ? (c.image ?? undefined) : undefined,
+    });
   });
+
+  // Resolve photos in parallel — failures are silently ignored
+  await Promise.all(
+    rawContacts.map(async (entry) => {
+      if (!entry.image) return;
+      const photo = await imageToBase64(entry.image);
+      if (photo) entry.draft = { ...entry.draft, photo };
+    }),
+  );
+
+  const contacts = rawContacts.map(({ draft, sourceRow }) => ({ draft, sourceRow }));
   return { status: "ok", contacts };
 }

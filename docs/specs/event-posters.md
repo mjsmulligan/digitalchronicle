@@ -282,6 +282,7 @@ This simplifies WP2: `eventToArtworkKey` returns `null` for all `JEvent` entries
 2. **Section 5**: Add a note that `artwork_match` is **not** part of `JournalData`/`STORES` — it is managed in a separate storage channel so it is automatically excluded from chronicle export and `clearAll` (dev reset). Dev reset for artwork specifically means emptying the artwork store, not the main data.
 3. **Section 6**: Note that the "direct lookup via IMDb/TMDB id" path is currently unreachable (no source populates these ids), but retain for future connectors.
 4. **WP2**: For `Episode` entries, use `entry.showTitle` directly as the series name — the Netflix parser already extracted it. No re-parsing needed.
+(empty)
 
 ## 10. Open questions for Mike
 

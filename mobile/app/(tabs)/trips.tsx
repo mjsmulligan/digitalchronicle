@@ -4,30 +4,18 @@
  * The date column shows the trip's start date (big serif number) so the tab
  * reads chronologically like the Chronicle and Culture tabs.
  */
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { Link, useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import type { Trip } from "@chronicle/journal/types";
+import type { Trip, Leg } from "@chronicle/journal/types";
+import { suggestTrips, type TripSuggestion } from "../../src/lib/tripSuggestion";
+import { getHomePrefs } from "../../src/lib/homePrefs";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN",
-                      "JUL","AUG","SEP","OCT","NOV","DEC"];
-const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-
-function parseDay(iso: string) {
-  const d = new Date(iso + "T12:00:00");
-  return {
-    num:   d.getDate().toString(),
-    day:   DAYS_SHORT[d.getDay()],
-    month: MONTHS_SHORT[d.getMonth()],
-    year:  d.getFullYear().toString(),
-  };
-}
+import { MONTHS_SHORT } from "../../src/lib/dateHelpers";
+import { DateColumn } from "../../src/components/DateColumn";
 
 function fmtEnd(iso: string): string {
   const d = new Date(iso + "T12:00:00");
@@ -41,16 +29,7 @@ function nights(trip: Trip): number {
   );
 }
 
-/** Maps trip purpose to the KindIcon kind string. */
-const PURPOSE_KIND: Record<string, string> = {
-  leisure: "leisure",
-  work:    "work",
-  family:  "family",
-};
-
 // ── styles factory ────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
 
 function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
@@ -76,38 +55,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       paddingHorizontal: spacingScale.base,
       paddingTop: spacingScale.xl,
       paddingBottom: spacingScale.sm,
-    },
-
-    // Date column
-    dateCol: {
-      width: DATE_COL_W,
-      alignItems: "center",
-      paddingTop: 2,
-      flexShrink: 0,
-    },
-    dateNum: {
-      fontFamily: fonts.serifBold,
-      fontWeight: "700",
-      ...textScale.dayNum,
-      color: colors.textBright,
-    },
-    dateSub: {
-      fontFamily: fonts.mono,
-      fontSize: 10,
-      fontWeight: "700",
-      letterSpacing: 0.8,
-      color: colors.textTertiary,
-      lineHeight: 15,
-      textTransform: "uppercase" as const,
-    },
-
-    // Vertical rule
-    dateRule: {
-      width: 1,
-      alignSelf: "stretch",
-      backgroundColor: colors.border,
-      marginHorizontal: spacingScale.md,
-      marginTop: 4,
     },
 
     // Card column
@@ -174,6 +121,46 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       fontWeight: "600",
     },
 
+    // Suggestion banner
+    suggestSection: {
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.lg,
+      paddingBottom: spacingScale.sm,
+    },
+    suggestHeading: {
+      ...textScale.label,
+      color: colors.textTertiary,
+      marginBottom: spacingScale.sm,
+    },
+    suggestCard: {
+      backgroundColor: colors.surfaceAccent,
+      borderRadius: radiusScale.lg,
+      borderWidth: 1,
+      borderColor: colors.accentSubtle,
+      paddingHorizontal: spacingScale.md2,
+      paddingVertical: spacingScale.md,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm,
+      marginBottom: spacingScale.sm,
+    },
+    suggestCardPressed: { opacity: 0.65 },
+    suggestTitle: {
+      flex: 1,
+      fontFamily: fonts.serifSemiBold,
+      fontWeight: "600",
+      ...textScale.base,
+      color: colors.accentSoft,
+    },
+    suggestMeta: {
+      ...textScale.sm,
+      color: colors.textSecondary,
+    },
+    suggestChevron: {
+      color: colors.accentSoft,
+      fontSize: 16,
+    },
+
     empty: {
       flex: 1,
       backgroundColor: colors.bg,
@@ -217,9 +204,8 @@ interface TripItem {
   suggested: number;
 }
 
-function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; colors: ThemeColors }) {
+function TripRow({ item, styles, colors, fonts }: { item: TripItem; styles: Styles; colors: ThemeColors; fonts: ThemeFonts }) {
   const { trip, entryCount, flights, trains, stays, events, suggested } = item;
-  const { num, day, month, year } = parseDay(trip.start);
   const n = nights(trip);
   const router = useRouter();
 
@@ -232,16 +218,8 @@ function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; col
 
   return (
     <View style={styles.row}>
-      {/* Left: start date */}
-      <View style={styles.dateCol}>
-        <Text style={styles.dateNum}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-
-      {/* Centre: vertical rule */}
-      <View style={styles.dateRule} />
+      {/* Left: start date + rule */}
+      <DateColumn iso={trip.start} colors={colors} fonts={fonts} align="center" />
 
       {/* Right: trip card */}
       <View style={styles.cardCol}>
@@ -253,14 +231,6 @@ function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; col
             <Text style={styles.tripTitle} numberOfLines={2}>
               {trip.title}
             </Text>
-            {trip.purpose && (
-              <KindIcon
-                kind={PURPOSE_KIND[trip.purpose] ?? "location"}
-                size={18}
-                color={colors.textSecondary}
-                accessibilityLabel=""
-              />
-            )}
           </View>
           <View style={styles.cardMeta}>
             <Text style={styles.metaText}>{"→"} {fmtEnd(trip.end)}</Text>
@@ -307,10 +277,31 @@ function TripRow({ item, styles, colors }: { item: TripItem; styles: Styles; col
 
 // ── screen ───────────────────────────────────────────────────────────────────
 
+// ── MONTHS helper for suggestion date formatting ──────────────────────────────
+const MONTHS_SHORT_LOCAL = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtSuggestDate(iso: string): string {
+  const d = new Date(iso + "T12:00:00");
+  return `${d.getDate()} ${MONTHS_SHORT_LOCAL[d.getMonth()]}`;
+}
+
 export default function TripsScreen() {
   const journal = useJournal();
   const { colors, fonts } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
+
+  // Reload home prefs every time this tab gains focus so changes made in
+  // Settings are picked up without needing to restart the app.
+  const [homeAirports, setHomeAirports] = useState<string[]>([]);
+  useFocusEffect(
+    useCallback(() => {
+      getHomePrefs().then((p) => setHomeAirports(p.homeAirports));
+    }, [])
+  );
+
+  const suggestions = useMemo<TripSuggestion[]>(
+    () => suggestTrips(journal, homeAirports),
+    [journal, homeAirports]
+  );
 
   const trips = useMemo<TripItem[]>(() => {
     const entries = allEntries(journal);
@@ -322,9 +313,10 @@ export default function TripsScreen() {
       if (!statMap.has(e.tripId)) statMap.set(e.tripId, { count: 0, flights: 0, trains: 0, stays: 0, events: 0 });
       const s = statMap.get(e.tripId)!;
       s.count++;
-      if (e.kind === "leg" && (e as any).mode === "air")  s.flights++;
-      else if (e.kind === "leg" && (e as any).mode === "rail") s.trains++;
-      else if (e.kind === "stay")  s.stays++;
+      if (e.kind === "leg") {
+        if ((e as Leg).mode === "air") s.flights++;
+        else if ((e as Leg).mode === "rail") s.trains++;
+      } else if (e.kind === "stay")  s.stays++;
       else if (e.kind === "event") s.events++;
     }
 
@@ -349,18 +341,48 @@ export default function TripsScreen() {
 
   const router = useRouter();
 
+  const SuggestionBanner = suggestions.length > 0 ? (
+    <View style={styles.suggestSection}>
+      <Text style={styles.suggestHeading}>Suggested from your unlinked flights</Text>
+      {suggestions.map((s, i) => (
+        <Pressable
+          key={i}
+          style={({ pressed }) => [styles.suggestCard, pressed && styles.suggestCardPressed]}
+          onPress={() =>
+            router.push(
+              `/trip/confirm?title=${encodeURIComponent(s.title)}&start=${s.start}&end=${s.end}`
+            )
+          }
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={styles.suggestTitle}>{s.title}</Text>
+            <Text style={styles.suggestMeta}>
+              {fmtSuggestDate(s.start)}
+              {s.start !== s.end ? ` – ${fmtSuggestDate(s.end)}` : ""}
+              {s.entryCount > 0 ? `  ·  ${s.entryCount} ${s.entryCount === 1 ? "entry" : "entries"}` : ""}
+            </Text>
+          </View>
+          <Text style={styles.suggestChevron}>›</Text>
+        </Pressable>
+      ))}
+    </View>
+  ) : null;
+
   if (!trips.length) {
     return (
-      <View style={styles.empty}>
-        <KindIcon kind="leg" subkind="air" size={48} color={colors.textTertiary} accessibilityLabel="" />
-        <Text style={styles.emptyTitle}>No trips yet</Text>
-        <Text style={styles.emptyHint}>
-          Import a Viaduct or iCalendar file to populate your trips.
-        </Text>
-        <Pressable style={styles.newTripBtn} onPress={() => router.push("/trip/new")}>
-          <Ionicons name="add" size={18} color="white" />
-          <Text style={styles.newTripBtnText}>New trip</Text>
-        </Pressable>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        {SuggestionBanner}
+        <View style={styles.empty}>
+          <KindIcon kind="leg" subkind="air" size={48} color={colors.textTertiary} accessibilityLabel="" />
+          <Text style={styles.emptyTitle}>No trips yet</Text>
+          <Text style={styles.emptyHint}>
+            Import a Viaduct or iCalendar file to populate your trips.
+          </Text>
+          <Pressable style={styles.newTripBtn} onPress={() => router.push("/trip/new")}>
+            <Ionicons name="add" size={18} color="white" />
+            <Text style={styles.newTripBtnText}>New trip</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
@@ -370,7 +392,7 @@ export default function TripsScreen() {
       style={styles.list}
       data={trips}
       keyExtractor={({ trip }) => trip.id}
-      renderItem={({ item }) => <TripRow item={item} styles={styles} colors={colors} />}
+      renderItem={({ item }) => <TripRow item={item} styles={styles} colors={colors} fonts={fonts} />}
       ItemSeparatorComponent={() => <View style={styles.separator} />}
       contentContainerStyle={styles.listContent}
       ListHeaderComponent={
@@ -380,6 +402,7 @@ export default function TripsScreen() {
           </Pressable>
         </Link>
       }
+      ListFooterComponent={SuggestionBanner}
     />
   );
 }

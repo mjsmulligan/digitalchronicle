@@ -8,7 +8,8 @@ import { describe, it, expect } from "vitest";
 import { connector as viaductConnector } from "@/lib/journal/connectors/viaduct/index";
 import { connector as setlistConnector } from "@/lib/journal/connectors/setlistfm/index";
 import { connector as genericConnector } from "@/lib/journal/connectors/generic/index";
-import { detectConnector } from "@/lib/journal/connectors/registry";
+import { detectConnector, UNSUPPORTED_FORMATS } from "@/lib/journal/connectors/registry";
+import { eventKey } from "@/lib/journal/connectors/keys";
 import type { ParseResult } from "@/lib/journal/connectors/types";
 import { stageFile } from "@/lib/journal/staging";
 import {
@@ -177,5 +178,85 @@ describe("stageFile – Flightradar24 rejection", () => {
     await expect(stageFile("myflights.csv", fr24)).rejects.toThrow(
       "Flightradar24 exports are not supported. Use a generic flight CSV or add flights manually.",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DM7 — source-agnostic event keys
+// ---------------------------------------------------------------------------
+describe("eventKey (connectors/keys)", () => {
+  it("produces source-agnostic key with event| prefix", () => {
+    expect(eventKey({ start: "2023-06-15", artist: "Radiohead" })).toBe(
+      "event|2023-06-15|radiohead",
+    );
+  });
+
+  it("lowercases the artist name", () => {
+    expect(eventKey({ start: "2024-03-01", artist: "The National" })).toBe(
+      "event|2024-03-01|the national",
+    );
+  });
+
+  it("slices the start to date-only when a time component is present", () => {
+    expect(eventKey({ start: "2024-03-01T20:00:00", artist: "Blur" })).toBe(
+      "event|2024-03-01|blur",
+    );
+  });
+
+  it("setlistfm connector emits source-agnostic dedupeKey", () => {
+    const csv = "date,artist,venue,city,country\n2023-06-15,Radiohead,Glastonbury,Glastonbury,UK";
+    const r = setlistConnector.parse({ name: "", text: csv }) as ParseResult;
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0].entry.dedupeKey).toBe("event|2023-06-15|radiohead");
+  });
+
+  it("generic connector emits source-agnostic dedupeKey for concert rows", () => {
+    const csv = "type,start,title,venue,city\nconcert,2023-06-15,Radiohead,Glastonbury,Glastonbury";
+    const r = genericConnector.parse({ name: "", text: csv }) as ParseResult;
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0].entry.dedupeKey).toBe("event|2023-06-15|radiohead");
+  });
+
+  it("same concert from setlistfm and generic produces identical dedupeKey", () => {
+    const setlistCsv = "date,artist,venue,city\n2023-06-15,Radiohead,Glastonbury,Glastonbury";
+    const genericCsv = "type,start,title,venue,city\nconcert,2023-06-15,Radiohead,Glastonbury,Glastonbury";
+    const setlistResult = setlistConnector.parse({ name: "", text: setlistCsv }) as ParseResult;
+    const genericResult = genericConnector.parse({ name: "", text: genericCsv }) as ParseResult;
+    expect(setlistResult.entries[0].entry.dedupeKey).toBe(
+      genericResult.entries[0].entry.dedupeKey,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Contacts export rejection
+// ---------------------------------------------------------------------------
+describe("stageFile – contacts export rejection", () => {
+  const EXPECTED_MSG =
+    "Contacts exports are not supported. Chronicle imports travel, events, films, books and TV — not address books.";
+
+  it("rejects Google Contacts CSV (Given Name / Family Name)", async () => {
+    const google =
+      "Name,Given Name,Additional Name,Family Name,Yomi Name,Email 1 - Value,Phone 1 - Value\nJohn Doe,John,,Doe,,john@example.com,+1 555 0100\n";
+    await expect(stageFile("contacts.csv", google)).rejects.toThrow(EXPECTED_MSG);
+  });
+
+  it("rejects iOS/generic contacts CSV (First Name / Last Name)", async () => {
+    const ios =
+      "First Name,Last Name,Email,Phone\nJane,Smith,jane@example.com,+1 555 0101\n";
+    await expect(stageFile("contacts.csv", ios)).rejects.toThrow(EXPECTED_MSG);
+  });
+
+  it("rejects quoted-header contacts CSV", async () => {
+    const quoted =
+      '"First Name","Last Name","Email Address","Phone"\n"Alice","Jones","alice@example.com","555-0102"\n';
+    await expect(stageFile("contacts.csv", quoted)).rejects.toThrow(EXPECTED_MSG);
+  });
+
+  it("does NOT flag a normal travel CSV that happens to have a name column", () => {
+    // Test detect() directly — stageFile would hit IndexedDB in the test env
+    const contactsFmt = UNSUPPORTED_FORMATS.find((f) => f.name === "Contacts export")!;
+    const travelHeader = "date,type,from,to,name";
+    expect(contactsFmt.detect(travelHeader)).toBe(false);
   });
 });

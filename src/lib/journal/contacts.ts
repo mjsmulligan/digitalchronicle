@@ -15,6 +15,8 @@ export interface ContactDraft {
   name: string;
   /** Nicknames / alternative spellings for matching. */
   aliases?: string[];
+  /** Base64 data URI captured from the device address book at import time. */
+  photo?: string;
 }
 
 export interface ContactParseResult {

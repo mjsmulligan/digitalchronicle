@@ -11,10 +11,26 @@ const item = (id: string, title: string) => `<item>
 <book_published>2013</book_published><isbn>0316246638</isbn></item>`;
 
 describe("goodreads rss", () => {
-  it("parses user ids from urls", () => {
+  it("accepts bare usernames and numeric ids", () => {
     expect(parseGoodreadsUserId("12345")).toBe("12345");
+    expect(parseGoodreadsUserId("janedoe")).toBe("janedoe");
+    expect(parseGoodreadsUserId("jane-doe")).toBe("jane-doe");
+    expect(parseGoodreadsUserId("  janedoe  ")).toBe("janedoe"); // trims whitespace
+    expect(parseGoodreadsUserId("")).toBeNull();
+  });
+
+  it("extracts numeric id from profile and shelf URLs", () => {
+    // user/show — slug form and plain numeric
     expect(parseGoodreadsUserId("https://www.goodreads.com/user/show/12345-jane-doe")).toBe("12345");
-    expect(parseGoodreadsUserId("hello")).toBeNull();
+    expect(parseGoodreadsUserId("https://www.goodreads.com/user/show/12345")).toBe("12345");
+    // review/list and review/list_rss
+    expect(parseGoodreadsUserId("https://www.goodreads.com/review/list/12345-jane-doe")).toBe("12345");
+    expect(parseGoodreadsUserId("https://www.goodreads.com/review/list_rss/12345")).toBe("12345");
+    // http and no-www variants
+    expect(parseGoodreadsUserId("http://www.goodreads.com/user/show/12345")).toBe("12345");
+    expect(parseGoodreadsUserId("https://goodreads.com/user/show/12345")).toBe("12345");
+    // unrecognised URL shape → null
+    expect(parseGoodreadsUserId("https://goodreads.com/somethingelse/12345")).toBeNull();
   });
 
   it("converts items to export-shaped csv", () => {

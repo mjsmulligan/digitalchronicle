@@ -12,10 +12,16 @@ const HEADER = [
   "Date Read", "Date Added", "My Review", "Exclusive Shelf", "ISBN13",
 ];
 
-/** Accepts a numeric ID or any goodreads profile/shelf URL. */
+/**
+ * Accepts a bare username, numeric ID, or any goodreads profile/shelf URL.
+ * Returns the identifier to use in the RSS URL (username or numeric ID as-is).
+ */
 export function parseGoodreadsUserId(input: string): string | null {
   const s = input.trim();
-  if (/^\d+$/.test(s)) return s;
+  if (!s) return null;
+  // Bare username or numeric ID (no slashes) — accept as-is
+  if (!/\//.test(s)) return /^[\w-]+$/.test(s) ? s : null;
+  // Extract numeric ID from a profile or shelf URL
   const m = s.match(/goodreads\.com\/(?:user\/show|review\/list(?:_rss)?)\/(\d+)/i);
   return m ? m[1] : null;
 }

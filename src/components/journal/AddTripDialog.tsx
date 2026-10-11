@@ -6,9 +6,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { putMany } from "@/lib/journal/db";
-import { uid, type Purpose, type Trip } from "@/lib/journal/types";
-
-const PURPOSES: Purpose[] = ["work", "family", "leisure", "other"];
+import { uid, type Trip } from "@/lib/journal/types";
+import { StarRating } from "@/components/journal/StarRating";
 
 export function AddTripDialog({ trip }: { trip?: Trip }) {
   const [open, setOpen] = useState(false);
@@ -16,9 +15,10 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
   const today = new Date().toISOString().slice(0, 10);
   const blank = (): Record<string, string> =>
     trip
-      ? { title: trip.title, start: trip.start, end: trip.end, purpose: trip.purpose ?? "", notes: trip.notes ?? "" }
+      ? { title: trip.title, start: trip.start, end: trip.end, reflection: trip.reflection ?? trip.notes ?? "" }
       : {};
   const [f, setF] = useState<Record<string, string>>(blank);
+  const [rating, setRating] = useState<number | undefined>(trip?.rating);
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF({ ...f, [k]: e.target.value });
 
@@ -37,13 +37,13 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
         title: f.title?.trim() || "Untitled trip",
         start,
         end,
-        notes: f.notes ?? "",
         cover: trip?.cover ?? "",
         createdAt: trip?.createdAt ?? new Date().toISOString(),
-        purpose: (f.purpose as Purpose) || undefined,
+        reflection: f.reflection?.trim() || undefined,
+        rating,
       };
       await putMany("trips", [next]);
-      if (!trip) setF({});
+      if (!trip) { setF({}); setRating(undefined); }
       setOpen(false);
       toast.success(trip ? "Trip saved." : "Trip created.");
     } catch (error) {
@@ -58,7 +58,7 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
       open={open}
       onOpenChange={(o) => {
         setOpen(o);
-        if (o) setF(blank());
+        if (o) { setF(blank()); setRating(trip?.rating); }
       }}
     >
       <DialogTrigger asChild>
@@ -74,16 +74,12 @@ export function AddTripDialog({ trip }: { trip?: Trip }) {
           <Input className="col-span-2" placeholder="Trip title" value={f.title ?? ""} onChange={set("title")} />
           <label className="text-xs text-muted-foreground">Start<Input type="date" value={f.start ?? today} onChange={set("start")} /></label>
           <label className="text-xs text-muted-foreground">End<Input type="date" value={f.end ?? ""} onChange={set("end")} /></label>
-          <select
-            className="col-span-2 h-9 rounded-md border border-input bg-background px-3 text-sm capitalize"
-            value={f.purpose ?? ""}
-            onChange={(e) => setF({ ...f, purpose: e.target.value })}
-          >
-            <option value="">Purpose (optional)</option>
-            {PURPOSES.map((p) => <option key={p} value={p} className="capitalize">{p}</option>)}
-          </select>
         </div>
-        <Textarea placeholder="Trip reflections…" className="font-serif" value={f.notes ?? ""} onChange={set("notes")} />
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-muted-foreground">Rating</p>
+          <StarRating rating={rating} onChange={setRating} />
+        </div>
+        <Textarea placeholder="Trip reflection…" className="font-serif" value={f.reflection ?? ""} onChange={set("reflection")} />
         <Button onClick={submit} disabled={busy}>{busy ? "Saving…" : trip ? "Save trip" : "Create trip"}</Button>
       </DialogContent>
     </Dialog>

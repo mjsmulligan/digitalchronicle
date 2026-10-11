@@ -10,17 +10,18 @@
  * wired-up reflection editing (handled inline inside DayGroup).
  */
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import { type Entry, type Note, type JEvent, type Person, entryTitle } from "@chronicle/journal/types";
+import { type Entry, type JEvent, type Person, entryTitle } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
 import { DayGroup, type DayGroupData } from "../../src/components/DayGroup";
 
 // ── filter types & helpers ────────────────────────────────────────────────────
 
-type F = "all" | "travel" | "concert" | "social" | "milestone" | "memory" | "notes";
+type F = "all" | "travel" | "concert" | "social" | "milestone" | "memory";
 
 const FILTERS: { id: F; label: string }[] = [
   { id: "all",       label: "Everything" },
@@ -29,14 +30,12 @@ const FILTERS: { id: F; label: string }[] = [
   { id: "social",    label: "Gatherings & celebrations" },
   { id: "milestone", label: "Milestones" },
   { id: "memory",    label: "Memories" },
-  { id: "notes",     label: "Reflections" },
 ];
 
 /** Mirror of web `matches()` in src/routes/index.tsx */
 function matchesFilter(e: Entry, f: F): boolean {
   if (f === "all") return true;
   if (f === "travel") return e.kind === "leg" || e.kind === "stay";
-  if (f === "notes") return false; // notes filter: entries are excluded, notes-only days shown
   if (e.kind !== "event") return false;
   const ev = e as JEvent;
   if (f === "social")    return ev.category === "gathering" || ev.category === "celebration";
@@ -134,14 +133,40 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       padding: spacingScale["2xl"],
     },
     emptyTitle: {
-      ...textScale.xl,
+      fontSize: textScale.xl.fontSize,
+      // Omit lineHeight on Android — Lora SemiBold clips wrapped lines when
+      // lineHeight is constrained; letting Android use the font's natural
+      // metrics avoids this.
+      lineHeight: Platform.OS === "android" ? undefined : textScale.xl.lineHeight,
       fontFamily: fonts.serifSemiBold,
       fontWeight: "600",
       color: colors.textPrimary,
+      textAlign: "center",
       marginTop: spacingScale.base,
       marginBottom: spacingScale.sm,
     },
-    emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+    emptyHint: {
+      ...textScale.md,
+      color: colors.textTertiary,
+      textAlign: "center",
+    },
+    emptyHintRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      flexWrap: "wrap",
+      gap: 4,
+      paddingHorizontal: spacingScale.lg,
+    },
+    emptyExplainer: {
+      ...textScale.md,
+      fontFamily: fonts.sans,
+      color: colors.textSecondary,
+      textAlign: "center",
+      lineHeight: 22,
+      marginTop: spacingScale.xl,
+      paddingHorizontal: spacingScale.md,
+    },
   });
 }
 
@@ -174,56 +199,30 @@ export default function ChronicleScreen() {
   const groups = useMemo<DayGroupData[]>(() => {
     const qLower = q.trim().toLowerCase();
 
-    // Build day → note map (day-level notes only, not trip notes)
-    const noteByDay = new Map<string, Note>();
-    for (const n of journal.notes) {
-      if (n.date && !n.tripId) noteByDay.set(n.date, n);
-    }
-
     // Resolve trip for each day by date range (mirrors web `tripOf`)
     const tripOf = (d: string) =>
       journal.trips.find((t) => d >= t.start && d <= t.end);
 
-    // ── Pass 1: build day → matched-entries map ──────────────────────────
+    // Build day → matched-entries map (entries only — no day-level notes)
     const entryMap = new Map<string, Entry[]>();
-
-    if (filter !== "notes") {
-      const entries = allEntries(journal);
-      for (const e of entries) {
-        if (!matchesFilter(e, filter)) continue;
-        if (selectedPerson && !entryHasPerson(e, selectedPerson)) continue;
-        if (qLower && !entryTitle(e).toLowerCase().includes(qLower)) continue;
-        const d = (e.overrides?.start ?? e.start).slice(0, 10);
-        if (!entryMap.has(d)) entryMap.set(d, []);
-        entryMap.get(d)!.push(e);
-      }
+    const entries = allEntries(journal);
+    for (const e of entries) {
+      if (!matchesFilter(e, filter)) continue;
+      if (selectedPerson && !entryHasPerson(e, selectedPerson)) continue;
+      if (qLower && !entryTitle(e).toLowerCase().includes(qLower)) continue;
+      const d = (e.overrides?.start ?? e.start).slice(0, 10);
+      if (!entryMap.has(d)) entryMap.set(d, []);
+      entryMap.get(d)!.push(e);
     }
 
-    // ── Pass 2: decide which note days to include ────────────────────────
-    const daySet = new Set(entryMap.keys());
-
-    if (filter === "all" || filter === "notes") {
-      // Include all note days (after search/person guard)
-      for (const [date, note] of noteByDay) {
-        if (selectedPerson) continue; // notes have no participants
-        if (qLower && !note.text.toLowerCase().includes(qLower)) {
-          // q doesn't match note text — include day only if it already has entries
-          if (!daySet.has(date)) continue;
-        }
-        daySet.add(date);
-      }
-    }
-    // For other kind filters: note days are only included for days that already
-    // have matched entries (daySet already contains those from Pass 1).
-
-    // ── Build result groups ──────────────────────────────────────────────
-    return [...daySet]
+    // Build result groups — each day shows its matched entries (reflection excerpts
+    // are rendered inline by EntryRow when an entry has a reflection)
+    return [...entryMap.keys()]
       .sort((a, b) => b.localeCompare(a))  // newest day first
       .map((iso) => ({
         iso,
-        items: entryMap.get(iso) ?? [],
+        items: entryMap.get(iso)!,
         tripTitle: tripOf(iso)?.title,
-        note: noteByDay.get(iso),
       }));
   }, [journal, filter, q, selectedPerson]);
 
@@ -300,15 +299,23 @@ export default function ChronicleScreen() {
 
   // ── render ─────────────────────────────────────────────────────────────────
 
-  const hasAnyData = allEntries(journal).length > 0 || journal.notes.length > 0;
+  const hasAnyData = allEntries(journal).length > 0;
 
   if (!hasAnyData) {
     return (
       <View style={styles.empty}>
         <KindIcon kind="book" size={48} color={colors.textTertiary} accessibilityLabel="" />
-        <Text style={styles.emptyTitle}>Your journal is empty</Text>
-        <Text style={styles.emptyHint}>
-          Tap the import icon above to add your first entries.
+        <Text style={styles.emptyTitle}>Your chronicle is empty</Text>
+        <View style={styles.emptyHintRow}>
+          <Text style={styles.emptyHint}>Tap</Text>
+          <Ionicons name="layers-outline" size={16} color={colors.textTertiary} />
+          <Text style={styles.emptyHint}>above to add your first entries.</Text>
+        </View>
+        <Text style={styles.emptyExplainer}>
+          Chronicle is a passive journal. Rather than writing entries yourself, Chronicle builds your journal by importing data already on your phone — calendar events, photos, and more. You can also import CSV files from services like Goodreads or Netflix.
+        </Text>
+        <Text style={[styles.emptyExplainer, { marginTop: spacingScale.md, color: colors.textTertiary }]}>
+          Data imported into Chronicle never leaves your phone. Your journal is stored only on this device.
         </Text>
       </View>
     );

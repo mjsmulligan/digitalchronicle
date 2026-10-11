@@ -5,9 +5,11 @@
 import { useMemo } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Link, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useJournal, allEntries } from "@chronicle/journal/db";
 import type { Person } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
+import { PersonAvatar } from "../../src/components/PersonAvatar";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +83,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     emptyIcon: { fontSize: 48, marginBottom: spacingScale.base },
     emptyTitle: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, marginBottom: spacingScale.sm },
     emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+    ctaBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm2,
+      marginTop: spacingScale.xl,
+      paddingHorizontal: spacingScale.lg,
+      paddingVertical: spacingScale.md,
+      borderRadius: radiusScale.pill,
+      backgroundColor: colors.accentBold,
+    },
+    ctaBtnText: { color: colors.white, fontSize: 15, fontWeight: "700" },
   });
 }
 
@@ -97,22 +110,15 @@ function PersonRow({
   entryCount: number;
   styles: Styles;
 }) {
-  const initials = person.name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
   const router = useRouter();
+  const { colors, fonts } = useTheme();
 
   return (
     <Pressable
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
       onPress={() => router.push(`/person/${person.id}`)}
     >
-      <View style={[styles.avatar, person.isSelf && styles.avatarSelf]}>
-        <Text style={styles.avatarText}>{initials}</Text>
-      </View>
+      <PersonAvatar person={person} size={40} colors={colors} fonts={fonts} />
       <View style={styles.rowBody}>
         <View style={styles.nameRow}>
           <Text style={styles.name}>{person.name}</Text>
@@ -158,8 +164,14 @@ export default function PeopleScreen() {
         <Text style={styles.emptyIcon}>👤</Text>
         <Text style={styles.emptyTitle}>No people yet</Text>
         <Text style={styles.emptyHint}>
-          Use Import contacts to add people from a .vcf or contacts CSV file.
+          Add people from your phone contacts or a .vcf / contacts CSV file.
         </Text>
+        <Link href="/sources" asChild>
+          <Pressable style={styles.ctaBtn}>
+            <Ionicons name="add" size={18} color="white" />
+            <Text style={styles.ctaBtnText}>Import contacts</Text>
+          </Pressable>
+        </Link>
       </View>
     );
   }
@@ -173,7 +185,7 @@ export default function PeopleScreen() {
         <PersonRow person={person} entryCount={entryCount} styles={styles} />
       )}
       ListHeaderComponent={
-        <Link href="/import-people" asChild>
+        <Link href="/sources" asChild>
           <Pressable style={styles.listAction}>
             <Text style={styles.listActionText}>Import contacts</Text>
           </Pressable>

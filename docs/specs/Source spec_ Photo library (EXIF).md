@@ -1,208 +1,238 @@
 # Source spec: Photo library (EXIF)
 
-Status: draft 4. City-level places, date ranges, and the phone's own geocoder are decided. Items marked **Open** still need a call or a check on real data.
+Status: draft 7. The first implementation (work packages WP1 to WP9 of draft 4) is built and done. This draft defines only the new work packages (WP10 to WP16). Section 2a lists what changes from the first implementation. Items are marked **Decided** (agreed in review), **Proposed** (my suggestion, needs your approval) or **Open**.
 
 ## 1. Purpose
 
-Read photo metadata directly from the phone's photo library and turn it into `place` events at city level: evidence that you were in a given city over a given range of days. Photos are evidence of time and place, not events in themselves.
+Read photo metadata directly from the phone's photo library and offer the places you were, day by day, for you to confirm. Photos are evidence of time and place. The app proposes and the user decides what is significant, because significance is personal.
 
-## 2. Source type
+## 2. What the first implementation showed
 
-On-device source. No account and no upload. The only network activity is the anonymous locality lookup described in section 8, which uses the phone's own geocoder. Output goes to the Staging Hub in the same staged item shape as other sources.
+The first implementation scanned a real library and produced 138 place events. Findings that shaped this draft:
 
-## 3. Event type: `place`
+- The geocoder does not return a consistent level. 34 of 138 places had the region as their locality ("County Dublin"), and one home area resolved to eight different keys.
+- Regional trips fragmented into villages (nine places in four days in Cinque Terre), and spelling variants split keys ("Porto Venere" and "Portovenere", two spellings of Shenzhen).
+- Merged date ranges ran through other trips (a 165-day run across trips to Croatia, Italy and Germany), and 174 of 671 covered days had more than one place.
+- Size is not significance. Single airport photos mark flight starts and matter to the user, and most home days do not.
 
-A new event type, not a reuse of `stay` (which implies lodging, nights and check-in/out) and not a photo-specific `moment`. It is source-agnostic, so calendar locations, bookings and receipts can also produce `place` events.
+The conclusion is that the app cannot decide the right level or the importance of a place. It should record evidence faithfully and let the user decide.
 
-- **Level (decided):** city level. A trip to London covering the British Museum, the National Gallery and a football match is one place, London, not three. Venue-level entries would be noisy.
-- **Dating (decided):** a date range (for example, London over one or two days).
-- **Trips (decided):** a place can belong to a trip or stand alone.
-- **Evidence:** photos are attached to the place as evidence references, not as payload.
-- **Venue-level activities** (museums, matches, and so on) are not places. They belong to the event ontology and come from sources that name the venue, such as tickets, check-ins and calendar entries.
+## 2a. Changes from the first implementation (for agents)
 
-## 4. Scope and permissions
+This table is inferred from the first implementation's export and the earlier drafts. I have not seen the code, so confirm each row against the repo before changing anything. Section 13 lists the completed packages and the new ones that make these changes.
 
-- **Scan scope (decided):** the user chooses at setup between selected albums, a date range, or **scan all**. Scan all is always available. It can be a heavy operation, and that is the user's call. The app does not block it or hide it.
-- **Scan all behaviour:** show a short heads-up before starting (it may take a while and use battery), run in batches, show progress, allow cancel, and resume from where it stopped if interrupted. No photo outside the chosen scope is ever read.
-- Request media library read access on first use, with a plain explanation of why.
-- Request the location-metadata permission separately (Android hides GPS from media reads without it). If declined, run in time-only mode (section 7).
-- Support limited (selected photos) access: the source works on whatever is visible and reports how many photos it can see.
+| Area | First implementation (as seen in the export) | This spec | Action |
+| --- | --- | --- | --- |
+| Place data | Flat `placeEvents` with `start` and `end` dates and a `localityKey` | A place container with parent links, holding one-day entries | Rework |
+| Run building | Consecutive days merged into ranges, which ran through other trips | No ranges. Visits are derived for display | Remove |
+| Creation | Place events created directly by the scan | Suggestions in the Staging Hub, confirmed per entry | Rework |
+| Status | None seen | Pending, accepted, dismissed, plus a bin and minimal markers | New |
+| Staging UI | None seen | Hierarchy browsing, batch actions, hint ordering, Bin view | New |
+| Deduplication | `dedupeKey` of place, key and day | Place plus day, and also matching dismissed items by photo IDs | Rework |
+| Locality | Geocoder result, with the region as a fallback, and unstable keys | Evidence at the deepest level returned, with parents. Keys normalised, remaining variants merged by the user | Rework |
+| Time resolution | `timingRule` (GPS-inferred or fallback) | Same | Keep |
+| Photo evidence | Up to 10 references per place event | Up to 10 per day entry | Keep, re-scope |
+| Scope options | Albums, date range, scan all | Same | Keep |
+| Where the scan lives | Settings page | Sources page | Move |
+| Confidence | `approximate` or `inferred`, rule not specified | Dropped. Staging hints replace it | Remove |
+| Single-photo flag | `singlePhoto` | Kept as data, never used to hide an entry | Keep |
+| Precedence tier | `tier` 2 on every event | Unchanged. Precedence is being redesigned separately | Keep |
+| Existing data | 138 place events from a real scan | The app is not live, so reset and rescan. Keep the export as a test fixture | Reset |
 
-## 5. Fields read
+## 3. Model
+
+### Place (container)
+
+- **Decided:** a place is a container, like a trip or series. Places sit in a natural geographic hierarchy: country, then region, then locality. Evidence attaches at the deepest level the geocoder returned, and a place knows its parents.
+- If the geocoder returns only a region, the evidence sits on the region place. Nothing has to be rolled up or merged by a rule.
+
+### Place entry (one day)
+
+- **Decided:** a place entry is a single dated fact: this place, this day. A two-day stay in London is one place with two entries. A weekend in London plus a day trip two weeks later is one place with three entries.
+- An entry holds its place, local day, source, photo count and a small set of photo references as evidence (**Proposed:** up to 10).
+- **Decided:** there are no date ranges and no run builder. Visits (consecutive days) and trip membership are derived for display and are not stored. A day outside any defined trip sits in the unassigned pool.
+- **Decided:** city level is not enforced. Each village is a place if the user wants it.
+- **Decided:** venue-level activities (museums, matches, and so on) are not places. They belong to the event ontology and come from sources that name the venue.
+
+### Status and the bin
+
+- **Decided:** every entry is pending, accepted or dismissed. Dismissed entries sit in a bin the user can review (soft delete).
+- **Decided:** soft delete applies to photo entries only for now, with the design kept general so it can extend to other event types later.
+- **Proposed:** restoring an entry from the bin returns it to pending.
+- **Proposed:** emptying the bin removes the details but keeps a minimal marker (the key and the photo IDs), so a re-scan still skips it. A "reset decisions" option clears the markers for anything the user wants offered again.
+
+## 4. Staging
+
+- **Decided:** photo places are never created automatically. They arrive in the Staging Hub as suggestions.
+- **Decided:** staging is ordered by the hierarchy (country, region, locality). The user can accept or dismiss at any level, so accepting a region can take its localities with it, and accepting two villages out of five is fine.
+- **Decided:** a new entry waits in staging for confirmation even when its place is already accepted. The place is the same, but the day is a separate claim.
+- **Decided:** dismissing means the entries, never the place going forward. A batch dismiss clears everything pending for a place, and a later day still arrives for review. Home is therefore an ordinary place with a very different accept rate. There is no home zone and no special flag.
+- **Decided:** the user can merge two suggested places into one, for spelling variants that key normalisation cannot catch. **Proposed:** the merged place keeps the other key as an alias, so a re-scan maps later photos in either spelling to it.
+- **Proposed:** batch actions at every level: accept or dismiss all pending days for a place, region or country, with the dates visible before confirming.
+- **Proposed:** significance hints, used for ordering and never for hiding:
+  - photo count relative to the place's own typical day (a day at home with 40 photos stands out against a norm of 3),
+  - an existing calendar entry on that date (for example a birthday),
+  - absolute photo count.
+- **Proposed:** unusual days surface first, with routine days collapsed below for a bulk dismiss. Single-photo days, such as airports, are never hidden.
+
+## 5. Source type and scope
+
+- **Decided:** on-device source. The only network activity is the anonymous locality lookup in section 8.
+- **Decided:** the scan lives on the **Sources page**, as a source alongside the importers, and not on the Settings page (where the first implementation put it). The photo library entry shows its status, last scanned time, a Scan now action, progress with cancel, the pending count, and its scope settings. Results flow into the Staging Hub, so the dot on the sources icon covers photo suggestions too.
+- **Proposed:** Settings keeps only global items for this source, such as the permission status and the privacy explanation.
+- The Sources page is due a rework, so build the photo entry as a self-contained component that can move without changes to the scan itself.
+- **Decided:** scan scope is selected albums, a date range, or **scan all**. Scan all is always available. It can be heavy, and that is the user's call.
+- **Scan all behaviour:** a short heads-up before starting, batched processing with progress, cancel at any time, and resume from where it stopped. No photo outside the chosen scope is ever read.
+- Request media library read access with a plain explanation. Request the location-metadata permission separately (Android hides GPS from media reads without it). If declined, run in time-only mode.
+- Support limited (selected photos) access, and report how many photos are visible.
+
+## 6. Fields read
 
 | Field | Use |
 | --- | --- |
 | Capture time | Placement on the timeline |
 | Timezone offset (if present) | Resolve local vs UTC |
 | GPS latitude and longitude | Locality lookup |
-| Camera make and model | Distinguish camera photos from other images |
 | Media ID and file path or URI | Reference back to the photo |
 
 Everything else is ignored and never stored.
 
-## 6. Time handling
+## 7. Time and missing data
 
-Each photo is assigned a local day.
-
-1. Use the offset from EXIF where present.
-2. Otherwise infer the timezone from GPS where present.
-3. Otherwise use the nearest known trip leg or the phone's timezone at scan time.
-4. Record which rule was used on each photo, so a wrong guess is traceable.
-
-## 7. Missing or poor data
-
-- **No GPS:** the photo does not create a place. It attaches as evidence to a place whose date range covers its local day. If none does, it is held as unlocated evidence and nothing is staged for it.
-- **Location permission declined:** time-only mode. No places are created, and photos attach by day to existing places only.
-- **No capture time:** fall back to file modified time and mark the photo low confidence.
-- **Screenshots and saved images** are not evidence of being somewhere. A missing camera make and model is the signal. **Open:** exclude these photos, or include them at low confidence.
-- **Photos taken during a known leg** (a flight or train journey) are excluded from place building, since the leg already covers that time.
+- Each photo is assigned a local day: use the EXIF offset if present, otherwise infer from GPS, otherwise use the nearest known trip leg or the phone's timezone. The rule used is recorded on each photo. (In the first export every photo with GPS used the GPS rule, so offsets are rare.)
+- **No GPS:** the photo never creates a place. **Proposed:** it attaches as evidence to the entry for its day when exactly one place has an entry that day. Otherwise it is held as unlocated evidence for that day.
+- **Location permission declined:** time-only mode. No entries are created, and photos attach to existing entries by day.
+- **No capture time:** fall back to file modified time.
+- **Decided:** screenshots and saved images are excluded. They should not carry GPS, so they never create an entry and no separate filter or camera field is needed.
+- **Out of scope here:** whether photos taken around a flight attach to the leg as time evidence (for example an airport photo marking departure). This needs legs loaded and is a later piece of work.
 
 ## 8. Locality resolution
 
-Each photo with GPS is resolved to a locality (the city or town it is in). Administrative boundaries decide, not a radius, so there is no user-defined distance anywhere in this source.
+- **Decided:** a small resolver interface takes coordinates and returns a locality name, region, country and a key. The first implementation uses the phone's own geocoder (Android and iOS built-in reverse geocoding via the Expo location module). Google Maps Platform APIs are not used, because their terms limit storing results.
+- **Decided:** lookups are anonymous: coarsened coordinates only, one lookup per distinct coarsened location per day, no timestamps or identifiers. Results are cached in the app database, which also keeps resolution stable between scans.
+- **Decided:** key stability. Keys are normalised for case, accents, spaces and hyphens, so Portovenere and Porto Venere share a key. Variants that normalisation cannot catch (for example two transliterations of one Chinese city) are left to the user to merge in staging. There is no position-based matching.
+- **Open:** confirm the storage terms of the platform geocoders for keeping results permanently.
+- **If a lookup fails or the phone is offline:** the photos stay pending with their coordinates and are retried on the next scan. No entry is created until resolved.
 
-- **Resolver interface (decided):** a small interface takes coordinates and returns a locality name, region, country and a locality key. The provider can be swapped later without touching the rest of the source.
-- **First implementation (decided):** the phone's own geocoder (Android and iOS built-in reverse geocoding, via the Expo location module). No API key and no billing. Google Maps Platform APIs are not used: their terms limit storing results, and the journal keeps place names permanently.
-- **Anonymous lookups (decided):** send only coarsened coordinates, one lookup per distinct coarsened location per day rather than per photo, with no timestamps, photo IDs or account details. Results are cached in the app database as the journal's own record.
-- **Which level counts as the city:** use the locality or city field the geocoder returns. If absent, fall back to the sub-region, then the region. **Open:** the platform geocoders can return different levels (suburbs or boroughs rather than the city) and can differ between Android and iOS. Test on real photos on both before fixing the rule.
-- **Open:** confirm the storage terms of the platform geocoders for permanently keeping results.
-- **Lookup fails or the phone is offline:** the photos stay pending with their coordinates and are retried on the next scan. No place is created until resolved.
+## 9. Re-scan, matching and deduplication
 
-## 9. Building places from photos
+- An entry is identified by place plus local day.
+- **Decided:** dismissed entries are not offered again on the next scan.
+- **Proposed:** a candidate also counts as dismissed when all its photos were in a dismissed entry, even if the geocoder named the place differently this time.
+- **Proposed:** new photos on an accepted day add evidence to the existing entry with no new staging item. New photos on a dismissed day leave it dismissed.
+- A new day for an accepted place creates a new pending entry (section 4).
+- Re-scan is incremental, using a last-scanned marker per source, and is idempotent.
+- Deleted photos: keep the entry and mark the reference as missing.
 
-1. Resolve each photo to a local day and a locality key.
-2. Group consecutive days with the same locality key into a run. The run's start and end days become the place's date range.
-3. A run ends when a different locality appears on a later day, or a trip boundary is crossed. Days with no photos do not end a run.
-4. A long gap in days also ends a run, so two separate visits to the same city are not merged. This is a fixed internal value, not a user setting. **Open:** the value.
-5. If two localities appear on the same day (London in the morning, Windsor in the afternoon), both places include that day. Ranges may overlap.
-6. A single photo is enough to create a place, at low confidence.
+## 10. Source precedence and privacy
 
-## 10. Mapping to staged items
+- **Decided:** photo place entries sit at equal precedence with calendar entries, with no conflict handling. A photo place and a calendar place can both exist with no flag, because only the user has the context to know which is right. Tickets and bookings still win on timings.
+- Everything runs on the device except the anonymous lookup. Store references and derived metadata only. No copies of photos and no thumbnails.
 
-- **Type:** `place` (locality name, region, country, date range, evidence references).
-- **Evidence:** photo count and a small set of representative photo references.
-- **Link proposal:** if the date range falls inside a known trip, propose attaching it. Otherwise it stands alone.
-- **Confidence:** derived from photo count, GPS presence and time quality.
-- **Open:** whether photos are also attached as evidence to venue-level events (a ticketed visit, a calendar entry) in this source, or left for a later one.
+## 11. Out of scope (for now)
 
-## 11. Source precedence
-
-- **Decided:** photo place events sit at equal precedence with calendar entries.
-- **No conflict handling for `place` (decided):** a photo place and a calendar place can exist side by side with no flag and no tie-break. Only the user has the context to know which is right (a calendar entry may name Germany while the photos are in Dublin), so the system does not try to detect or resolve disagreement. Nothing is merged, overridden or discarded automatically.
-- Tickets and bookings still win on timings. Photos are strongest on "was here", weakest on purpose and what happened.
-
-## 12. Privacy
-
-- Everything runs on the device except the anonymous locality lookup described in section 8.
-- **Decided:** no home exclusion zone. The scope the user chooses at setup is the control. With scan all, long runs in the home city are an honest record, not an error.
-- Store references and derived metadata only. No copies of photos and no thumbnails in the journal database.
-
-## 13. Sync and re-import
-
-- Keep a last-scanned marker per source.
-- Re-scan is incremental (new or changed photos in the selected scope since the marker).
-- Staging is idempotent. A place is identified by its locality key plus date range. If new photos extend or fill an existing run, the existing place is updated rather than a second one created. A run that already exists as a staged item is matched by locality key and overlapping or adjacent dates.
-- Deleted photos: keep the place, mark the reference as missing.
-
-## 14. Out of scope (for now)
-
-- Face or object recognition.
-- Cloud photo libraries accessed through an account.
-- Video metadata.
-- Venue-level visit detection from photos alone. It would need offline places data and would be offered as a suggestion, not created automatically.
+- Venue-level visit detection from photos alone (it would need offline places data and would be offered as a suggestion).
+- Soft delete beyond photo entries.
+- The rework of the Sources page itself (planned separately).
+- Face or object recognition, cloud photo libraries, video metadata.
 - Google Maps Platform APIs, and Google Timeline as a source (a separate spec).
 
-## 15. Acceptance checks
+## 12. Acceptance checks
 
-1. Photos in one city across two days produce one place with that date range, attached to the trip if one covers it.
-2. Photos with no GPS attach to the place covering their day and never create a place.
-3. Re-scan creates zero duplicates. Adding photos on an adjacent day extends the existing place.
-4. With location permission declined, the source runs in time-only mode and creates no places.
-5. Photos outside the chosen scope (albums, date range, or all) are never read. With scan all, a scan can be cancelled and resumed without duplicates.
-6. A lookup sends only coarsened coordinates, with no timestamps or identifiers, and no more than one lookup per distinct place per day.
-7. With the phone offline or a lookup failing, photos stay pending, are retried later, and no wrong place is created.
-8. A photo place in a different city from a calendar entry on the same day produces two items, unflagged, with nothing merged or dropped.
-9. Photos taken during a known leg do not create places.
-10. Two suburbs of the same city resolve to one place.
+1. A London weekend (1st, 2nd) plus a day trip on the 14th produce one London place with three entries, and two derived visits.
+2. Photos with no GPS never create an entry, and attach to the day's entry only when exactly one place has an entry that day.
+3. Re-scan creates zero duplicates and adds nothing for dismissed entries, even if the geocoder names the place differently.
+4. A new day in an accepted place appears as a pending entry. New photos on an accepted day only add evidence.
+5. Accepting a region in staging accepts its localities. Accepting two of five villages leaves three pending.
+6. Dismissing all pending days for a place does not hide a later day.
+7. Restoring from the bin returns an entry to pending. After the bin is emptied, a re-scan still skips the entry, and "reset decisions" offers it again.
+8. Unusual days (relative to the place's norm) appear before routine days, and single-photo days are never hidden.
+9. Several suburbs of one city appear under one parent place, and several villages in one region appear under that region.
+10. Same-day photos in two places produce an entry in each. A photo place differing from a calendar entry on the same day is not flagged.
+11. Scope is respected for albums, a date range and scan all. A scan-all run can be cancelled and resumed without duplicates.
+12. Lookups send only coarsened coordinates with no timestamps or identifiers, at most one per distinct place per day. With the phone offline, photos stay pending and are retried.
+13. With location permission declined, the source runs in time-only mode and creates no entries.
+14. Two suggested places that are spelling variants can be merged, and after a re-scan later photos in either spelling join the merged place.
 
-## 16. Work packages
+## 13. Work packages
 
-Each package is sized for one agent. Packages marked pure have no device or permission dependencies and can be built and tested against fixtures.
+### Completed (first implementation)
 
-### WP1. Data model
+These nine packages from draft 4 are built and done. They are not repeated. The descriptions below are from draft 4, and the code has not been reviewed here.
 
-- **Inputs:** sections 3 and 10 of this spec, plus the existing staged item schema.
-- **Outputs:** the `place` event type with a date range, the evidence reference type, and the staged item shape for photo places.
-- **Depends on:** nothing. Do this first.
-- **Done when:** types are defined, existing sources are unaffected, and a hand-written sample `place` item validates.
+| Package | Built | Status after this spec |
+| --- | --- | --- |
+| WP1 Data model | Place events with date ranges | Done, superseded by WP10 |
+| WP2 Media access layer | Scope (albums, date range, all) and batched reads | Done, unchanged |
+| WP3 Time resolution | Local day and the rule used | Done, unchanged |
+| WP4 Locality resolver | Platform geocoder, coarsening, cache, retry | Done, extended by WP11 |
+| WP5 Place builder | Merges consecutive days into ranges | Done, replaced by WP12 |
+| WP6 Staging mapper | Maps places to staged items | Done, replaced by WP13 |
+| WP7 Sync and re-scan | Incremental scans and resume | Done, extended by WP15 |
+| WP8 Settings UI | Scope and scan on the Settings page | Done, superseded by WP15 |
+| WP9 Fixtures and acceptance tests | Tests for the draft 4 checks | Done, extended by WP16 |
 
-### WP2. Media access layer
+### New work packages
 
-- **Inputs:** section 4 (scope and permissions) and section 5 (fields read).
-- **Outputs:** a module that lists albums, applies the chosen scope (albums, date range, or all), and returns normalised photo records (time, offset, GPS if present, media ID, camera make and model), in batches so a scan-all run can be resumed.
-- **Depends on:** WP1 for the record type.
-- **Done when:** it handles permission granted, location permission declined and limited access, never reads outside the chosen scope, and a large scan can be cancelled and resumed.
+Each package is sized for one agent. WP12 is pure and can be tested against fixtures without a device.
 
-### WP3. Time resolution (pure)
+### WP10. Data model migration
 
-- **Inputs:** a photo record plus known trip legs and a fallback timezone.
-- **Outputs:** a local day and the rule used (offset, GPS inference, or fallback).
-- **Depends on:** WP1.
-- **Done when:** fixtures cover each rule and the missing-time fallback, and the rule used is always recorded.
+- **Inputs:** section 3 and the table in 2a.
+- **Outputs:** the place container with parent links (country, region, locality), alias keys for merged places, the one-day place entry (place, local day, source, photo evidence), the status (pending, accepted, dismissed), the minimal marker kept when the bin is emptied, and removal of the `confidence` field. The app is not live, so reset the dev data instead of migrating it.
+- **Depends on:** nothing. Do first.
+- **Done when:** types validate, existing sources are unaffected, and a London weekend plus a day trip is representable as one place with three entries.
 
-### WP4. Locality resolver
+### WP11. Locality hierarchy and key stability
 
-- **Inputs:** section 8, and photo records with GPS.
-- **Outputs:** the resolver interface, coordinate coarsening, per-day deduplication of lookups, a cache in the app database, retry for pending photos, and a first implementation on the phone's geocoder. A fake resolver for tests.
-- **Depends on:** WP1.
-- **Done when:** lookups send only coarsened coordinates, repeated places on a day cost one lookup, failures leave photos pending without creating places, and the level-selection rule is tested on real photos on both Android and iOS.
+- **Inputs:** section 8 and the variants found in the first export.
+- **Outputs:** the resolver returns locality, region and country as a hierarchy. Evidence attaches at the deepest level returned, and a region is never relabelled as a locality. Keys are normalised for case, accents, spaces and hyphens. Variants that normalisation cannot catch are left for the user to merge (WP13).
+- **Depends on:** WP10.
+- **Done when:** the home-area variants resolve under their parents, the Cinque Terre villages stay separate localities under their region, and "Porto Venere" and "Portovenere" share one key. The two Shenzhen spellings are expected to stay separate until the user merges them.
 
-### WP5. Place builder (pure)
+### WP12. Entry builder (replaces the run builder)
 
-- **Inputs:** photo records with local day and locality key, known trips and legs.
-- **Outputs:** places with date ranges, evidence references and a stable identity, following section 9.
-- **Depends on:** WP1, WP3. Can be built against the fake resolver from WP4.
-- **Done when:** fixtures cover multi-day runs, same-day overlaps, trip boundary splits, long-gap splits, photos during legs, and no-GPS photos attaching by day.
+- **Inputs:** photo records with local day and resolved locality, from the done packages.
+- **Outputs:** place entries grouped by place and day with evidence attached to the hierarchy, and unlocated evidence for photos with no GPS. No date ranges.
+- **Depends on:** WP10, WP11 (can be built against the fake resolver).
+- **Done when:** fixtures cover multi-day stays, same-day multiple places, no-GPS photos and the London weekend plus day trip, and the run builder code is removed.
 
-### WP6. Staging mapper
+### WP13. Staging service
 
-- **Inputs:** places from WP5 and the known trips.
-- **Outputs:** staged `place` items with a proposed trip link or standalone, and confidence.
-- **Depends on:** WP1, WP5.
-- **Done when:** a trip's photos attach to that trip, nothing is flagged against calendar places, and no duplicate items are created.
+- **Inputs:** sections 3, 4 and 9, and the entries from WP12.
+- **Outputs:** pending suggestions in the Staging Hub with no automatic creation, status changes, matching of candidates against dismissed items by key and by photo IDs, batch accept and dismiss at any hierarchy level, merging two places (the merged place keeps the other key as an alias), bin listing, restore, empty bin with markers, and reset decisions.
+- **Depends on:** WP10, WP12.
+- **Done when:** acceptance checks 3 to 7 pass.
 
-### WP7. Sync and re-scan
-
-- **Inputs:** section 13, the mapper output, the last-scanned marker, and the existing staged items.
-- **Outputs:** incremental scans that update or create items without duplicates, extend existing places when new photos arrive, and mark references to deleted photos as missing.
-- **Depends on:** WP2, WP6.
-- **Done when:** re-scan creates zero duplicates and adjacent-day photos extend the existing place.
-
-### WP8. Settings UI
+### WP14. Staging UI and hints
 
 - **Inputs:** section 4.
-- **Outputs:** setup flow with the albums, date range and scan all options (including the scan-all heads-up and progress), scope editing, and a way to trigger a re-scan. There are no threshold or radius controls.
-- **Depends on:** WP2.
-- **Done when:** a user can pick any scope including scan all, see progress and cancel, and trigger a re-scan.
+- **Outputs:** hierarchy browsing (country, region, locality), batch actions with the dates visible, a merge action for two places, ordering by significance hints (relative to the place's norm, a calendar entry on the date, absolute count) with routine days collapsed, and the Bin view.
+- **Depends on:** WP13.
+- **Done when:** a user can clear a trip in a few taps, restore from the bin, and sees unusual days first with nothing hidden.
 
-### WP9. Fixtures and acceptance tests
+### WP15. Sources page entry and re-scan changes
 
-- **Inputs:** section 15.
-- **Outputs:** a fixture set of sample photo metadata (including a multi-day city trip, a day trip to a nearby town, suburbs of one city, and photos with no GPS) and an automated test for each acceptance check.
-- **Depends on:** WP1 first, then updated as WP3 to WP7 land.
-- **Done when:** all ten acceptance checks run and pass.
+- **Inputs:** sections 5 and 9.
+- **Outputs:** the photo source as a self-contained entry on the Sources page (status, last scanned, pending count, Scan now, progress, cancel, scope options) replacing the scan on Settings. Re-scan adds evidence silently to accepted days, creates pending entries for new days, and leaves dismissed days dismissed. The pending count reaches the dot on the sources icon.
+- **Depends on:** WP13, and the existing sync and scope code.
+- **Done when:** a scan runs from the Sources page, re-scan is idempotent, and checks 3, 4 and 11 pass.
+
+### WP16. Fixtures and acceptance tests
+
+- **Inputs:** section 12 and the first implementation's export.
+- **Outputs:** fixtures (home-area variants, Cinque Terre villages, spelling variants, a day trip, no-GPS photos, a London weekend plus day trip) and an automated test for each of the fourteen checks.
+- **Depends on:** WP10 first, then updated as WP11 to WP15 land.
+- **Done when:** all fourteen checks run and pass.
 
 ### Suggested order
 
-1. WP1 and WP9 (fixtures first).
-2. WP2, WP3 and WP4 in parallel.
-3. WP5 (can start early against the fake resolver), then WP6.
-4. WP7, then WP8.
+1. WP10 and WP16 (fixtures first).
+2. WP11 and WP12 (WP12 against the fake resolver).
+3. WP13.
+4. WP14 and WP15.
 
-### Open
+## 14. Open and proposed items to settle
 
-- Which locality level counts as the city, checked on real photos on both Android and iOS.
 - Storage terms of the platform geocoders.
-- The maximum day gap before a run ends.
-- Whether screenshots and saved images are excluded or included at low confidence.
-- Whether photos also attach to venue-level events in this source.
+- Approval of the Proposed items: restore to pending, bin marker on emptying, matching dismissals by photo IDs, no-GPS attachment rule, hint ordering, the 10-reference cap.

@@ -24,6 +24,10 @@
 
 `src/lib/journal/staging.ts` must import from `./connectors/registry`, never from `./parsers`.
 
+## ⚠️ Evaluation fields — universal, never calendar-level
+
+Evaluation fields (`rating` 0–10, `reflection` prose) are universal to entries and containers (`Trip`, `Series`), never calendar dates. Imported values are provenance-locked in `sourceLocked` and immutable. See `src/lib/journal/evaluation.ts` for helpers (`isLocked`, `sourceLocks`, `mergeEvaluation`, `migrateEntryEvaluation`).
+
 ## ⚠️ Test infrastructure — do not remove
 
 `vitest.config.ts` and `src/lib/journal/__tests__/` must not be deleted. The `package.json` scripts must include `"test": "vitest run"`. Run `bun run test` to verify all tests pass before committing significant changes.

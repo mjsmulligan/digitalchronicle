@@ -11,7 +11,7 @@
  * Accepts `colors` and `fonts` as props so it can be used inside FlatList
  * renderItem without calling useTheme() on every row.
  */
-import React from "react";
+import React, { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   entryTitle,
@@ -21,6 +21,7 @@ import {
   type Leg,
   type Film,
   type Book,
+  type PlaceEntry,
 } from "@chronicle/journal/types";
 import { type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "./ThemeProvider";
 import { KindIcon, StarRating } from "./KindIcon";
@@ -38,6 +39,8 @@ export function entryLabel(e: Entry): string {
       : "Road";
   }
   if (v.kind === "stay")    return "Stay";
+  if (v.kind === "place")   return "Place";
+  if (v.kind === "place-entry") return "Place";
   if (v.kind === "film")    return (v as Film).rewatch ? "Rewatch" : "Film";
   if (v.kind === "episode") return "Episode";
   if (v.kind === "book")    return (v as Book).series ? "Series" : "Book";
@@ -55,6 +58,16 @@ export function entryMeta(e: Entry): string {
   if (v.kind === "stay") {
     const s = v as Extract<Entry, { kind: "stay" }>;
     return [s.city, s.end && `until ${s.end.slice(0, 10)}`].filter(Boolean).join(" · ");
+  }
+  if (v.kind === "place") {
+    const p = v as Extract<Entry, { kind: "place" }>;
+    return [p.region, p.start && p.end && p.start !== p.end ? `${p.start.slice(0, 10)} – ${p.end.slice(0, 10)}` : p.start?.slice(0, 10)]
+      .filter(Boolean).join(" · ");
+  }
+  if (v.kind === "place-entry") {
+    const pe = v as PlaceEntry;
+    return [pe.localDay, `${pe.photoCount} photo${pe.photoCount === 1 ? "" : "s"}`]
+      .filter(Boolean).join(" · ");
   }
   if (v.kind === "film") {
     const f = v as Extract<Entry, { kind: "film" }>;
@@ -143,7 +156,7 @@ export interface EntryRowProps {
  */
 export function EntryRow({ entry, colors, fonts, onPress, onLongPress }: EntryRowProps) {
   const v = view(entry);
-  const styles = createStyles(colors, fonts);
+  const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
   const title = entryTitle(v);
   const subtitle = entryMeta(v);
   const label = entryLabel(v);

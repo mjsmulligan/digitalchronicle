@@ -7,7 +7,7 @@ import type { Leg } from "../../types";
 import type { Connector, ParseResult } from "../types";
 import { csvRows } from "../csv";
 import { normDate } from "../dates";
-import { pick, confidenceFrom, purposeFrom, companionsFrom } from "../fields";
+import { pick, purposeFrom, companionsFrom } from "../fields";
 import { legKey } from "../keys";
 import { withTiming, legWarnings } from "../timing";
 
@@ -69,7 +69,6 @@ function parseViaduct(text: string): ParseResult {
       reflection: pick(r, ["Notes", "Note"]) || undefined,
       dedupeKey: "",
       createdAt: now(),
-      confidence: confidenceFrom(r, "confirmed"),
       purpose: purposeFrom(r),
       companions: companionsFrom(r),
       raw: r,
