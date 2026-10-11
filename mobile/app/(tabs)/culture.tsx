@@ -26,12 +26,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useJournal } from "@chronicle/journal/db";
 import {
+  view,
+  entryTitle,
   type Film,
   type Episode,
   type Book,
   type JEvent,
   type Series,
 } from "@chronicle/journal/types";
+import { eventToArtworkKey, bookToArtworkKey } from "@chronicle/journal/artwork";
 import {
   useTheme,
   type ThemeColors,
@@ -42,6 +45,7 @@ import {
 } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
+import { PosterCard } from "../../src/components/PosterCard";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -183,6 +187,8 @@ type ListItem =
       seriesKey?: string;
       /** Kind icon to show on the left — only present when collapsible: true */
       kind?: CultureKind;
+      /** Artwork cache key for inline poster (film / tv / book groups only) */
+      artworkKey?: string;
     }
   | { type: "entry";      id: string; entry: CultureEntry }
   | { type: "separator";  id: string }
@@ -267,6 +273,9 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
 
     // Entry row padding
     entryWrap: { paddingHorizontal: spacingScale.base },
+
+    // Compact poster indent — matches entry/group content left edge
+    posterWrap: { paddingHorizontal: spacingScale.base },
 
     // Hairline between consecutive entries
     separator: {
@@ -444,6 +453,8 @@ export default function CultureScreen() {
       getEntries: (g: G) => E[],
       countLabel: (n: number) => string,
       kind: CultureKind,
+      /** Optional: derive poster artwork key from the series group's entries */
+      getArtworkKey?: (entries: E[]) => string | null,
     ) {
       sections.forEach((sec, si) => {
         if (si > 0) {
@@ -460,6 +471,7 @@ export default function CultureScreen() {
           const key    = `series:${g.name}`;
           const collapsed = !expandedKeys.has(key);
           const seriesAvg = avgRating(entries);
+          const ak = getArtworkKey ? (getArtworkKey(entries) ?? undefined) : undefined;
           items.push({
             type: "groupHeader",
             id: `gh-${key}`,
@@ -470,6 +482,7 @@ export default function CultureScreen() {
             collapsed,
             seriesKey: key,
             kind,
+            artworkKey: ak,
           });
           if (!collapsed) pushEntries(entries);
         } else {
@@ -511,6 +524,7 @@ export default function CultureScreen() {
         (g: FilmSeriesGroup) => g.films,
         (n) => `${n} films`,
         "film",
+        (films) => eventToArtworkKey(films[0]),
       );
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-films" });
     }
@@ -537,6 +551,7 @@ export default function CultureScreen() {
           collapsed,
           seriesKey: key,
           kind: "episode" as const,
+          artworkKey: eventToArtworkKey(eps[0]) ?? undefined,
         });
         if (!collapsed) pushEntries(eps);
       });
@@ -553,6 +568,7 @@ export default function CultureScreen() {
         (g: BookSeriesGroup) => g.books,
         (n) => `${n} ${n === 1 ? "book" : "books"} read`,
         "book",
+        (books) => bookToArtworkKey(books[0]),
       );
     }
 
@@ -614,39 +630,51 @@ export default function CultureScreen() {
               case "groupHeader":
                 if (item.collapsible) {
                   return (
-                    <Pressable
-                      onPress={() => toggleSeries(item.seriesKey!)}
-                      style={({ pressed }) => [
-                        styles.groupHeader,
-                        styles.groupHeaderCollapsible,
-                        pressed && styles.groupHeaderPressed,
-                      ]}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${item.collapsed ? "Expand" : "Collapse"} ${item.title}`}
-                    >
-                      {/* Leading icon — mirrors EntryRow's markWrap position */}
-                      <View style={styles.groupHeaderMark}>
-                        <KindIcon
-                          kind={item.kind === "episode" ? "episode" : item.kind === "book" ? "book" : "film"}
-                          size={18}
-                          color={colors.textTertiary}
-                          accessibilityLabel=""
-                        />
-                      </View>
-                      <Text style={styles.groupHeaderTitle}>{item.title}</Text>
-                      {/* Trailing: avg stars + count + chevron */}
-                      <View style={styles.groupHeaderTrailing}>
-                        {item.avg != null && (
-                          <StarRating rating={Math.round(item.avg * 2) / 2} color={colors.star} size={11} />
-                        )}
-                        <Text style={styles.groupHeaderSubtitle}>{item.subtitle}</Text>
-                        <Ionicons
-                          name={item.collapsed ? "chevron-forward" : "chevron-down"}
-                          size={13}
-                          color={colors.textTertiary}
-                        />
-                      </View>
-                    </Pressable>
+                    <View>
+                      <Pressable
+                        onPress={() => toggleSeries(item.seriesKey!)}
+                        style={({ pressed }) => [
+                          styles.groupHeader,
+                          styles.groupHeaderCollapsible,
+                          pressed && styles.groupHeaderPressed,
+                        ]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${item.collapsed ? "Expand" : "Collapse"} ${item.title}`}
+                      >
+                        {/* Leading icon — mirrors EntryRow's markWrap position */}
+                        <View style={styles.groupHeaderMark}>
+                          <KindIcon
+                            kind={item.kind === "episode" ? "episode" : item.kind === "book" ? "book" : "film"}
+                            size={18}
+                            color={colors.textTertiary}
+                            accessibilityLabel=""
+                          />
+                        </View>
+                        <Text style={styles.groupHeaderTitle}>{item.title}</Text>
+                        {/* Trailing: avg stars + count + chevron */}
+                        <View style={styles.groupHeaderTrailing}>
+                          {item.avg != null && (
+                            <StarRating rating={Math.round(item.avg * 2) / 2} color={colors.star} size={11} />
+                          )}
+                          <Text style={styles.groupHeaderSubtitle}>{item.subtitle}</Text>
+                          <Ionicons
+                            name={item.collapsed ? "chevron-forward" : "chevron-down"}
+                            size={13}
+                            color={colors.textTertiary}
+                          />
+                        </View>
+                      </Pressable>
+                      {/* Poster — only shown when collapsed; reveals the artwork without crowding the episode list */}
+                      {item.collapsed && item.artworkKey && (
+                        <View style={styles.posterWrap}>
+                          <PosterCard
+                            artworkKey={item.artworkKey}
+                            title={item.title}
+                            variant="compact"
+                          />
+                        </View>
+                      )}
+                    </View>
                   );
                 }
                 return (
@@ -656,7 +684,13 @@ export default function CultureScreen() {
                   </View>
                 );
 
-              case "entry":
+              case "entry": {
+                // Standalone films and books get a compact poster below their row.
+                // Episodes (inside expanded show groups) are excluded.
+                const entryAk =
+                  item.entry.kind === "film" || item.entry.kind === "book"
+                    ? (eventToArtworkKey(item.entry) ?? undefined)
+                    : undefined;
                 return (
                   <View style={styles.entryWrap}>
                     <EntryRow
@@ -665,8 +699,16 @@ export default function CultureScreen() {
                       fonts={fonts}
                       onPress={() => router.push(`/entry/${item.entry.id}`)}
                     />
+                    {entryAk && (
+                      <PosterCard
+                        artworkKey={entryAk}
+                        title={entryTitle(view(item.entry))}
+                        variant="compact"
+                      />
+                    )}
                   </View>
                 );
+              }
 
               case "separator":
                 return <View style={styles.separator} />;

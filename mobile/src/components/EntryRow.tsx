@@ -12,7 +12,7 @@
  * renderItem without calling useTheme() on every row.
  */
 import React, { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   entryTitle,
   view,
@@ -137,6 +137,14 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       flexShrink: 0,
       alignSelf: "flex-start",
     },
+    photoStrip: {
+      paddingBottom: spacingScale.md,
+    },
+    photoThumb: {
+      width: 80,
+      height: 80,
+      borderRadius: 6,
+    },
   });
 }
 
@@ -169,42 +177,69 @@ export function EntryRow({ entry, colors, fonts, onPress, onLongPress }: EntryRo
       : entry.source;
   const hasBrandMark = !!sourceMark(markId);
 
+  // Photo strip: only for place-entry rows that have usable evidence
+  const photoEvidence =
+    entry.kind === "place-entry"
+      ? (entry as PlaceEntry).photoEvidence.filter((r) => !r.missing && r.uri)
+      : [];
+
   return (
-    <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-      onPress={onPress}
-      onLongPress={onLongPress}
-      accessibilityRole="button"
-      accessibilityLabel={title}
-    >
-      {/* Leading: brand mark, or KindIcon fallback */}
-      <View style={styles.markWrap}>
-        {hasBrandMark ? (
-          <SourceMark source={markId} size={20} accessibilityLabel="" />
-        ) : (
-          <KindIcon
-            kind={entry.kind}
-            subkind={subkind}
-            size={18}
-            color={colors.textTertiary}
-            accessibilityLabel=""
-          />
-        )}
-      </View>
+    <View>
+      <Pressable
+        style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+      >
+        {/* Leading: brand mark, or KindIcon fallback */}
+        <View style={styles.markWrap}>
+          {hasBrandMark ? (
+            <SourceMark source={markId} size={20} accessibilityLabel="" />
+          ) : (
+            <KindIcon
+              kind={entry.kind}
+              subkind={subkind}
+              size={18}
+              color={colors.textTertiary}
+              accessibilityLabel=""
+            />
+          )}
+        </View>
 
-      {/* Body: title + optional subtitle + optional stars */}
-      <View style={styles.body}>
-        <Text style={styles.title} numberOfLines={2}>{title}</Text>
-        {subtitle.length > 0 && (
-          <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
-        )}
-        {v.rating !== undefined && (
-          <StarRating rating={v.rating} color={colors.star} size={11} />
-        )}
-      </View>
+        {/* Body: title + optional subtitle + optional stars */}
+        <View style={styles.body}>
+          <Text style={styles.title} numberOfLines={2}>{title}</Text>
+          {subtitle.length > 0 && (
+            <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
+          )}
+          {v.rating !== undefined && (
+            <StarRating rating={v.rating} color={colors.star} size={11} />
+          )}
+        </View>
 
-      {/* Trailing: mono kind label */}
-      <Text style={styles.label}>{label}</Text>
-    </Pressable>
+        {/* Trailing: mono kind label */}
+        <Text style={styles.label}>{label}</Text>
+      </Pressable>
+
+      {/* Photo strip — shown only for place-entry rows with evidence */}
+      {photoEvidence.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.photoStrip}
+          contentContainerStyle={{ gap: 6 }}
+        >
+          {photoEvidence.map((ref) => (
+            <Image
+              key={ref.mediaId}
+              source={{ uri: ref.uri }}
+              style={styles.photoThumb}
+              resizeMode="cover"
+            />
+          ))}
+        </ScrollView>
+      )}
+    </View>
   );
 }
