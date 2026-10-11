@@ -169,11 +169,10 @@ export function DateField({ label, value, onChange, minimumDate, maximumDate }: 
           value={currentDate}
           mode="date"
           display="default"
-          onValueChange={(date) => {
+          onChange={(event: DateTimePickerEvent, selected?: Date) => {
             setShowPicker(false);
-            if (date) onChange(toISO(date));
+            if (event.type === "set" && selected) onChange(toISO(selected));
           }}
-          onDismiss={() => setShowPicker(false)}
           minimumDate={minimumDate}
           maximumDate={maximumDate}
         />

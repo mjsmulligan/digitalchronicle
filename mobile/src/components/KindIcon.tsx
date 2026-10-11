@@ -16,7 +16,9 @@ function resolveIcon(kind: string, subkind?: string): { name: IoniconName; label
       if (subkind === "air")  return { name: "airplane",       label: "Flight" };
       if (subkind === "rail") return { name: "train",           label: "Train" };
       return                         { name: "car",             label: "Drive" };
-    case "stay":    return { name: "bed",            label: "Stay" };
+    case "stay":        return { name: "bed",            label: "Stay" };
+    case "place":       return { name: "location",      label: "Place" };
+    case "place-entry": return { name: "location",      label: "Place" };
     case "film":    return { name: "film",           label: "Film" };
     case "episode": return { name: "tv-outline",      label: "Episode" };
     case "book":    return { name: "book",           label: "Book" };

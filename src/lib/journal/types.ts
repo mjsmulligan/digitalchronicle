@@ -11,9 +11,22 @@ export type Source = string;
 export type Tier = 1 | 2 | 3;
 export type Mode = "air" | "rail" | "road";
 
-/** How sure we are this fact is right, independent of Tier (which is precedence, not quality). */
-export type Confidence = "confirmed" | "inferred" | "approximate";
 export type Purpose = "work" | "family" | "leisure" | "other";
+
+// Per-kind override shapes — defined before Base to avoid circular references.
+// Fields mirror the corresponding kind interfaces; kept in sync manually.
+export type LegOverrides = Partial<{
+  start: string; end: string; from: string; to: string;
+  fromName: string; toName: string; mode: string;
+  flightNumber: string; trainNumber: string; operator: string; seat: string;
+}>;
+export type StayOverrides    = Partial<{ start: string; end: string; place: string; city: string; notes: string }>;
+export type EventOverrides   = Partial<{ start: string; end: string; artist: string; venue: string; city: string; country: string; category: string; tour: string }>;
+export type FilmOverrides    = Partial<{ start: string; title: string; year: number; director: string }>;
+export type EpisodeOverrides = Partial<{ start: string; showTitle: string; season: string; episodeTitle: string; episodeNumber: number }>;
+export type BookOverrides    = Partial<{ start: string; title: string; author: string; year: number; dateStarted: string }>;
+
+export type AnyOverrides = LegOverrides | StayOverrides | EventOverrides | FilmOverrides | EpisodeOverrides | BookOverrides;
 
 interface Base {
   id: string;
@@ -37,12 +50,21 @@ interface Base {
   endUTC?: string;
   tripId?: string;
   dedupeKey: string;
-  /** Free-text personal reflection on this entry. Stored in IndexedDB; never exported. */
+  /** User's own prose reflection. Never overwritten by connectors or supersede. */
   reflection?: string;
-  /** @deprecated Legacy name for `reflection`; still written by existing UI and parsers. */
-  journal?: string;
-  /** Numeric rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
+  /**
+   * Source-supplied review text (e.g. a Letterboxd review, Goodreads review,
+   * or calendar description). Written only by connectors. Read-only in the UI.
+   * See evaluation.ts — D8.
+   */
+  review?: string;
+  /** Universal quantitative field: rating 0–10 (one decimal). Blank means unrated. Original-scale value lives in `raw`. */
   rating?: number;
+  /**
+   * Tracks rating provenance — whether the rating came from an external source.
+   * See `isLocked()` in evaluation.ts.
+   */
+  sourceLocked?: ("rating")[];
   /**
    * How precisely the date is known.
    * "day"     — full YYYY-MM-DD known (default assumed when omitted)
@@ -52,10 +74,8 @@ interface Base {
    */
   datePrecision?: "day" | "month" | "year" | "unknown";
   /** Tier 1 manual overrides layered on top of source data */
-  overrides?: Record<string, string>;
+  overrides?: AnyOverrides;
   createdAt: string;
-  /** How sure we are this fact (not just this record) is right. Not the same as Tier. */
-  confidence: Confidence;
   purpose?: Purpose;
   /** Person ids or free-text names of who was there */
   companions?: string[];
@@ -63,6 +83,15 @@ interface Base {
   raw?: Record<string, unknown>;
   /** Where this fact came from: filename and row/index within it. */
   sourceRef?: string;
+  /** Extra sources absorbed when two entries were merged. */
+  additionalSources?: Array<{ source: string; sourceRef?: string }>;
+  /**
+   * Soft-delete flag. When `true` the entry is excluded from all normal views
+   * and helpers (allEntries, feeds, trip linking, etc.) but remains in the
+   * database so it can be restored from Settings → Hidden Entries.
+   * Absent (undefined) means visible — the field is never set to `false`.
+   */
+  hidden?: true;
 }
 
 export interface Leg extends Base {
@@ -150,6 +179,10 @@ export interface Series {
   title: string;
   /** "tv" for television shows; "book" for book series */
   mediaType?: "tv" | "book";
+  /** Container-level rating 0–10. Separate from individual episode/book ratings. */
+  rating?: number;
+  /** Container-level reflection prose. */
+  reflection?: string;
   createdAt: string;
 }
 
@@ -177,7 +210,132 @@ export interface Book extends Base {
   dateStarted?: string;
 }
 
-export type Entry = Leg | Stay | JEvent | Film | Episode | Book;
+/**
+ * A stable string key that uniquely identifies a locality (city / town) as
+ * returned by the device geocoder. Treated as opaque — the format is defined
+ * by the LocalityResolver implementation in the EXIF source (WP4).
+ */
+export type LocalityKey = string;
+
+/**
+ * A reference back to a single photo that contributed evidence to a place entry.
+ * The photo itself is never stored — only the minimal reference needed to re-link
+ * the journal entry to the original asset.
+ */
+export interface PhotoEvidenceRef {
+  /** Platform media asset id (e.g. Android content URI id or iOS localIdentifier) */
+  mediaId: string;
+  /** Platform-specific URI for opening the asset (content:// or ph://) */
+  uri?: string;
+  /** YYYY-MM-DD local day assigned to this photo (see WP3 time resolution) */
+  localDay: string;
+  /** Whether a GPS coordinate was present and used for locality resolution */
+  hasGps: boolean;
+  /** Which time-resolution rule was applied (see spec section 6) */
+  timingRule: "exif-offset" | "gps-inferred" | "fallback";
+  /** Set true when the photo has been deleted from the library after scanning */
+  missing?: boolean;
+}
+
+// ─── WP10: Place container and one-day entry ──────────────────────────────────
+
+/**
+ * User-decision state for a PlaceEntry.
+ *   pending   — arrived from a scan, waiting for the user to accept or dismiss.
+ *   accepted  — the user confirmed this day at this place.
+ *   dismissed — the user rejected it; lives in the bin until the bin is emptied,
+ *               then a PlaceBinMarker is kept so re-scan still skips it.
+ */
+export type PlaceStatus = "pending" | "accepted" | "dismissed";
+
+/**
+ * A locality place container. Like Trip or Series, this is not an Entry — it is
+ * a grouping record that holds PlaceEntry children.
+ *
+ * Places are created when the first PlaceEntry for a locality is confirmed.
+ * A place knows its geographic parents (region, country) so the Staging Hub
+ * can browse the full hierarchy.
+ *
+ * dedupeKey is not used here; uniqueness is by localityKey (+ aliasKeys).
+ */
+export interface Place {
+  id: string;
+  kind: "place";
+  /** Normalised locality key from the geocoder (e.g. "ie:dublin") */
+  localityKey: LocalityKey;
+  /**
+   * Keys of places that have been merged into this one (spelling variants).
+   * Re-scan maps photos matching any alias key to this place.
+   */
+  aliasKeys?: LocalityKey[];
+  /** Human-readable city / town name (e.g. "Dublin") */
+  locality: string;
+  region?: string;
+  country?: string;
+  /**
+   * Id of the parent Place (the region-level or country-level container).
+   * Undefined for top-level country places.
+   */
+  parentId?: string;
+  createdAt: string;
+}
+
+/**
+ * A single-day place fact: this locality, this calendar day, this evidence.
+ *
+ * A two-day stay in London is one Place with two PlaceEntries.
+ * A weekend in London plus a day trip two weeks later is one Place with three entries.
+ * There are no date ranges; visits (consecutive entries) are derived for display.
+ *
+ * Base.start = localDay (YYYY-MM-DD). Base.end is not used.
+ *
+ * dedupeKey: `place-entry|{localityKey}|{localDay}` — same place, same day = same entry.
+ */
+export interface PlaceEntry extends Base {
+  kind: "place-entry";
+  /** Id of the Place container this entry belongs to */
+  placeId: string;
+  /**
+   * Locality key (denormalised from the Place container for quick lookup
+   * without a join, e.g. in deduplication).
+   */
+  localityKey: LocalityKey;
+  /**
+   * The local calendar day this entry covers. Same value as Base.start —
+   * kept as an explicit field so callers don't need to know the Base convention.
+   */
+  localDay: string; // YYYY-MM-DD
+  /** Photo evidence sampled from this day (up to 10 refs) */
+  photoEvidence: PhotoEvidenceRef[];
+  /** Total number of photos that produced this entry (before the 10-ref sample) */
+  photoCount: number;
+  /** True when this entry was produced from a single photo */
+  singlePhoto?: boolean;
+  /** User decision on this entry */
+  status: PlaceStatus;
+}
+
+/**
+ * Minimal record kept after the bin is emptied for a dismissed PlaceEntry.
+ * The full PlaceEntry is deleted; this marker survives so a re-scan can
+ * still recognise and skip the same photos.
+ *
+ * A "reset decisions" action removes these markers, allowing the entry to be
+ * offered again on the next scan.
+ */
+export interface PlaceBinMarker {
+  /** Stable id for IndexedDB keyPath */
+  id: string;
+  localityKey: LocalityKey;
+  /** Keys of any merged place that also maps to this locality */
+  aliasKeys?: LocalityKey[];
+  /** The day that was dismissed (YYYY-MM-DD) */
+  localDay: string;
+  /** Media IDs of the photos that were in the dismissed entry */
+  photoIds: string[];
+}
+
+export type Entry = Leg | Stay | JEvent | Film | Episode | Book | PlaceEntry;
 
 /**
  * A person who appears in journal entries.
@@ -192,9 +350,19 @@ export interface Person {
   notes?: string;
   /** Marks the journal owner. Exactly one Person should have isSelf: true. */
   isSelf?: boolean;
+  /**
+   * Base64 data URI of a contact photo, e.g. "data:image/jpeg;base64,…".
+   * Captured at import time from the device address book. Absent for people
+   * created manually or imported from file.
+   */
+  photo?: string;
   createdAt: string;
 }
 
+/**
+ * @deprecated Day-level notes are no longer part of the model: reflections belong
+ * to entries and containers only. The store is kept so existing data survives in backups.
+ */
 export interface Note {
   id: string;
   /** YYYY-MM-DD day note, or attached to a trip */
@@ -210,10 +378,14 @@ export interface Trip {
   title: string;
   start: string;
   end: string;
-  notes: string;
   cover: string;
   createdAt: string;
-  purpose?: Purpose;
+  /** Universal rating 0–10 for the whole trip */
+  rating?: number;
+  /** Universal reflection on the whole trip */
+  reflection?: string;
+  /** @deprecated Folded into `reflection` on boot. */
+  notes?: string;
 }
 
 export type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-duplicate";
@@ -235,7 +407,8 @@ export interface StagingBatch {
   errors: string[];
 }
 
-export interface PlaceRecord {
+/** Transit place cache (airports and stations) used for coordinate and timezone lookup. */
+export interface GazetteerEntry {
   id: string;
   /** Normalised upper-case code or name, e.g. "DUB", "LONDON ST PANCRAS" */
   code: string;
@@ -259,11 +432,36 @@ export interface JournalData {
   notes: Note[];
   staging: StagingBatch[];
   people: Person[];
-  places: PlaceRecord[];
+  /** Transit place cache (airports, stations) used for geo lookup — NOT locality places */
+  gazetteer: GazetteerEntry[];
+  /** WP10: Place containers (one per locality, like Trip / Series) */
+  localityPlaces: Place[];
+  /** WP10: One-day place facts (one per locality+day) */
+  placeEntries: PlaceEntry[];
+  /** WP10: Minimal markers kept after the bin is emptied, so re-scan still skips dismissed photos */
+  placeBinMarkers: PlaceBinMarker[];
 }
 
-export const STORES = ["trips", "legs", "stays", "events", "films", "episodes", "books", "series", "notes", "staging", "people", "places"] as const;
+export const STORES = [
+  "trips", "legs", "stays", "events", "films", "episodes", "books",
+  "series", "notes", "staging", "people", "gazetteer",
+  // WP10
+  "localityPlaces", "placeEntries", "placeBinMarkers",
+] as const;
 export type StoreName = (typeof STORES)[number];
+
+/** Returns an empty JournalData with every store initialised to an empty array. */
+export function emptyJournalData(): JournalData {
+  return Object.fromEntries(STORES.map((s) => [s, []])) as unknown as JournalData;
+}
+
+/** The top-level shape of a Chronicle backup file. */
+export interface BackupFile {
+  app: "chronicle";
+  schemaVersion: 1;
+  exportedAt: string;
+  data: JournalData;
+}
 
 /**
  * @deprecated Use sourceLabel(id) from connectors/registry.ts instead.
@@ -306,6 +504,16 @@ export function entryTitle(e: Entry): string {
   const v = view(e);
   if (v.kind === "leg") return `${v.from} → ${v.to}`;
   if (v.kind === "stay") return v.place;
+  if (v.kind === "place-entry") {
+    // Derive a human-readable name from localityKey ("gb:london" → "London",
+    // "it:porto-venere" → "Porto Venere"). The Place container carries the
+    // canonical name but entryTitle can't access the store, so we parse the key.
+    const slug = v.localityKey.slice(v.localityKey.indexOf(":") + 1);
+    return slug
+      .split("-")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
   if (v.kind === "film") return v.year ? `${v.title} (${v.year})` : v.title;
   if (v.kind === "episode") return v.episodeTitle ? `${v.showTitle}: ${v.episodeTitle}` : v.showTitle;
   if (v.kind === "book") return v.author ? `${v.title} — ${v.author}` : v.title;

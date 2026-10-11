@@ -295,6 +295,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       marginBottom: spacingScale.sm,
     },
     emptyHint: { ...textScale.md, color: colors.textTertiary, textAlign: "center" },
+    ctaBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm2,
+      marginTop: spacingScale.xl,
+      paddingHorizontal: spacingScale.lg,
+      paddingVertical: spacingScale.md,
+      borderRadius: radiusScale.pill,
+      backgroundColor: colors.accentBold,
+    },
+    ctaBtnText: { color: colors.white, fontSize: 15, fontWeight: "700" },
   });
 }
 
@@ -580,6 +591,10 @@ export default function CultureScreen() {
           <Text style={styles.emptyHint}>
             Import Letterboxd, Netflix, or Goodreads data to populate Culture.
           </Text>
+          <Pressable style={styles.ctaBtn} onPress={() => router.push("/import")}>
+            <Ionicons name="add" size={18} color="white" />
+            <Text style={styles.ctaBtnText}>Import culture</Text>
+          </Pressable>
         </View>
       ) : (
         <FlatList

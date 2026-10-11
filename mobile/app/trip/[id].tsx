@@ -8,29 +8,18 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, storeFor } from "@chronicle/journal/db";
-import { entryTitle, view, type Entry, type Trip } from "@chronicle/journal/types";
+import { entryTitle, view, type Entry, type Trip, type Leg } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
-import { KindIcon } from "../../src/components/KindIcon";
+import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
 import { Ionicons } from "@expo/vector-icons";
+import { DateColumn } from "../../src/components/DateColumn";
+import { compareEntriesChronological } from "../../src/lib/dateHelpers";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-const MONTHS_SHORT = ["Jan","Feb","Mar","Apr","May","Jun",
-                      "Jul","Aug","Sep","Oct","Nov","Dec"];
-const MONTHS_FULL  = ["January","February","March","April","May","June",
-                      "July","August","September","October","November","December"];
-const DAYS_SHORT   = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
-
-function parseDay(iso: string) {
-  const d = new Date(iso + "T12:00:00");
-  return {
-    num:   d.getDate().toString(),
-    day:   DAYS_SHORT[d.getDay()],
-    month: MONTHS_SHORT[d.getMonth()].toUpperCase(),
-    year:  d.getFullYear().toString(),
-  };
-}
+const MONTHS_FULL = ["January","February","March","April","May","June",
+                     "July","August","September","October","November","December"];
 
 function fmt(iso: string): string {
   const d = new Date(iso + "T12:00:00");
@@ -47,7 +36,7 @@ function entrySubkind(e: Entry): string | undefined {
   return undefined;
 }
 
-function groupByDay(entries: Entry[]): DayGroup[] {
+function groupByDay(entries: Entry[]): TripDayGroup[] {
   const map = new Map<string, Entry[]>();
   for (const e of entries) {
     const day = e.start.slice(0, 10);
@@ -63,14 +52,12 @@ const PURPOSE_KIND: Record<string, string> = {
 
 // ── data ──────────────────────────────────────────────────────────────────────
 
-interface DayGroup {
+interface TripDayGroup {
   iso: string;
   items: Entry[];
 }
 
 // ── styles factory ────────────────────────────────────────────────────────────
-
-const DATE_COL_W = 52;
 
 function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
@@ -130,39 +117,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       paddingBottom: spacingScale.sm,
     },
 
-    // Date column
-    dateCol: {
-      width: DATE_COL_W,
-      alignItems: "center",
-      paddingTop: 2,
-      flexShrink: 0,
-    },
-    dateNum: {
-      fontFamily: fonts.serifBold,
-      fontWeight: "700",
-      ...textScale.dayNum,
-      color: colors.textBright,
-    },
-    dateNumDim: { color: colors.textTertiary },
-    dateSub: {
-      fontFamily: fonts.mono,
-      fontSize: 10,
-      fontWeight: "700",
-      letterSpacing: 0.8,
-      color: colors.textTertiary,
-      lineHeight: 15,
-      textTransform: "uppercase" as const,
-    },
-
-    // Vertical rule
-    dateRule: {
-      width: 1,
-      alignSelf: "stretch",
-      backgroundColor: colors.border,
-      marginHorizontal: spacingScale.md,
-      marginTop: 4,
-    },
-
     // Entries column (linked) — no gap; EntryRow provides its own paddingVertical
     cardsCol: { flex: 1 },
 
@@ -170,6 +124,16 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     rowSeparator: {
       height: StyleSheet.hairlineWidth,
       backgroundColor: colors.border,
+    },
+
+    // Visible remove button on each linked entry row
+    entryRowWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+    },
+    removeBtn: {
+      padding: 8,
+      marginRight: -4,
     },
 
     // Suggestion card — kept as a bordered card to distinguish from linked entries
@@ -279,28 +243,35 @@ function SuggestionCard({
 }
 
 /** Two-column date row for linked entries — uses shared EntryRow */
-function EntryDayGroup({ group, styles, colors, fonts, router, onRemove }: { group: DayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter>; onRemove?: (entry: Entry) => void }) {
-  const { num, day, month, year } = parseDay(group.iso);
+function EntryDayGroup({ group, styles, colors, fonts, router, onRemove }: { group: TripDayGroup; styles: Styles; colors: ThemeColors; fonts: ThemeFonts; router: ReturnType<typeof useRouter>; onRemove?: (entry: Entry) => void }) {
   return (
     <View style={styles.dayGroup}>
-      <View style={styles.dateCol}>
-        <Text style={styles.dateNum}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-      <View style={styles.dateRule} />
+      <DateColumn iso={group.iso} colors={colors} fonts={fonts} align="center" />
       <View style={styles.cardsCol}>
         {group.items.map((e, idx) => (
           <React.Fragment key={e.id}>
             {idx > 0 && <View style={styles.rowSeparator} />}
-            <EntryRow
-              entry={e}
-              colors={colors}
-              fonts={fonts}
-              onPress={() => router.push(`/entry/${e.id}`)}
-              onLongPress={onRemove ? () => onRemove(e) : undefined}
-            />
+            <View style={styles.entryRowWrap}>
+              <View style={{ flex: 1 }}>
+                <EntryRow
+                  entry={e}
+                  colors={colors}
+                  fonts={fonts}
+                  onPress={() => router.push(`/entry/${e.id}`)}
+                  onLongPress={onRemove ? () => onRemove(e) : undefined}
+                />
+              </View>
+              {onRemove && (
+                <Pressable
+                  style={styles.removeBtn}
+                  onPress={() => onRemove(e)}
+                  accessibilityLabel="Remove from trip"
+                  hitSlop={4}
+                >
+                  <Ionicons name="remove-circle-outline" size={20} color={colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
           </React.Fragment>
         ))}
       </View>
@@ -315,23 +286,18 @@ function SuggestionDayGroup({
   onAdd,
   styles,
   colors,
+  fonts,
 }: {
-  group: DayGroup;
+  group: TripDayGroup;
   addingId: string | null;
   onAdd: (entry: Entry) => void;
   styles: Styles;
   colors: ThemeColors;
+  fonts: ThemeFonts;
 }) {
-  const { num, day, month, year } = parseDay(group.iso);
   return (
     <View style={styles.dayGroup}>
-      <View style={styles.dateCol}>
-        <Text style={[styles.dateNum, styles.dateNumDim]}>{num}</Text>
-        <Text style={styles.dateSub}>{day}</Text>
-        <Text style={styles.dateSub}>{month}</Text>
-        <Text style={styles.dateSub}>{year}</Text>
-      </View>
-      <View style={styles.dateRule} />
+      <DateColumn iso={group.iso} colors={colors} fonts={fonts} align="center" dim />
       <View style={styles.cardsCol}>
         {group.items.map((e) => (
           <SuggestionCard
@@ -370,7 +336,7 @@ export default function TripDetailScreen() {
     if (!trip) return [];
     return allEntries(journal)
       .filter((e) => e.tripId === trip.id)
-      .sort((a, b) => a.start.localeCompare(b.start));
+      .sort(compareEntriesChronological);
   }, [journal, trip]);
 
   const suggestions = useMemo<Entry[]>(() => {
@@ -379,8 +345,25 @@ export default function TripDetailScreen() {
       .filter((e) => !e.tripId
         && e.start.slice(0, 10) >= trip.start
         && e.start.slice(0, 10) <= trip.end)
-      .sort((a, b) => a.start.localeCompare(b.start));
+      .sort(compareEntriesChronological);
   }, [journal, trip]);
+
+  // Build flat list: grouped entry days + optional suggestions section.
+  // NOTE: must be declared BEFORE any early returns to satisfy Rules of Hooks.
+  type ListItem =
+    | { kind: "entryDay";      group: TripDayGroup }
+    | { kind: "suggestHeader" }
+    | { kind: "suggestDay";    group: TripDayGroup };
+
+  const listData = useMemo<ListItem[]>(() => {
+    const entryGroups   = groupByDay(entries);
+    const suggestGroups = groupByDay(suggestions);
+    return [
+      ...entryGroups.map((g) => ({ kind: "entryDay" as const, group: g })),
+      ...(suggestGroups.length > 0 ? [{ kind: "suggestHeader" as const }] : []),
+      ...suggestGroups.map((g) => ({ kind: "suggestDay" as const, group: g })),
+    ];
+  }, [entries, suggestions]);
 
   if (!trip) {
     return (
@@ -460,21 +443,6 @@ export default function TripDetailScreen() {
     }
   };
 
-  // Build flat list: grouped entry days + optional suggestions section
-  const entryGroups  = groupByDay(entries);
-  const suggestGroups = groupByDay(suggestions);
-
-  type ListItem =
-    | { kind: "entryDay";      group: DayGroup }
-    | { kind: "suggestHeader" }
-    | { kind: "suggestDay";    group: DayGroup };
-
-  const listData: ListItem[] = [
-    ...entryGroups.map((g) => ({ kind: "entryDay" as const, group: g })),
-    ...(suggestGroups.length > 0 ? [{ kind: "suggestHeader" as const }] : []),
-    ...suggestGroups.map((g) => ({ kind: "suggestDay" as const, group: g })),
-  ];
-
   return (
     <>
     <FlatList
@@ -515,6 +483,7 @@ export default function TripDetailScreen() {
             onAdd={addEntry}
             styles={styles}
             colors={colors}
+            fonts={fonts}
           />
         );
       }}
@@ -552,8 +521,8 @@ export default function TripDetailScreen() {
           {/* Trip summary card */}
           {(() => {
             const headerStats: { kind: string; subkind?: string; count: number }[] = [
-              { kind: "leg",   subkind: "air",  count: entries.filter((e) => e.kind === "leg"   && (e as any).mode === "air").length  },
-              { kind: "leg",   subkind: "rail", count: entries.filter((e) => e.kind === "leg"   && (e as any).mode === "rail").length },
+              { kind: "leg",   subkind: "air",  count: entries.filter((e) => e.kind === "leg"   && (e as Leg).mode === "air").length  },
+              { kind: "leg",   subkind: "rail", count: entries.filter((e) => e.kind === "leg"   && (e as Leg).mode === "rail").length },
               { kind: "stay",                   count: entries.filter((e) => e.kind === "stay").length  },
               { kind: "event",                  count: entries.filter((e) => e.kind === "event").length },
             ].filter((s) => s.count > 0);
@@ -608,8 +577,13 @@ export default function TripDetailScreen() {
                     ))}
                   </View>
                 )}
-                {trip.notes
-                  ? <Text style={styles.tripNotes}>{trip.notes}</Text>
+                {trip.rating !== undefined && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
+                    <StarRating rating={trip.rating} color={colors.star} size={14} />
+                  </View>
+                )}
+                {(trip.reflection ?? trip.notes)
+                  ? <Text style={styles.tripNotes}>{trip.reflection ?? trip.notes}</Text>
                   : null}
               </View>
             );

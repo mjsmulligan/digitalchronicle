@@ -9,7 +9,7 @@ import { localToUTC } from "../../tz";
 import type { Connector, ParseResult } from "../types";
 import { csvRows } from "../csv";
 import { normDate } from "../dates";
-import { pick, confidenceFrom, purposeFrom, companionsFrom } from "../fields";
+import { pick, purposeFrom, companionsFrom } from "../fields";
 import { legKey, eventKey, stayKey } from "../keys";
 import { withTiming, legWarnings } from "../timing";
 
@@ -66,10 +66,6 @@ function parseGeneric(text: string): ParseResult {
     const end = endRaw ? (normDate(endRaw) ?? undefined) : undefined;
     const tierN = Number(pick(r, ["tier"]));
     const tier = (tierN === 2 || tierN === 3 ? tierN : 3) as Tier;
-    // Tier 2 (e.g. a primary record fed through the generic importer) defaults to confirmed;
-    // tier 3 (e.g. Calendar/Gmail-derived) defaults to inferred, since it's evidence of what
-    // happened rather than a direct record of it. Either can be overridden with a confidence column.
-    const confidence = confidenceFrom(r, tier === 2 ? "confirmed" : "inferred");
     const purpose = purposeFrom(r);
     const companions = companionsFrom(r);
     const raw = r;
@@ -81,7 +77,6 @@ function parseGeneric(text: string): ParseResult {
       end,
       createdAt: now(),
       reflection: pick(r, ["notes", "note", "journal", "reflection"]) || undefined,
-      confidence,
       purpose,
       companions,
       raw,
@@ -160,7 +155,7 @@ function parseGeneric(text: string): ParseResult {
         endTz: end ? tz : undefined,
         endUTC: end ? localToUTC(end, tz) : undefined,
       };
-      e.dedupeKey = eventKey(e, "generic");
+      e.dedupeKey = eventKey(e);
       out.entries.push({ entry: e, warnings: [], sourceRow });
     } else
       out.errors.push(

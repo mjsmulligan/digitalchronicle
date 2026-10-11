@@ -85,7 +85,7 @@ function Chronicle() {
       allEntries(s)
         .filter((e) =>
           matches(e, filter) &&
-          (!ql || (entryTitle(e) + (e.journal ?? "")).toLowerCase().includes(ql)) &&
+          (!ql || (entryTitle(e) + (e.reflection ?? "")).toLowerCase().includes(ql)) &&
           (!activePerson || entryHasPerson(e, activePerson)),
         )
         .forEach((e) => get(day(e.overrides?.start ?? e.start)).entries.push(e));

@@ -1,6 +1,6 @@
 import { locate, timezoneFor } from "./geo";
 import { localToUTC } from "./tz";
-import { uid, type Confidence, type Entry, type EventCategory, type JEvent, type Leg, type Purpose, type Source, type Stay, type Tier } from "./types";
+import { uid, type Entry, type EventCategory, type JEvent, type Leg, type Purpose, type Source, type Stay, type Tier } from "./types";
 
 /** Attach timezone + UTC to a leg from its resolved origin/destination, in place. */
 function withTiming(leg: Leg): Leg {
@@ -21,12 +21,6 @@ function companionsFrom(row: Record<string, unknown>): string[] | undefined {
   const list = v.split(/[;|,]/).map((x) => x.trim()).filter(Boolean);
   return list.length ? list : undefined;
 }
-const CONFIDENCE_VALUES: Confidence[] = ["confirmed", "inferred", "approximate"];
-function confidenceFrom(row: Record<string, unknown>, fallback: Confidence): Confidence {
-  const v = pick(row as Record<string, string>, ["confidence"]).toLowerCase();
-  return (CONFIDENCE_VALUES as string[]).includes(v) ? (v as Confidence) : fallback;
-}
-
 function csvRows(text: string): { row: Record<string, string>; sourceRow: number }[] {
   const rows: { cells: string[]; line: number }[] = [];
   let row: string[] = [];
@@ -151,9 +145,9 @@ export function parseViaduct(text: string): ParseResult {
     const leg: Leg = {
       id: uid(), kind: "leg", mode: "rail", source: "viaduct", tier: 2, start, end,
       from, to, operator: pick(r, ["Operator", "Company"]), trainNumber: pick(r, ["Train", "Train number", "Service", "train_code"]),
-      seat: pick(r, ["Seat", "Coach/Seat"]), journal: pick(r, ["Notes", "Note"]) || undefined,
+      seat: pick(r, ["Seat", "Coach/Seat"]), reflection: pick(r, ["Notes", "Note"]) || undefined,
       dedupeKey: "", createdAt: now(),
-      confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),
+      purpose: purposeFrom(r), companions: companionsFrom(r),
       raw: r,
     };
     withTiming(leg);
@@ -200,8 +194,7 @@ export function parseSetlist(text: string): ParseResult {
       venue: pick(r, ["venue", "Venue name"]) || "Unknown venue", city,
       country: pick(r, ["country"]) || undefined, tour: pick(r, ["tour"]) || undefined,
       setlist: songs.length ? songs : undefined, dedupeKey: "", createdAt: now(),
-      // Your own attendance log, so treated as confirmed rather than merely a purchase.
-      confidence: confidenceFrom(r, "confirmed"), purpose: purposeFrom(r), companions: companionsFrom(r),
+      purpose: purposeFrom(r), companions: companionsFrom(r),
       startTz: tz, startUTC: localToUTC(start, tz),
       raw,
     };
@@ -239,16 +232,12 @@ export function parseGeneric(text: string): ParseResult {
     const end = endRaw ? normDate(endRaw) ?? undefined : undefined;
     const tierN = Number(pick(r, ["tier"]));
     const tier = (tierN === 2 || tierN === 3 ? tierN : 3) as Tier;
-    // Tier 2 (e.g. a primary record fed through the generic importer) defaults to confirmed;
-    // tier 3 (e.g. Calendar/Gmail-derived) defaults to inferred, since it's evidence of what
-    // happened rather than a direct record of it. Either can be overridden with a confidence column.
-    const confidence = confidenceFrom(r, tier === 2 ? "confirmed" : "inferred");
     const purpose = purposeFrom(r);
     const companions = companionsFrom(r);
     const raw = r;
     const base = {
       id: uid(), source: "generic" as Source, tier, start, end, createdAt: now(),
-      journal: pick(r, ["notes", "note", "journal"]) || undefined, confidence, purpose, companions, raw,
+      reflection: pick(r, ["notes", "note", "journal"]) || undefined, purpose, companions, raw,
     };
     if (["leg", "flight", "train", "rail", "air", "road", "drive", "bus"].includes(type)) {
       const mode = type === "flight" || type === "air" ? "air" : type === "train" || type === "rail" ? "rail" : type === "leg" ? ((pick(r, ["mode"]) as Leg["mode"]) || "road") : "road";
