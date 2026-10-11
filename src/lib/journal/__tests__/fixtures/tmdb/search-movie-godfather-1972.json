@@ -1,0 +1,18 @@
+{
+  "results": [
+    {
+      "id": 238,
+      "title": "The Godfather",
+      "release_date": "1972-03-14",
+      "poster_path": "/3bhkrj58Vtu7enYsLegHnDmni2s.jpg",
+      "popularity": 95.7
+    },
+    {
+      "id": 242,
+      "title": "The Godfather Part II",
+      "release_date": "1974-12-20",
+      "poster_path": "/hek3koDUyRQk7FIhPXsa6mT2Zc3.jpg",
+      "popularity": 72.1
+    }
+  ]
+}

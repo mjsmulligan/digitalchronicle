@@ -7,6 +7,8 @@
  */
 import { useMemo, useState } from "react";
 import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { PosterCard } from "../../src/components/PosterCard";
+import { eventToArtworkKey } from "@chronicle/journal/artwork";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
@@ -127,6 +129,7 @@ function StayDetail({ e, styles, iconColors }: { e: Stay; styles: DetailStyles; 
 function FilmDetail({ e, styles, iconColors }: { e: Film; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "film") return null;
+  const artworkKey = eventToArtworkKey(e);
   return (
     <>
       <Text style={styles.title}>{v.title}{v.year ? ` (${v.year})` : ""}</Text>
@@ -140,6 +143,7 @@ function FilmDetail({ e, styles, iconColors }: { e: Film; styles: DetailStyles; 
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
+      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} />}
       <Divider styles={styles} />
       <Field label="Watched" value={fmt(v.start)} styles={styles} />
       <Field label="Director" value={v.director} styles={styles} />
@@ -151,6 +155,7 @@ function FilmDetail({ e, styles, iconColors }: { e: Film; styles: DetailStyles; 
 function EpisodeDetail({ e, styles, iconColors }: { e: Episode; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "episode") return null;
+  const artworkKey = eventToArtworkKey(e);
   return (
     <>
       <Text style={styles.title}>{v.episodeTitle ?? v.showTitle}</Text>
@@ -164,6 +169,7 @@ function EpisodeDetail({ e, styles, iconColors }: { e: Episode; styles: DetailSt
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
+      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.showTitle} />}
       <Divider styles={styles} />
       <Field label="Watched" value={fmt(v.start)} styles={styles} />
       <Field label="Show" value={v.showTitle} styles={styles} />

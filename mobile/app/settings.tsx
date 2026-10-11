@@ -2,6 +2,8 @@
  * Settings screen — developer/utility options.
  * Reachable via the gear icon in the Chronicle header.
  */
+import { useMemo, useState, useEffect } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from "react-native";
 import { useDialog, Dialog } from "../src/components/Dialog";
@@ -11,6 +13,8 @@ import { Stack } from "expo-router";
 import { clearAll, allHiddenEntries, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
 import { useHomePrefs } from "../src/lib/useHomePrefs";
+import { getPosterFetchEnabled, setPosterFetchEnabled } from "../src/lib/posterPrefs";
+import { setFetchPostersEnabled } from "@chronicle/journal/artworkEnrichment";
 
 export default function SettingsScreen() {
   const journal = useJournal();
@@ -23,6 +27,18 @@ export default function SettingsScreen() {
   // Local draft state for the About you fields — committed on blur
   const [draftName, setDraftName] = useState<string | null>(null);
   const [draftAirports, setDraftAirports] = useState<string | null>(null);
+
+  // Posters toggle — loaded from persistent prefs
+  const [fetchPosters, setFetchPostersState] = useState(true);
+  useEffect(() => {
+    getPosterFetchEnabled().then(setFetchPostersState);
+  }, []);
+
+  const handleFetchPostersToggle = async (value: boolean) => {
+    setFetchPostersState(value);
+    setFetchPostersEnabled(value);      // update in-memory toggle immediately
+    await setPosterFetchEnabled(value); // persist for next launch
+  };
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
@@ -352,6 +368,29 @@ export default function SettingsScreen() {
         </Text>
         <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
       </Pressable>
+
+      {/* ── Posters ─────────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>Posters</Text>
+
+      <View style={styles.card}>
+        <View style={styles.statRow}>
+          <Text style={styles.statLabel}>Fetch posters</Text>
+          <Switch
+            value={fetchPosters}
+            onValueChange={handleFetchPostersToggle}
+            trackColor={{ false: colors.border, true: colors.accent }}
+            thumbColor={colors.surface}
+          />
+        </View>
+      </View>
+      <Text style={[styles.inputHint, { marginBottom: spacing.sm }]}>
+        When on, only film and show titles (and release years) are sent to TMDB to look up poster images. No personal data is included.
+      </Text>
+
+      {/* TMDB attribution — required by TMDB API terms */}
+      <Text style={[styles.inputHint, { marginBottom: spacing.xl, color: colors.textMuted }]}>
+        This product uses the TMDB API but is not endorsed or certified by TMDB.
+      </Text>
 
       {/* ── Database ────────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Database</Text>

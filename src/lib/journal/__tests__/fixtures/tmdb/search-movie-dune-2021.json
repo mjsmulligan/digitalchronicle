@@ -1,0 +1,25 @@
+{
+  "results": [
+    {
+      "id": 438631,
+      "title": "Dune",
+      "release_date": "2021-09-15",
+      "poster_path": "/d5NXSklXo0qyIYkgV94XAgMIckC.jpg",
+      "popularity": 312.4
+    },
+    {
+      "id": 438632,
+      "title": "Dune: Part Two",
+      "release_date": "2024-03-01",
+      "poster_path": "/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",
+      "popularity": 280.1
+    },
+    {
+      "id": 9362,
+      "title": "Dune",
+      "release_date": "1984-12-14",
+      "poster_path": "/ctv9TSGT6TLzmWcULFRTOmiFzT4.jpg",
+      "popularity": 45.2
+    }
+  ]
+}

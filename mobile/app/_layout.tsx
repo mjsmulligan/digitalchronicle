@@ -39,7 +39,12 @@ import {
   Lora_700Bold,
 } from "@expo-google-fonts/lora";
 import { SQLiteAdapter } from "../src/lib/storage/SQLiteAdapter";
+import { SQLiteArtworkStore } from "../src/lib/storage/SQLiteArtworkStore";
 import { setAdapter, initJournal, useJournal } from "@chronicle/journal/db";
+import { setArtworkStorage } from "@chronicle/journal/artwork";
+import { TmdbProvider, setArtworkProvider } from "@chronicle/journal/artworkProvider";
+import { setFetchPostersEnabled } from "@chronicle/journal/artworkEnrichment";
+import { getPosterFetchEnabled } from "../src/lib/posterPrefs";
 import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
 
 SplashScreen.preventAutoHideAsync();
@@ -113,6 +118,27 @@ function RootLayoutInner() {
         const adapter = await SQLiteAdapter.open();
         setAdapter(adapter);
         await initJournal();
+
+        // ── Artwork / poster init ────────────────────────────────────────────
+        // Open the separate artwork SQLite database and inject the storage
+        // singleton, then wire up the TMDB provider and the persisted toggle.
+        // All three are fire-and-forget relative to the splash hide — posters
+        // are fetched lazily when the entry detail screen opens.
+        try {
+          const artworkStore = await SQLiteArtworkStore.open();
+          setArtworkStorage(artworkStore);
+
+          const apiKey = process.env.EXPO_PUBLIC_TMDB_API_KEY;
+          if (apiKey) {
+            setArtworkProvider(new TmdbProvider(apiKey));
+          }
+
+          const fetchEnabled = await getPosterFetchEnabled();
+          setFetchPostersEnabled(fetchEnabled);
+        } catch (artworkErr) {
+          // Artwork init failure is non-fatal; app continues without posters
+          console.warn("[Chronicle] Artwork init failed:", artworkErr);
+        }
 
         // Handle initial URL (app opened via share intent before JS was running)
         const initial = await Linking.getInitialURL();

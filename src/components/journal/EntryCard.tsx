@@ -13,6 +13,9 @@ import { operatorMarkId } from "@/lib/journal/connectors/icons";
 import { isLocked } from "@/lib/journal/evaluation";
 import { StarRating } from "@/components/journal/StarRating";
 import { cn } from "@/lib/utils";
+import { eventToArtworkKey, type ArtworkMatch } from "@/lib/journal/artwork";
+import { resolveArtwork } from "@/lib/journal/artworkEnrichment";
+import { getArtworkProvider } from "@/lib/journal/artworkProvider";
 
 const CAT_ICON: Record<EventCategory, typeof Music> = {
   concert: Music, gathering: Users, celebration: PartyPopper, milestone: Flag, memory: Sparkles, activity: Activity,
@@ -228,6 +231,35 @@ function ParticipantPicker({ participants, onChange, people }: ParticipantPicker
   );
 }
 
+// ── Poster hook ───────────────────────────────────────────────────────────────
+
+/**
+ * Resolves the artwork poster for a given key when the card is opened.
+ * Returns null if no match, still loading, or feature disabled.
+ */
+function usePoster(artworkKey: string | null, open: boolean) {
+  const [match, setMatch] = useState<ArtworkMatch | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || !artworkKey) return;
+    let cancelled = false;
+    setLoading(true);
+    resolveArtwork(artworkKey).then((m) => {
+      if (!cancelled) { setMatch(m); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [artworkKey, open]);
+
+  const provider = getArtworkProvider();
+  const posterUrl =
+    match?.poster_path && provider ? provider.imageUrl(match.poster_path) : null;
+
+  return { loading, posterUrl };
+}
+
+// ── EntryCard ─────────────────────────────────────────────────────────────────
+
 export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [reflection, setReflection] = useState(entry.reflection ?? "");
@@ -239,6 +271,13 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { trips, people } = useJournal();
   const v = view(entry);
+
+  // Poster — only for film and episode entries
+  const artworkKey =
+    (entry.kind === "film" || entry.kind === "episode")
+      ? eventToArtworkKey(entry)
+      : null;
+  const { posterUrl } = usePoster(artworkKey, open);
   const Icon = entryIcon(v);
   const trip = trips.find((t) => t.id === entry.tripId);
 
@@ -318,6 +357,17 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
       </button>
       {open && (
         <div className="space-y-3 border-t border-border p-3">
+          {/* Poster — film and episode only */}
+          {posterUrl && (
+            <div className="flex justify-center pb-1">
+              <img
+                src={posterUrl}
+                alt={`Poster for ${entryTitle(entry)}`}
+                className="w-24 rounded-md object-cover shadow-md"
+                style={{ aspectRatio: "2/3" }}
+              />
+            </div>
+          )}
           {v.kind === "event" && v.setlist && (
             <ol className="list-decimal pl-5 text-sm">
               {v.setlist.map((s, i) => <li key={i}>{s}</li>)}
