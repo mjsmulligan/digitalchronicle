@@ -187,6 +187,101 @@ WP0, then WP1 and WP2 together, then WP3, WP4, then WP5, WP6 and WP7 in parallel
 
 ## 9. Findings from WP0 (agent to complete)
 
+### Finding 1 — Movie and TV entry types
+
+Movies and TV shows are **not** represented via the `JEvent` kind (which is for concerts, gatherings, etc.). They have their own distinct kinds:
+
+- **Movies** → `Film` entry (kind: `"film"`). Fields: `title`, `year` (release year, number, optional), `director`, `rewatch`. No category enum.
+- **TV episodes** → `Episode` entry (kind: `"episode"`). Fields: `showTitle`, `season`, `episodeTitle`, `episodeNumber`, optional `seriesId` linking to a `Series` container.
+
+The spec uses "event screen" loosely — in code, the relevant screen is the **entry detail page** (`mobile/app/entry/[id].tsx`), which handles all entry kinds including `Film` and `Episode` via `FilmDetail` and `EpisodeDetail` sub-components.
+
+The Culture tab (`src/routes/culture.tsx`) groups `film`, `episode`, `book`, and `event` (concert sub-type only) entries together. When the spec says "web event view" it means the inline expanded entry card within the Culture route.
+
+**Spec amendment**: Everywhere the spec says "movie and TV events", read that as `Film` and `Episode` entry kinds. The `JEvent` kind with `category: "concert"` does **not** receive posters.
+
+---
+
+### Finding 2 — Title, year and external ID fields
+
+**Film** (from Letterboxd):
+- `title`: string, normalised (trimmed, whitespace collapsed)
+- `year`: release year (number, optional) — sourced directly from Letterboxd's `Year` column
+- `sourceRef`: the full Letterboxd film URI, e.g. `https://letterboxd.com/mmulligan/films/diary/...`. Not an IMDb or TMDB id.
+- No IMDb id, no TMDB id stored anywhere.
+
+**Film** (from Netflix):
+- `title`: raw Netflix title string (could be a full film name or misclassified episode)
+- No year field on Netflix-sourced films
+- `sourceRef`: `"netflix:row:N"`
+
+**Episode** (from Netflix):
+- `showTitle`: parsed series name
+- `season`: season label string (e.g. `"Season 3"`, `"Limited Series"`)
+- `episodeTitle`: episode name
+- No year field
+- `sourceRef`: `"netflix:row:N"`
+
+**Implication for section 6**: The "if a source supplies an IMDb id or TMDB id, use the direct lookup" path is effectively dead for all current sources. The matching will always go through title search. This path is still worth keeping for future connectors.
+
+---
+
+### Finding 3 — Netflix series name parser
+
+Fully implemented in `src/lib/journal/connectors/netflix/index.ts`. The `parseTitle()` function handles all known Netflix title formats and returns either `{kind: "film", title}` or `{kind: "episode", showTitle, season, episodeTitle}`. The `showTitle` field on an `Episode` is always the correctly extracted series name.
+
+**For WP2**: `eventToArtworkKey` for `Episode` entries should use `entry.showTitle` directly — no need to re-parse. The Netflix parser already did the work at import time.
+
+---
+
+### Finding 4 — Cinema/calendar events
+
+There is **no dedicated cinema ticket connector**. Calendar imports produce `JEvent` (kind: `"event"`) entries, not `Film` entries — these do not receive posters. Only `Film` and `Episode` kinds are candidates.
+
+This simplifies WP2: `eventToArtworkKey` returns `null` for all `JEvent` entries regardless of their category or content.
+
+---
+
+### Finding 5 — Component locations and styling tokens
+
+**Mobile entry detail**: `mobile/app/entry/[id].tsx`
+- Renders `FilmDetail` for `film` kind, `EpisodeDetail` for `episode` kind.
+- Each detail sub-component receives `{e, styles, iconColors}`. The poster should render **above** the `Divider` in each, between the subtitle row and the first `Field`.
+- Styling tokens from `useTheme()` in `mobile/src/components/ThemeProvider.tsx`: `colors`, `fonts`, `text`, `spacing`, `radius`, `common`. Use `colors.surface`, `colors.border`, `radius["2xl"]` for the card treatment.
+- For the paper-print treatment (slight rotation, corner mounts), these are purely visual — implement via `StyleSheet` transforms and shadows using `colors.border` for mount corner accents.
+
+**Web Culture view**: `src/routes/culture.tsx` uses `<EntryCard>` from `src/components/journal/EntryCard.tsx` for inline expanded cards. The poster should render in the `EntryCard` component for `film` and `episode` kinds (when expanded).
+
+---
+
+### Finding 6 — Database conventions
+
+**Web (IndexedDB)**:
+- `IDBAdapter` in `src/lib/journal/db.ts`. DB name: `waypoint-journal`, currently version 8.
+- All stores are registered in `STORES` (a const array in `src/lib/journal/types.ts`) and `JournalData`.
+- New stores: add to `STORES`, bump `DB_VERSION` to 9, add `createObjectStore` branch in `onupgradeneeded`.
+- **Important**: `artwork_match` must NOT be added to `STORES` / `JournalData` because it must be excluded from chronicle export/backup (`replaceAll` wipes and re-imports all stores). It needs its own IDB store managed outside the main adapter — either a separate IndexedDB database or a standalone object store opened alongside the main one.
+
+**Mobile (SQLite)**:
+- `SQLiteAdapter` in `mobile/src/lib/storage/SQLiteAdapter.ts`. Schema: one table per store, `(id TEXT PK, data TEXT)`.
+- The `init()` method uses `CREATE TABLE IF NOT EXISTS` for every store in `STORES` — new tables appear automatically on next launch. No version bump needed for SQLite.
+- Same exclusion applies: `artwork_match` should be a separate table created in `init()` but never passed through `replaceAll`, `getAll`, `putMany` via the normal STORES loop.
+
+**Settings / prefs pattern**: Preferences are stored as JSON in `chronicle-prefs.json` at `FileSystem.documentDirectory` on mobile (see `homePrefs.ts`). The "Fetch posters" toggle should follow the same pattern — a new `posterPrefs.ts` with `getPosterPrefs` / `setPosterPrefs`. On web, use `localStorage` (existing preference pattern for web).
+
+**Proposed architecture for artwork_match**:
+- Define a separate module `src/lib/journal/artwork.ts` (shared) with the `ArtworkMatch` type, key builder, and CRUD interface.
+- Each platform opens its own storage for this: a standalone IDB object store (`artwork-cache`) on web, and an extra SQLite table in `SQLiteAdapter.init()` on mobile.
+- This keeps artwork cache out of backup/restore without any changes to the existing adapter pattern.
+
+---
+
+### Proposed spec amendments
+
+1. **Section 1**: Clarify that "movie and TV events" means `Film` (kind: `"film"`) and `Episode` (kind: `"episode"`) entries.
+2. **Section 5**: Add a note that `artwork_match` is **not** part of `JournalData`/`STORES` — it is managed in a separate storage channel so it is automatically excluded from chronicle export and `clearAll` (dev reset). Dev reset for artwork specifically means emptying the artwork store, not the main data.
+3. **Section 6**: Note that the "direct lookup via IMDb/TMDB id" path is currently unreachable (no source populates these ids), but retain for future connectors.
+4. **WP2**: For `Episode` entries, use `entry.showTitle` directly as the series name — the Netflix parser already extracted it. No re-parsing needed.
 (empty)
 
 ## 10. Open questions for Mike
