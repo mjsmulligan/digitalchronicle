@@ -1,6 +1,6 @@
 # Spec: Book cover images
 
-Status: draft v1.0 — ready for implementation
+Status: implemented — WP1–WP5 complete (2026-10-11)
 Target location: docs/specs/book-covers.md
 Applies to: shared engine (src/lib/journal/), mobile entry page (mobile/), web EntryCard (src/)
 

@@ -22,6 +22,8 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 - [x] **Star rendering** — `rating` (0–10) displayed as half-stars in EntryCard and list views.
 - [x] **Book & Episode in quick-add dialog** — both kinds available in the manual add flow.
 - [x] **`dateStarted` UI** — optional reading-start date on Book entries.
+- [x] **Event posters (film & episode)** — TMDB poster images on Film and Episode entries; cached in a separate SQLite/IDB artwork store; settings toggle; TMDB attribution.
+- [x] **Book covers** — Open Library cover images on Book entries; ISBN probe + title/author search fallback; `isbn13` persisted from Goodreads; no API key required; separate toggle; attribution.
 - [x] **iCalendar connector** (tier 3) — `.ics` files from Google/Apple/Outlook Calendar; multi-day all-day events → Stays; single-day → JEvents with keyword-inferred categories.
 - [x] **Import guide** (`docs/import-guide.md`) — per-source export instructions for all supported connectors.
 - [x] **People store** — `Person` records in IndexedDB with `isSelf` flag for journal owner; `participants?: string[]` on Base (undefined = self implicit, `[]` = self explicitly removed).

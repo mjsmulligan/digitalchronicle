@@ -271,7 +271,7 @@ Navigation: swipe left and right to move between entries of the same day (Phase 
 
 ### 7.4 Culture
 
-Films, episodes, books and concerts in one view with series grouping and filters by kind and rating, as on web. Use the shared row component and `SourceMark`. Poster or cover imagery is out of scope for this spec.
+Films, episodes, books and concerts in one view with series grouping and filters by kind and rating, as on web. Use the shared row component and `SourceMark`. Film/episode poster and book cover imagery is implemented on the entry detail screen via `PosterCard`; the list row itself does not show thumbnails.
 
 ### 7.5 People
 
