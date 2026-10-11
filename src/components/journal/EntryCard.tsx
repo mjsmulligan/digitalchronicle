@@ -1,17 +1,21 @@
 import { useState, useRef, useEffect } from "react";
 import { SourceIcon } from "@/components/journal/SourceIcon";
-import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, ChevronDown, Trash2, X, Plus, AlertTriangle } from "lucide-react";
+import { Plane, TrainFront, Car, Music, BedDouble, Users, PartyPopper, Flag, Sparkles, Activity, Clapperboard, Tv, BookOpen, MapPin, ChevronDown, Trash2, X, Plus, AlertTriangle, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { putMany, removeMany, storeFor, useJournal } from "@/lib/journal/db";
-import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person } from "@/lib/journal/types";
+import { putMany, removeMany, hideMany, storeFor, useJournal } from "@/lib/journal/db";
+import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person, type AnyOverrides } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { operatorMarkId } from "@/lib/journal/connectors/icons";
+import { isLocked } from "@/lib/journal/evaluation";
 import { StarRating } from "@/components/journal/StarRating";
 import { cn } from "@/lib/utils";
+import { eventToArtworkKey, type ArtworkMatch } from "@/lib/journal/artwork";
+import { resolveArtwork } from "@/lib/journal/artworkEnrichment";
+import { getArtworkProvider } from "@/lib/journal/artworkProvider";
 
 const CAT_ICON: Record<EventCategory, typeof Music> = {
   concert: Music, gathering: Users, celebration: PartyPopper, milestone: Flag, memory: Sparkles, activity: Activity,
@@ -23,13 +27,15 @@ export function entryIcon(e: Entry) {
   if (e.kind === "film") return Clapperboard;
   if (e.kind === "episode") return Tv;
   if (e.kind === "book") return BookOpen;
-  return CAT_ICON[e.category ?? "activity"];
+  if (e.kind === "place-entry") return MapPin;
+  return CAT_ICON[(e as Extract<typeof e, { category?: string }>).category ?? "activity"];
 }
 export function entryColor(e: Entry) {
   if (e.kind === "leg") return e.mode === "air" ? "text-air" : e.mode === "rail" ? "text-rail" : "text-road";
   if (e.kind === "stay") return "text-stay";
   if (e.kind === "film" || e.kind === "episode" || e.kind === "book") return "text-muted-foreground";
-  return e.category === "milestone" ? "text-primary" : "text-gig";
+  if (e.kind === "place-entry") return "text-muted-foreground";
+  return (e as Extract<typeof e, { category?: string }>).category === "milestone" ? "text-primary" : "text-gig";
 }
 export function entryLabel(e: Entry) {
   if (e.kind === "leg") return e.mode === "air" ? "Flight" : e.mode === "rail" ? "Train" : "Road";
@@ -37,7 +43,8 @@ export function entryLabel(e: Entry) {
   if (e.kind === "film") return e.rewatch ? "Rewatch" : "Film";
   if (e.kind === "episode") return "Episode";
   if (e.kind === "book") return e.series ? "Series" : "Book";
-  return CATEGORY_LABEL[e.category ?? "activity"];
+  if (e.kind === "place-entry") return "Place";
+  return CATEGORY_LABEL[(e as Extract<typeof e, { category?: EventCategory }>).category ?? "activity"];
 }
 
 const time = (s?: string) => (s && s.includes("T") ? s.slice(11, 16) : "");
@@ -49,6 +56,7 @@ const OVERRIDE_FIELDS: Record<Entry["kind"], string[]> = {
   film: ["title", "year", "director", "start"],
   episode: ["showTitle", "season", "episodeTitle", "start"],
   book: ["title", "author", "year", "series", "start"],
+  "place-entry": [], // WP10: PlaceEntry fields are not user-editable via override UI
 };
 
 // ---------------------------------------------------------------------------
@@ -223,18 +231,58 @@ function ParticipantPicker({ participants, onChange, people }: ParticipantPicker
   );
 }
 
+// ── Poster hook ───────────────────────────────────────────────────────────────
+
+/**
+ * Resolves the artwork poster for a given key when the card is opened.
+ * Returns null if no match, still loading, or feature disabled.
+ */
+function usePoster(artworkKey: string | null, open: boolean) {
+  const [match, setMatch] = useState<ArtworkMatch | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open || !artworkKey) return;
+    let cancelled = false;
+    setLoading(true);
+    resolveArtwork(artworkKey).then((m) => {
+      if (!cancelled) { setMatch(m); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [artworkKey, open]);
+
+  const provider = getArtworkProvider();
+  const posterUrl =
+    match?.poster_path && provider ? provider.imageUrl(match.poster_path) : null;
+
+  return { loading, posterUrl };
+}
+
+// ── EntryCard ─────────────────────────────────────────────────────────────────
+
 export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [reflection, setReflection] = useState(entry.reflection ?? "");
+  const [rating, setRating] = useState<number | undefined>(entry.rating);
   const [dateStarted, setDateStarted] = useState(entry.kind === "book" ? (entry.dateStarted ?? "") : "");
-  const [ov, setOv] = useState<Record<string, string>>(entry.overrides ?? {});
+  const [ov, setOv] = useState<Record<string, string>>((entry.overrides as Record<string, string>) ?? {});
   const [participants, setParticipants] = useState<string[] | undefined>(entry.participants);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const { trips, people } = useJournal();
   const v = view(entry);
+
+  // Poster — only for film and episode entries
+  const artworkKey =
+    (entry.kind === "film" || entry.kind === "episode")
+      ? eventToArtworkKey(entry)
+      : null;
+  const { posterUrl } = usePoster(artworkKey, open);
   const Icon = entryIcon(v);
   const trip = trips.find((t) => t.id === entry.tripId);
+
+  const reflectionLocked = isLocked(entry, "reflection");
+  const ratingLocked = isLocked(entry, "rating");
 
   const save = async () => {
     if (saving) return;
@@ -242,7 +290,16 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
     try {
       const clean = Object.fromEntries(Object.entries(ov).filter(([, x]) => x.trim()));
       const extra = entry.kind === "book" ? { dateStarted: dateStarted || undefined } : {};
-      await putMany(storeFor(entry), [{ ...entry, ...extra, reflection: reflection || undefined, overrides: Object.keys(clean).length ? clean : undefined, participants }]);
+      // Only write unlocked evaluation fields back; locked fields stay as-is from source
+      const reflectionVal = reflectionLocked ? entry.reflection : (reflection || undefined);
+      const ratingVal = ratingLocked ? entry.rating : rating;
+      await putMany(storeFor(entry), [{
+        ...entry, ...extra,
+        reflection: reflectionVal,
+        rating: ratingVal,
+        overrides: Object.keys(clean).length ? (clean as AnyOverrides) : undefined,
+        participants,
+      }]);
       toast.success("Entry saved");
     } catch (err) {
       toast.error(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
@@ -253,9 +310,9 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
 
   const handleDelete = async () => {
     try {
-      await removeMany(storeFor(entry), [entry.id]);
+      await hideMany(storeFor(entry), [entry.id]);
     } catch (err) {
-      toast.error(`Could not delete: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(`Could not hide: ${err instanceof Error ? err.message : String(err)}`);
     }
   };
 
@@ -274,7 +331,9 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             ? [v.season, v.episodeNumber && `Ep ${v.episodeNumber}`].filter(Boolean).join(" · ")
             : v.kind === "book"
               ? [v.series && `${v.series}${v.seriesNumber ? ` #${v.seriesNumber}` : ""}`, v.year && String(v.year)].filter(Boolean).join(" · ")
-              : [v.category === "concert" ? v.venue : v.venue, v.city, v.people?.join(", ")].filter(Boolean).join(" · ");
+              : v.kind === "place-entry"
+                  ? [v.localDay, `${v.photoCount} photo${v.photoCount === 1 ? "" : "s"}`].filter(Boolean).join(" · ")
+                  : [v.category === "concert" ? v.venue : v.venue, v.city, (v as Extract<typeof v, { people?: string[] }>).people?.join(", ")].filter(Boolean).join(" · ");
 
   return (
     <div className="rounded-md border border-border bg-card">
@@ -286,24 +345,81 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             {v.kind === "leg" && (time(v.start) || time(v.end)) && (
               <span className="font-mono text-xs text-muted-foreground">{time(v.start)}–{time(v.end)}</span>
             )}
-            {"rating" in entry && <StarRating rating={entry.rating} className="self-center" />}
+            <StarRating rating={entry.rating} locked={ratingLocked} className="self-center" />
             {entry.overrides && <Badge variant="outline" className="h-4 px-1 text-[10px]">edited</Badge>}
             {trip && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trip.title}</Badge>}
           </div>
           {!compact && meta && <p className="truncate text-sm text-muted-foreground">{meta}</p>}
-          {!open && entry.reflection && <p className="mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80">&ldquo;{entry.reflection}&rdquo;</p>}
+          {!open && (entry.review ?? entry.reflection) && <p className="mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80">&ldquo;{entry.review ?? entry.reflection}&rdquo;</p>}
         </div>
         <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{entryLabel(v)}</span>
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
       {open && (
         <div className="space-y-3 border-t border-border p-3">
+          {/* Poster — film and episode only */}
+          {posterUrl && (
+            <div className="flex justify-center pb-1">
+              <img
+                src={posterUrl}
+                alt={`Poster for ${entryTitle(entry)}`}
+                className="w-24 rounded-md object-cover shadow-md"
+                style={{ aspectRatio: "2/3" }}
+              />
+            </div>
+          )}
           {v.kind === "event" && v.setlist && (
             <ol className="list-decimal pl-5 text-sm">
               {v.setlist.map((s, i) => <li key={i}>{s}</li>)}
             </ol>
           )}
-          <Textarea value={reflection} onChange={(e) => setReflection(e.target.value)} placeholder="Write a reflection…" className="font-serif" />
+
+          {/* Reflection — locked (source review present) or editable */}
+          {reflectionLocked ? (
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-muted-foreground">Source review</p>
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+                  <Lock className="h-2.5 w-2.5" />
+                  <SourceIcon source={entry.source} />
+                  {sourceLabel(entry.source)}
+                </span>
+              </div>
+              {entry.review && (
+                <blockquote className="border-l-2 border-amber-400/60 pl-3 font-serif text-sm italic text-foreground/80">
+                  {entry.review}
+                </blockquote>
+              )}
+            </div>
+          ) : (
+            <Textarea
+              value={reflection}
+              onChange={(e) => setReflection(e.target.value)}
+              placeholder="Write a reflection…"
+              className="font-serif"
+            />
+          )}
+
+          {/* Rating — locked (source provenance) or editable for all entry kinds */}
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground">Rating</p>
+            {ratingLocked ? (
+              <span className="inline-flex items-center gap-1.5">
+                <StarRating rating={entry.rating} locked />
+                <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+                  <Lock className="h-2.5 w-2.5" />
+                  <SourceIcon source={entry.source} />
+                  {sourceLabel(entry.source)}
+                </span>
+              </span>
+            ) : (
+              <StarRating
+                rating={rating}
+                onChange={setRating}
+                className="py-0.5"
+              />
+            )}
+          </div>
           <details className="text-sm">
             <summary className="cursor-pointer py-2 text-muted-foreground">Manual corrections (always win over imported data)</summary>
             <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">

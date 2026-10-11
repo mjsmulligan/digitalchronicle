@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { clearAll, replaceAll, useJournal } from "@/lib/journal/db";
 import { STORES, type JournalData } from "@/lib/journal/types";
+import { setFetchPostersEnabled } from "@/lib/journal/artworkEnrichment";
+import { getPosterFetchEnabledPref, setPosterFetchEnabledPref } from "@/lib/posterPrefs";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -29,24 +31,34 @@ function Backup() {
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fetchPosters, setFetchPostersState] = useState(() => getPosterFetchEnabledPref());
   useEffect(() => { navigator.storage?.estimate?.().then(setEst); }, [s]);
-  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, films: s.films, episodes: s.episodes, books: s.books, series: s.series, notes: s.notes, staging: s.staging, people: s.people, places: s.places };
+
+  const handleFetchPostersToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.checked;
+    setFetchPostersState(value);
+    setFetchPostersEnabled(value);
+    setPosterFetchEnabledPref(value);
+  };
+  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, films: s.films, episodes: s.episodes, books: s.books, series: s.series, notes: s.notes, staging: s.staging, people: s.people, gazetteer: s.gazetteer, localityPlaces: s.localityPlaces ?? [], placeEntries: s.placeEntries ?? [], placeBinMarkers: s.placeBinMarkers ?? [] };
   const size = new Blob([JSON.stringify(data)]).size;
 
   const exportJSON = () => {
-    const blob = new Blob([JSON.stringify({ app: "journal", version: 1, exportedAt: new Date().toISOString(), data }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ app: "chronicle", schemaVersion: 1, exportedAt: new Date().toISOString(), data }, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `journal-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `chronicle-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
 
   const restore = async (file: File) => {
     try {
-      const j = JSON.parse(await file.text());
-      const d = j.data ?? j;
-      if (!STORES.some((k) => Array.isArray(d[k]))) throw new Error("Not a Journal backup");
+      const parsed = JSON.parse(await file.text());
+      // Support old format (version: 1) and new format (schemaVersion: 1)
+      if (parsed.schemaVersion !== 1 && parsed.version !== 1) throw new Error("Unsupported backup version");
+      const d = parsed.data as Record<string, unknown>;
+      if (!STORES.some((k) => Array.isArray(d[k]))) throw new Error("Not a Chronicle backup");
       const clean = Object.fromEntries(STORES.map((k) => [k, Array.isArray(d[k]) ? d[k] : []])) as unknown as JournalData;
       await replaceAll(clean);
       toast.success("Journal restored from backup");
@@ -78,6 +90,29 @@ function Backup() {
       <p className="mt-3 font-mono text-xs text-muted-foreground">
         Journal data {fmt(size)}{est.usage != null && ` · browser usage ${fmt(est.usage)} of ${fmt(est.quota ?? 0)}`}
       </p>
+
+      {/* ── Posters ─────────────────────────────────────────────────────────── */}
+      <div className="mt-8">
+        <h2 className="mb-3 text-lg font-semibold">Posters</h2>
+        <div className="rounded-md border border-border bg-card p-4">
+          <label className="flex items-center justify-between gap-4 cursor-pointer">
+            <div>
+              <p className="font-medium">Fetch posters</p>
+              <p className="text-sm text-muted-foreground">When on, film and show titles (and release years) are sent to TMDB to look up poster images. No personal data is included.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={fetchPosters}
+              onChange={handleFetchPostersToggle}
+              className="h-4 w-4 accent-primary cursor-pointer"
+              aria-label="Fetch posters from TMDB"
+            />
+          </label>
+          <p className="mt-3 text-xs text-muted-foreground border-t border-border pt-3">
+            This product uses the TMDB API but is not endorsed or certified by TMDB.
+          </p>
+        </div>
+      </div>
 
       <div className="mt-8 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border bg-card p-4">

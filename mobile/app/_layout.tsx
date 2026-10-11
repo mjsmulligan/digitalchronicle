@@ -39,12 +39,18 @@ import {
   Lora_700Bold,
 } from "@expo-google-fonts/lora";
 import { SQLiteAdapter } from "../src/lib/storage/SQLiteAdapter";
+import { SQLiteArtworkStore } from "../src/lib/storage/SQLiteArtworkStore";
 import { setAdapter, initJournal, useJournal } from "@chronicle/journal/db";
+import { setArtworkStorage } from "@chronicle/journal/artwork";
+import { TmdbProvider, setArtworkProvider } from "@chronicle/journal/artworkProvider";
+import { setFetchPostersEnabled } from "@chronicle/journal/artworkEnrichment";
+import { getPosterFetchEnabled } from "../src/lib/posterPrefs";
 import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
 
 SplashScreen.preventAutoHideAsync();
 
-const FILE_EXTENSIONS = [".csv", ".ics", ".vcf", ".json"];
+const JOURNAL_EXTENSIONS = [".csv", ".ics", ".json"];
+const CONTACTS_EXTENSIONS = [".vcf", ".vcard"];
 
 /**
  * Returns true only for real OS-level share-intent URIs.
@@ -57,13 +63,19 @@ const FILE_EXTENSIONS = [".csv", ".ics", ".vcf", ".json"];
 function looksLikeImportUri(url: string): boolean {
   const lower = url.toLowerCase();
   const isFileUri = lower.startsWith("file://") || lower.startsWith("content://");
-  return isFileUri && FILE_EXTENSIONS.some((ext) => lower.includes(ext));
+  return isFileUri && [...JOURNAL_EXTENSIONS, ...CONTACTS_EXTENSIONS].some((ext) => lower.includes(ext));
+}
+
+/** VCF / vCard files belong on the People import screen, not Sources. */
+function looksLikeContactsUri(url: string): boolean {
+  const lower = url.toLowerCase();
+  return CONTACTS_EXTENSIONS.some((ext) => lower.includes(ext));
 }
 
 // Modal-only screens that should never be the initial route on app boot.
 // If expo-router restores navigation state with one of these as the active
 // screen (a dev-only artefact), we redirect home instead.
-const MODAL_SCREENS = new Set(["import", "import-people", "settings"]);
+const MODAL_SCREENS = new Set(["import", "settings", "sources"]);
 
 /**
  * Inner layout — runs inside ThemeProvider so it can call useTheme().
@@ -107,10 +119,32 @@ function RootLayoutInner() {
         setAdapter(adapter);
         await initJournal();
 
+        // ── Artwork / poster init ────────────────────────────────────────────
+        // Open the separate artwork SQLite database and inject the storage
+        // singleton, then wire up the TMDB provider and the persisted toggle.
+        // All three are fire-and-forget relative to the splash hide — posters
+        // are fetched lazily when the entry detail screen opens.
+        try {
+          const artworkStore = await SQLiteArtworkStore.open();
+          setArtworkStorage(artworkStore);
+
+          const apiKey = process.env.EXPO_PUBLIC_TMDB_API_KEY;
+          if (apiKey) {
+            setArtworkProvider(new TmdbProvider(apiKey));
+          }
+
+          const fetchEnabled = await getPosterFetchEnabled();
+          setFetchPostersEnabled(fetchEnabled);
+        } catch (artworkErr) {
+          // Artwork init failure is non-fatal; app continues without posters
+          console.warn("[Chronicle] Artwork init failed:", artworkErr);
+        }
+
         // Handle initial URL (app opened via share intent before JS was running)
         const initial = await Linking.getInitialURL();
         if (initial && looksLikeImportUri(initial)) {
-          router.push(`/import?uri=${encodeURIComponent(initial)}`);
+          const dest = looksLikeContactsUri(initial) ? "/sources" : "/import";
+          router.push(`${dest}?uri=${encodeURIComponent(initial)}`);
         }
       } catch (err) {
         console.error("[Chronicle] Boot failed:", err);
@@ -142,7 +176,8 @@ function RootLayoutInner() {
   useEffect(() => {
     const sub = Linking.addEventListener("url", ({ url }) => {
       if (url && looksLikeImportUri(url)) {
-        router.push(`/import?uri=${encodeURIComponent(url)}`);
+        const dest = looksLikeContactsUri(url) ? "/sources" : "/import";
+        router.push(`${dest}?uri=${encodeURIComponent(url)}`);
       }
     });
     return () => sub.remove();
@@ -176,13 +211,6 @@ function RootLayoutInner() {
           }}
         />
         <Stack.Screen
-          name="import-people"
-          options={{
-            presentation: "modal",
-            contentStyle: { backgroundColor: colors.bg },
-          }}
-        />
-        <Stack.Screen
           name="settings"
           options={{
             presentation: "modal",
@@ -190,7 +218,7 @@ function RootLayoutInner() {
           }}
         />
       </Stack>
-      <StatusBar style="light" />
+      <StatusBar style={mode === "dark" ? "light" : "dark"} />
     </>
   );
 }

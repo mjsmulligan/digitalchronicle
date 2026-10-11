@@ -2,57 +2,45 @@
  * Settings screen — developer/utility options.
  * Reachable via the gear icon in the Chronicle header.
  */
-import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useState, useEffect } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { clearAll, useJournal } from "@chronicle/journal/db";
+import { Stack } from "expo-router";
+import { clearAll, allHiddenEntries, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
+import { useHomePrefs } from "../src/lib/useHomePrefs";
+import { getPosterFetchEnabled, setPosterFetchEnabled } from "../src/lib/posterPrefs";
+import { setFetchPostersEnabled } from "@chronicle/journal/artworkEnrichment";
 
 export default function SettingsScreen() {
   const journal = useJournal();
   const router = useRouter();
-  const { top } = useSafeAreaInsets();
   const [clearing, setClearing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const dialog = useDialog();
   const { colors, fonts, text, spacing, radius, themeId, setThemeId } = useTheme();
+  const { prefs: homePrefs, updatePrefs: updateHomePrefs } = useHomePrefs();
+  // Local draft state for the About you fields — committed on blur
+  const [draftName, setDraftName] = useState<string | null>(null);
+  const [draftAirports, setDraftAirports] = useState<string | null>(null);
+
+  // Posters toggle — loaded from persistent prefs
+  const [fetchPosters, setFetchPostersState] = useState(true);
+  useEffect(() => {
+    getPosterFetchEnabled().then(setFetchPostersState);
+  }, []);
+
+  const handleFetchPostersToggle = async (value: boolean) => {
+    setFetchPostersState(value);
+    setFetchPostersEnabled(value);      // update in-memory toggle immediately
+    await setPosterFetchEnabled(value); // persist for next launch
+  };
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
     content: { padding: spacing.base, paddingBottom: spacing["2xl"] },
-
-    dragHandle: {
-      width: 36,
-      height: 4,
-      backgroundColor: colors.border,
-      borderRadius: 2,
-      alignSelf: "center",
-      marginBottom: spacing.lg,
-    },
-    modalHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: spacing.xl,
-    },
-    modalTitle: {
-      fontSize: 22,
-      fontFamily: fonts.serifSemiBold,
-      fontWeight: "600",
-      color: colors.textBright,
-    },
-    closeBtn: {
-      width: 32,
-      height: 32,
-      backgroundColor: colors.surface,
-      borderRadius: 9999,
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
 
     sectionTitle: { ...text.label, color: colors.textTertiary, marginBottom: 10 },
 
@@ -94,6 +82,27 @@ export default function SettingsScreen() {
       ...text.sm,
       color: colors.textMuted,
       textAlign: "center",
+    },
+
+    // ── About you section ─────────────────────────────────────────────
+    inputRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing.base,
+      paddingVertical: 10,
+    },
+    inputLabel: { ...text.sm, color: colors.textSecondary, width: 96 },
+    input: {
+      flex: 1,
+      ...text.base,
+      color: colors.textPrimary,
+      paddingVertical: 4,
+    },
+    inputHint: {
+      ...text.xs,
+      color: colors.textMuted,
+      paddingHorizontal: spacing.base,
+      paddingBottom: spacing.sm,
     },
 
     // ── Appearance section ────────────────────────────────────────────
@@ -197,6 +206,20 @@ export default function SettingsScreen() {
     journal.episodes.length +
     journal.books.length;
 
+  const hiddenCount = allHiddenEntries(journal).length;
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const json = JSON.stringify(journal, null, 2);
+      await Share.share({ message: json, title: "Chronicle export" });
+    } catch (e) {
+      console.warn("Export failed", e);
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleReset = () => {
     dialog.confirm(
       "Reset database",
@@ -215,21 +238,68 @@ export default function SettingsScreen() {
 
   return (
     <>
+      <Stack.Screen
+        options={{
+          headerShown: true,
+          headerTitle: "Settings",
+          headerStyle: { backgroundColor: colors.surface },
+          headerTitleStyle: {
+            fontFamily: fonts.serifSemiBold,
+            color: colors.textBright,
+          },
+          headerTintColor: colors.accent,
+        }}
+      />
     <ScrollView
       style={styles.container}
-      contentContainerStyle={[styles.content, { paddingTop: top + spacing.md }]}
+      contentContainerStyle={styles.content}
     >
-      <View style={styles.dragHandle} />
-      <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>Settings</Text>
-        <Pressable
-          onPress={() => router.canDismiss() ? router.dismiss() : router.replace("/(tabs)")}
-          hitSlop={8}
-          style={styles.closeBtn}
-        >
-          <Ionicons name="close" size={18} color={colors.textSecondary} />
-        </Pressable>
+
+      {/* ── About you ──────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>About you</Text>
+      <View style={[styles.card, { marginBottom: spacing.sm }]}>
+        <View style={styles.inputRow}>
+          <Text style={styles.inputLabel}>Your name</Text>
+          <TextInput
+            style={styles.input}
+            value={draftName ?? homePrefs.displayName}
+            onChangeText={setDraftName}
+            onBlur={() => {
+              const val = (draftName ?? homePrefs.displayName).trim();
+              updateHomePrefs({ displayName: val });
+              setDraftName(null);
+            }}
+            placeholder="e.g. Mike"
+            placeholderTextColor={colors.textMuted}
+            returnKeyType="done"
+          />
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.inputRow}>
+          <Text style={styles.inputLabel}>Home airport</Text>
+          <TextInput
+            style={[styles.input, { textTransform: "uppercase" }]}
+            value={draftAirports ?? homePrefs.homeAirports.join(", ")}
+            onChangeText={setDraftAirports}
+            onBlur={() => {
+              const raw = draftAirports ?? homePrefs.homeAirports.join(", ");
+              const codes = raw
+                .split(/[,\s]+/)
+                .map((s) => s.trim().toUpperCase())
+                .filter(Boolean);
+              updateHomePrefs({ homeAirports: codes });
+              setDraftAirports(null);
+            }}
+            placeholder="e.g. DUB"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="characters"
+            returnKeyType="done"
+          />
+        </View>
       </View>
+      <Text style={[styles.inputHint, { marginBottom: spacing.lg }]}>
+        Used to suggest trips from your unlinked flights and trains. Enter multiple codes separated by commas.
+      </Text>
 
       {/* ── Appearance ─────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Appearance</Text>
@@ -282,6 +352,44 @@ export default function SettingsScreen() {
         ))}
       </View>
 
+      {/* ── Photo library ───────────────────────────────────────────────── */}
+      {/* Moved to Sources page (WP15). Settings keeps only a navigation link. */}
+      <Text style={styles.sectionTitle}>Sources</Text>
+
+      <Pressable
+        style={[styles.card, { flexDirection: "row", alignItems: "center", marginBottom: spacing.xl }]}
+        onPress={() => router.push("/sources" as any)}
+      >
+        <Ionicons name="images-outline" size={18} color={colors.accent} style={{ marginRight: spacing.md }} />
+        <Text style={{ ...styles.resetHint, color: colors.textSecondary, flex: 1, marginBottom: 0 }}>
+          Photo library · manage scan and review suggestions
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
+
+      {/* ── Posters ─────────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>Posters</Text>
+
+      <View style={styles.card}>
+        <View style={styles.statRow}>
+          <Text style={styles.statLabel}>Fetch posters</Text>
+          <Switch
+            value={fetchPosters}
+            onValueChange={handleFetchPostersToggle}
+            trackColor={{ false: colors.border, true: colors.accent }}
+            thumbColor={colors.surface}
+          />
+        </View>
+      </View>
+      <Text style={[styles.inputHint, { marginBottom: spacing.sm }]}>
+        When on, only film and show titles (and release years) are sent to TMDB to look up poster images. No personal data is included.
+      </Text>
+
+      {/* TMDB attribution — required by TMDB API terms */}
+      <Text style={[styles.inputHint, { marginBottom: spacing.xl, color: colors.textMuted }]}>
+        This product uses the TMDB API but is not endorsed or certified by TMDB.
+      </Text>
+
       {/* ── Database ────────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Database</Text>
 
@@ -292,10 +400,37 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.divider} />
         <View style={styles.statRow}>
+          <Text style={styles.statLabel}>Hidden entries</Text>
+          <Text style={styles.statValue}>{hiddenCount.toLocaleString()}</Text>
+        </View>
+        <View style={styles.divider} />
+        <View style={styles.statRow}>
           <Text style={styles.statLabel}>Pending imports</Text>
           <Text style={styles.statValue}>{journal.staging.length}</Text>
         </View>
       </View>
+
+      <Pressable
+        style={[styles.card, { flexDirection: "row", alignItems: "center", marginBottom: spacing.xl }]}
+        onPress={() => router.push("/hidden-entries" as any)}
+      >
+        <Ionicons name="eye-off-outline" size={18} color={colors.accent} style={{ marginRight: spacing.md }} />
+        <Text style={{ ...styles.resetHint, color: colors.textSecondary, flex: 1, marginBottom: 0, textAlign: "left" }}>
+          Hidden Entries · view and restore hidden entries
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
+
+      <Pressable
+        style={[styles.resetBtn, exporting && styles.resetBtnDisabled, { borderColor: colors.border, marginBottom: spacing.sm }]}
+        onPress={handleExport}
+        disabled={exporting}
+      >
+        <Ionicons name="share-outline" size={18} color={colors.textPrimary} />
+        <Text style={[styles.resetBtnText, { color: colors.textPrimary }]}>
+          {exporting ? "Exporting…" : "Export JSON"}
+        </Text>
+      </Pressable>
 
       <Pressable
         style={[styles.resetBtn, clearing && styles.resetBtnDisabled]}

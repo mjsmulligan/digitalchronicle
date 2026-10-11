@@ -1,15 +1,25 @@
 /**
  * Entry detail screen — view-only for all entry kinds.
  * Reached by tapping any row in the Chronicle feed.
+ *
+ * WP-E1/E2 — Edit button in header routes to entry/edit/[id].tsx
+ * WP-E3    — Merge action shows same-day entries; merges two into one.
  */
-import { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { Stack, useLocalSearchParams } from "expo-router";
-import { useJournal, allEntries } from "@chronicle/journal/db";
-import { view, CATEGORY_LABEL, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book } from "@chronicle/journal/types";
+import { useMemo, useState } from "react";
+import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { PosterCard } from "../../src/components/PosterCard";
+import { eventToArtworkKey } from "@chronicle/journal/artwork";
+import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
+import { ParticipantPicker } from "../../src/components/ParticipantPicker";
+import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { mergeEntries } from "@chronicle/journal/merge";
+import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { SourceMark } from "../../src/components/SourceMark";
+import { useDialog, Dialog } from "../../src/components/Dialog";
+import { Ionicons } from "@expo/vector-icons";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,12 +38,13 @@ function modeLabel(mode: Leg["mode"]): string {
 
 function sourceLabel(source?: string): string {
   const map: Record<string, string> = {
-    letterboxd: "Letterboxd",
-    netflix:    "Netflix",
-    goodreads:  "Goodreads",
-    viaduct:    "Viaduct",
-    "setlist.fm": "Setlist.fm",
-    manual:     "Manual",
+    letterboxd:       "Letterboxd",
+    netflix:          "Netflix",
+    goodreads:        "Goodreads",
+    viaduct:          "Viaduct",
+    "setlist.fm":     "Setlist.fm",
+    "photo-library":  "Photo library",
+    manual:           "Manual",
   };
   return source ? (map[source] ?? source) : "Unknown";
 }
@@ -72,14 +83,14 @@ function Divider({ styles }: { styles: Pick<DetailStyles, "divider"> }) {
 
 // ── per-kind detail blocks ────────────────────────────────────────────────────
 
-function LegDetail({ e, styles, ic }: { e: Leg; styles: DetailStyles; ic: IconColors }) {
+function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "leg") return null;
   return (
     <>
       <Text style={styles.title}>{v.fromName ?? v.from} {"→"} {v.toName ?? v.to}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="leg" subkind={v.mode} size={15} color={ic.secondary} />
+        <KindIcon kind="leg" subkind={v.mode} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{modeLabel(v.mode)}</Text>
       </View>
       <Divider styles={styles} />
@@ -96,41 +107,43 @@ function LegDetail({ e, styles, ic }: { e: Leg; styles: DetailStyles; ic: IconCo
   );
 }
 
-function StayDetail({ e, styles, ic }: { e: Stay; styles: DetailStyles; ic: IconColors }) {
+function StayDetail({ e, styles, iconColors }: { e: Stay; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "stay") return null;
   return (
     <>
       <Text style={styles.title}>{v.place}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="stay" size={15} color={ic.secondary} />
+        <KindIcon kind="stay" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>Stay{v.city ? ` · ${v.city}` : ""}</Text>
       </View>
       <Divider styles={styles} />
       <Field label="Check-in" value={fmt(v.start)} styles={styles} />
       {v.end && <Field label="Check-out" value={fmt(v.end)} styles={styles} />}
       <Field label="City" value={v.city} styles={styles} />
-      <Field label="Notes" value={(e as Stay).notes} styles={styles} />
+      <Field label="Notes" value={e.reflection} styles={styles} />
     </>
   );
 }
 
-function FilmDetail({ e, styles, ic }: { e: Film; styles: DetailStyles; ic: IconColors }) {
+function FilmDetail({ e, styles, iconColors }: { e: Film; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "film") return null;
+  const artworkKey = eventToArtworkKey(e);
   return (
     <>
       <Text style={styles.title}>{v.title}{v.year ? ` (${v.year})` : ""}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="film" size={15} color={ic.secondary} />
+        <KindIcon kind="film" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>Film</Text>
       </View>
       {v.rating !== undefined && (
         <View style={styles.ratingRow}>
-          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <StarRating rating={v.rating} color={iconColors.star} size={14} />
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
+      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} />}
       <Divider styles={styles} />
       <Field label="Watched" value={fmt(v.start)} styles={styles} />
       <Field label="Director" value={v.director} styles={styles} />
@@ -139,22 +152,24 @@ function FilmDetail({ e, styles, ic }: { e: Film; styles: DetailStyles; ic: Icon
   );
 }
 
-function EpisodeDetail({ e, styles, ic }: { e: Episode; styles: DetailStyles; ic: IconColors }) {
+function EpisodeDetail({ e, styles, iconColors }: { e: Episode; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "episode") return null;
+  const artworkKey = eventToArtworkKey(e);
   return (
     <>
       <Text style={styles.title}>{v.episodeTitle ?? v.showTitle}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="episode" size={15} color={ic.secondary} />
+        <KindIcon kind="episode" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{v.showTitle}{v.season ? ` · ${v.season}` : ""}</Text>
       </View>
       {v.rating !== undefined && (
         <View style={styles.ratingRow}>
-          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <StarRating rating={v.rating} color={iconColors.star} size={14} />
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
+      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.showTitle} />}
       <Divider styles={styles} />
       <Field label="Watched" value={fmt(v.start)} styles={styles} />
       <Field label="Show" value={v.showTitle} styles={styles} />
@@ -166,19 +181,19 @@ function EpisodeDetail({ e, styles, ic }: { e: Episode; styles: DetailStyles; ic
   );
 }
 
-function BookDetail({ e, styles, ic }: { e: Book; styles: DetailStyles; ic: IconColors }) {
+function BookDetail({ e, styles, iconColors }: { e: Book; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "book") return null;
   return (
     <>
       <Text style={styles.title}>{v.title}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="book" size={15} color={ic.secondary} />
+        <KindIcon kind="book" size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{v.author}</Text>
       </View>
       {v.rating !== undefined && (
         <View style={styles.ratingRow}>
-          <StarRating rating={v.rating} color={ic.star} size={14} />
+          <StarRating rating={v.rating} color={iconColors.star} size={14} />
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
@@ -192,14 +207,116 @@ function BookDetail({ e, styles, ic }: { e: Book; styles: DetailStyles; ic: Icon
   );
 }
 
-function EventDetail({ e, styles, ic }: { e: JEvent; styles: DetailStyles; ic: IconColors }) {
+function PlaceDetail({ e, styles, iconColors }: { e: PlaceEvent; styles: DetailStyles; iconColors: IconColors }) {
+  const v = view(e);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  if (v.kind !== "place") return null;
+  const evidence = v.photoEvidence?.filter((r) => !r.missing && r.uri) ?? [];
+  return (
+    <>
+      <Text style={styles.title}>{v.locality}{v.country ? `, ${v.country}` : ""}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="place" size={15} color={iconColors.secondary} />
+        <Text style={styles.subtitle}>Place{v.region ? ` · ${v.region}` : ""}</Text>
+      </View>
+      <Divider styles={styles} />
+      <Field label="From"    value={v.start?.slice(0, 10)}                          styles={styles} />
+      <Field label="To"      value={v.end?.slice(0, 10)}                            styles={styles} />
+      <Field label="Region"  value={v.region}                                        styles={styles} />
+      <Field label="Country" value={v.country}                                       styles={styles} />
+      <Field label="Photos"  value={v.photoCount ? String(v.photoCount) : undefined} styles={styles} />
+      {evidence.length > 0 && (
+        <>
+          <Divider styles={styles} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
+            {evidence.map((ref) => (
+              <Pressable
+                key={ref.mediaId}
+                onPress={() => ref.uri && setPreviewUri(ref.uri)}
+                style={{ borderRadius: 8, overflow: "hidden" }}
+              >
+                <Image source={{ uri: ref.uri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      )}
+      <Modal visible={!!previewUri} transparent animationType="fade" onRequestClose={() => setPreviewUri(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center" }} onPress={() => setPreviewUri(null)}>
+          <Image source={{ uri: previewUri ?? "" }} style={{ width: "100%", height: "80%" }} resizeMode="contain" />
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+function PlaceEntryDetail({
+  e, place, styles, iconColors,
+}: {
+  e: PlaceEntry;
+  place?: { locality: string; region?: string; country?: string };
+  styles: DetailStyles;
+  iconColors: IconColors;
+}) {
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const evidence = e.photoEvidence.filter((r) => !r.missing && r.uri);
+
+  // Derive a readable name from localityKey as fallback ("gb:county-donegal" → "County Donegal")
+  const fallbackName = e.localityKey
+    .slice(e.localityKey.indexOf(":") + 1)
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+  const locality = place?.locality ?? fallbackName;
+  const country  = place?.country;
+  const region   = place?.region;
+
+  return (
+    <>
+      <Text style={styles.title}>{locality}{country ? `, ${country}` : ""}</Text>
+      <View style={styles.subtitleRow}>
+        <KindIcon kind="place" size={15} color={iconColors.secondary} />
+        <Text style={styles.subtitle}>Place{region ? ` · ${region}` : ""}</Text>
+      </View>
+      <Divider styles={styles} />
+      <Field label="Date"    value={e.localDay}                                   styles={styles} />
+      <Field label="Region"  value={region}                                        styles={styles} />
+      <Field label="Country" value={country}                                       styles={styles} />
+      <Field label="Photos"  value={e.photoCount ? String(e.photoCount) : undefined} styles={styles} />
+      {evidence.length > 0 && (
+        <>
+          <Divider styles={styles} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -16 }} contentContainerStyle={{ paddingHorizontal: 16, gap: 6 }}>
+            {evidence.map((ref) => (
+              <Pressable
+                key={ref.mediaId}
+                onPress={() => ref.uri && setPreviewUri(ref.uri)}
+                style={{ borderRadius: 8, overflow: "hidden" }}
+              >
+                <Image source={{ uri: ref.uri }} style={{ width: 80, height: 80 }} resizeMode="cover" />
+              </Pressable>
+            ))}
+          </ScrollView>
+        </>
+      )}
+      <Modal visible={!!previewUri} transparent animationType="fade" onRequestClose={() => setPreviewUri(null)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.95)", justifyContent: "center" }} onPress={() => setPreviewUri(null)}>
+          <Image source={{ uri: previewUri ?? "" }} style={{ width: "100%", height: "80%" }} resizeMode="contain" />
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
+function EventDetail({ e, styles, iconColors }: { e: JEvent; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "event") return null;
   return (
     <>
       <Text style={styles.title}>{v.artist}</Text>
       <View style={styles.subtitleRow}>
-        <KindIcon kind="event" subkind={v.category} size={15} color={ic.secondary} />
+        <KindIcon kind="event" subkind={v.category} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{CATEGORY_LABEL[v.category]}</Text>
       </View>
       <Divider styles={styles} />
@@ -212,12 +329,21 @@ function EventDetail({ e, styles, ic }: { e: JEvent; styles: DetailStyles; ic: I
   );
 }
 
+// ── editable kinds ────────────────────────────────────────────────────────────
+
+const EDITABLE_KINDS = new Set(["leg", "stay", "event", "film", "episode", "book"]);
+
 // ── screen ────────────────────────────────────────────────────────────────────
 
 export default function EntryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const journal = useJournal();
   const { colors, fonts, text, spacing, radius, common } = useTheme();
+  const dialog = useDialog();
+  const [mergeVisible, setMergeVisible] = useState(false);
+  const [mergeSaving, setMergeSaving] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
@@ -260,14 +386,50 @@ export default function EntryDetailScreen() {
       paddingHorizontal: spacing.lg,
       paddingVertical: spacing.sm,
     },
-    sourceFieldRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5, gap: spacing.base },
-    sourceValue:    { flexDirection: "row", alignItems: "center", gap: 6 },
+    sourceFieldRow: { flexDirection: "row", alignItems: "center", paddingVertical: 5, gap: spacing.base },
+    sourceValue:    { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, justifyContent: "flex-end" },
 
     notFound:     { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
     notFoundText: { ...text.lg, color: colors.textTertiary },
+
+    // header actions
+    headerActions: { flexDirection: "row" as const, alignItems: "center" as const, gap: 2, marginRight: 4 },
+    headerBtn:     { padding: 8 },
+
+    // merge modal
+    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" as const },
+    modalSheet: {
+      backgroundColor: colors.bg,
+      borderTopLeftRadius: radius["2xl"],
+      borderTopRightRadius: radius["2xl"],
+      paddingTop: spacing.md,
+      paddingBottom: spacing["3xl"],
+      maxHeight: "70%",
+    },
+    modalHandle: {
+      width: 36, height: 4,
+      backgroundColor: colors.border,
+      borderRadius: 2,
+      alignSelf: "center" as const,
+      marginBottom: spacing.md,
+    },
+    modalTitle: { ...text.lg, color: colors.textPrimary, fontWeight: "600" as const, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+    modalSubtitle: { ...text.sm, color: colors.textTertiary, paddingHorizontal: spacing.lg, marginBottom: spacing.base },
+    mergeRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+      gap: spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    mergeRowText: { ...text.base, color: colors.textPrimary, flex: 1 },
+    mergeRowSub:  { ...text.sm, color: colors.textTertiary },
+    mergeEmpty: { ...text.base, color: colors.textTertiary, textAlign: "center" as const, padding: spacing.xl },
   }), [colors, fonts]);
 
-  const ic = useMemo<IconColors>(
+  const iconColors = useMemo<IconColors>(
     () => ({ secondary: colors.textSecondary, star: colors.star }),
     [colors],
   );
@@ -276,6 +438,80 @@ export default function EntryDetailScreen() {
     () => allEntries(journal).find((e) => e.id === id),
     [journal, id]
   );
+
+  // For place-entry kind, look up the Place container for canonical name/region/country
+  const placeContainer = useMemo(() => {
+    if (!entry || entry.kind !== "place-entry") return undefined;
+    return (journal.localityPlaces ?? []).find((p) => p.id === (entry as PlaceEntry).placeId);
+  }, [entry, journal.localityPlaces]);
+
+  // Same-day entries for the merge picker (WP-E3)
+  const sameDayEntries = useMemo<Entry[]>(() => {
+    if (!entry) return [];
+    const day = entry.start.slice(0, 10);
+    return allEntries(journal).filter(
+      (e) => e.id !== entry.id && e.start.slice(0, 10) === day,
+    );
+  }, [entry, journal]);
+
+  const handleMerge = async (other: Entry) => {
+    if (!entry || mergeSaving) return;
+    // Confirm: keep `entry` (this), delete `other`
+    dialog.confirm(
+      "Merge entries",
+      `Keep "${entryTitle(entry)}" and discard "${entryTitle(other)}"?\n\nTrip link, participants, overrides and reflections from the discarded entry will be preserved.`,
+      "Merge",
+      async () => {
+        setMergeSaving(true);
+        setMergeVisible(false);
+        try {
+          const merged = mergeEntries(entry, other);
+          const updated = {
+            ...merged,
+            tier: 1 as Tier,
+            source: "manual" as const,
+          };
+          await putMany(storeFor(entry), [updated]);
+          await hideMany(storeFor(other), [other.id]);
+        } catch (err) {
+          dialog.alert("Merge failed", String(err));
+        } finally {
+          setMergeSaving(false);
+        }
+      },
+    );
+  };
+
+  const handleHide = () => {
+    if (!entry) return;
+    dialog.confirm(
+      "Hide entry",
+      `"${entryTitle(entry)}" will be hidden from your journal. You can restore it from Settings → Hidden Entries.`,
+      "Hide",
+      async () => {
+        try {
+          await hideMany(storeFor(entry), [entry.id]);
+          router.back();
+        } catch (err) {
+          dialog.alert("Could not hide entry", String(err));
+        }
+      },
+    );
+  };
+
+  const handleParticipantsConfirm = async (ids: string[]) => {
+    if (!entry) return;
+    try {
+      const updated = {
+        ...entry,
+        participants: ids.length > 0 ? ids : undefined,
+      };
+      await putMany(storeFor(entry), [updated]);
+    } catch (err) {
+      dialog.alert("Could not save", String(err));
+    }
+    setPickerVisible(false);
+  };
 
   if (!entry) {
     return (
@@ -286,39 +522,87 @@ export default function EntryDetailScreen() {
     );
   }
 
-  const participants = entry.participants
-    ?.map((pid) => journal.people.find((p) => p.id === pid)?.name ?? pid)
+  const participantNames = (entry.participants ?? [])
+    .map((pid) => journal.people.find((p) => p.id === pid)?.name ?? pid)
     .join(", ");
 
   const reflection = entry.reflection ?? (entry as any).journal;
+  const reflectionLocked = isLocked(entry, "reflection");
+  const ratingLocked = isLocked(entry, "rating");
+
+  const isEditable = EDITABLE_KINDS.has(entry.kind);
 
   return (
+    <>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen options={{ title: "", ...common.header }} />
+      <Stack.Screen
+        options={{
+          title: "",
+          ...common.header,
+          headerRight: () => (
+            <View style={styles.headerActions}>
+              {sameDayEntries.length > 0 && (
+                <Pressable style={styles.headerBtn} onPress={() => setMergeVisible(true)}>
+                  <Ionicons name="git-merge-outline" size={22} color={colors.textTertiary} />
+                </Pressable>
+              )}
+              {isEditable && (
+                <Pressable
+                  style={styles.headerBtn}
+                  onPress={() => router.push({ pathname: "/entry/edit/[id]", params: { id: entry.id } })}
+                >
+                  <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
+                </Pressable>
+              )}
+              <Pressable style={styles.headerBtn} onPress={handleHide}>
+                <Ionicons name="trash-outline" size={22} color={colors.textTertiary} />
+              </Pressable>
+            </View>
+          ),
+        }}
+      />
 
       <View style={styles.card}>
-        {entry.kind === "leg"     && <LegDetail     e={entry as Leg}     styles={styles} ic={ic} />}
-        {entry.kind === "stay"    && <StayDetail    e={entry as Stay}    styles={styles} ic={ic} />}
-        {entry.kind === "film"    && <FilmDetail    e={entry as Film}    styles={styles} ic={ic} />}
-        {entry.kind === "episode" && <EpisodeDetail e={entry as Episode} styles={styles} ic={ic} />}
-        {entry.kind === "book"    && <BookDetail    e={entry as Book}    styles={styles} ic={ic} />}
-        {entry.kind === "event"   && <EventDetail   e={entry as JEvent}  styles={styles} ic={ic} />}
+        {entry.kind === "leg"         && <LegDetail         e={entry as Leg}        styles={styles} iconColors={iconColors} />}
+        {entry.kind === "stay"        && <StayDetail        e={entry as Stay}       styles={styles} iconColors={iconColors} />}
+        {entry.kind === "place"       && <PlaceDetail       e={entry as PlaceEvent} styles={styles} iconColors={iconColors} />}
+        {entry.kind === "place-entry" && <PlaceEntryDetail  e={entry as PlaceEntry} place={placeContainer} styles={styles} iconColors={iconColors} />}
+        {entry.kind === "film"        && <FilmDetail        e={entry as Film}       styles={styles} iconColors={iconColors} />}
+        {entry.kind === "episode"     && <EpisodeDetail     e={entry as Episode}    styles={styles} iconColors={iconColors} />}
+        {entry.kind === "book"        && <BookDetail        e={entry as Book}       styles={styles} iconColors={iconColors} />}
+        {entry.kind === "event"       && <EventDetail       e={entry as JEvent}     styles={styles} iconColors={iconColors} />}
       </View>
 
       {/* Reflection */}
       {reflection && (
         <View style={styles.reflectionCard}>
-          <Text style={styles.reflectionLabel}>Reflection</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Text style={styles.reflectionLabel}>Reflection</Text>
+            {reflectionLocked && (
+              <Text style={{ ...styles.reflectionLabel, color: colors.accentSoft }}>
+                · {sourceLabel(entry.source)}
+              </Text>
+            )}
+          </View>
           <Text style={styles.reflectionText}>{reflection}</Text>
         </View>
       )}
 
-      {/* People */}
-      {participants && (
-        <View style={styles.metaCard}>
-          <Field label="With" value={participants} styles={styles} />
+      {/* People — always visible; tap to edit */}
+      <Pressable
+        style={({ pressed }) => [styles.metaCard, pressed && { opacity: 0.7 }]}
+        onPress={() => setPickerVisible(true)}
+      >
+        <View style={styles.sourceFieldRow}>
+          <Text style={styles.fieldLabel}>With</Text>
+          <View style={[styles.sourceValue, { gap: 4 }]}>
+            <Text style={[styles.fieldValue, !participantNames && { color: colors.textMuted }]} numberOfLines={1}>
+              {participantNames || "Add people…"}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+          </View>
         </View>
-      )}
+      </Pressable>
 
       {/* Source */}
       <View style={styles.metaCard}>
@@ -326,11 +610,68 @@ export default function EntryDetailScreen() {
           <Text style={styles.fieldLabel}>Source</Text>
           <View style={styles.sourceValue}>
             <SourceMark source={entry.source ?? ""} size={18} />
-            <Text style={styles.fieldValue}>{sourceLabel(entry.source)}</Text>
+            <Text style={styles.fieldValue} numberOfLines={1}>{sourceLabel(entry.source)}</Text>
           </View>
         </View>
         {entry.sourceRef && <Field label="Ref" value={entry.sourceRef} styles={styles} />}
+        {entry.additionalSources?.map((s, i) => (
+          <View key={i}>
+            <View style={styles.sourceFieldRow}>
+              <Text style={styles.fieldLabel} />
+              <View style={styles.sourceValue}>
+                <SourceMark source={s.source} size={18} />
+                <Text style={styles.fieldValue} numberOfLines={1}>{sourceLabel(s.source)}</Text>
+              </View>
+            </View>
+            {s.sourceRef && <Field label="Ref" value={s.sourceRef} styles={styles} />}
+          </View>
+        ))}
       </View>
     </ScrollView>
+
+    {/* ── Merge modal (WP-E3) ── */}
+    <Modal
+      visible={mergeVisible}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setMergeVisible(false)}
+    >
+      <Pressable style={styles.modalOverlay} onPress={() => setMergeVisible(false)}>
+        <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Merge with…</Text>
+          <Text style={styles.modalSubtitle}>
+            Pick another entry from the same day. This entry will be kept; the selected one will be removed.
+          </Text>
+          {sameDayEntries.length === 0 ? (
+            <Text style={styles.mergeEmpty}>No other entries on this day.</Text>
+          ) : (
+            <FlatList
+              data={sameDayEntries}
+              keyExtractor={(e) => e.id}
+              renderItem={({ item }) => (
+                <Pressable style={styles.mergeRow} onPress={() => handleMerge(item)}>
+                  <KindIcon kind={item.kind} size={18} color={colors.textSecondary} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.mergeRowText} numberOfLines={1}>{entryTitle(item)}</Text>
+                    <Text style={styles.mergeRowSub}>{item.source}</Text>
+                  </View>
+                </Pressable>
+              )}
+            />
+          )}
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    <ParticipantPicker
+      visible={pickerVisible}
+      selected={entry.participants ?? []}
+      people={journal.people}
+      onConfirm={handleParticipantsConfirm}
+      onDismiss={() => setPickerVisible(false)}
+    />
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }
