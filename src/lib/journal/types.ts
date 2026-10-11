@@ -208,6 +208,8 @@ export interface Book extends Base {
   seriesId?: string;
   /** When reading started (YYYY-MM-DD). Separate from Base.start which is the completion date. */
   dateStarted?: string;
+  /** ISBN-13, cleaned of any Excel formatting artifact. Populated by the Goodreads connector. */
+  isbn13?: string;
 }
 
 /**

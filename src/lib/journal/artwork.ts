@@ -10,11 +10,12 @@
  * Public surface used by callers:
  *   normaliseTitle(raw)          — canonical form for matching and keying
  *   artworkKey(type, norm, year) — stable cache key
- *   eventToArtworkKey(entry)     — derive key from any Entry (null for non-film/tv)
+ *   eventToArtworkKey(entry)     — derive key from any Entry (null for non-film/tv/book)
+ *   bookToArtworkKey(entry)      — derive key from a Book entry (null for non-books)
  *   artworkStorage               — active storage implementation (call setArtworkStorage to inject)
  */
 
-import type { Entry, Film, Episode } from "./types";
+import type { Entry, Film, Episode, Book } from "./types";
 import { view } from "./types";
 
 // ─── Core types ───────────────────────────────────────────────────────────────
@@ -96,12 +97,13 @@ export function normaliseTitle(raw: string): string {
 /**
  * Derive an artwork cache key from a journal entry.
  *
- * Returns null for any entry kind that is not a movie or TV episode:
- *   Leg, Stay, JEvent, Book, PlaceEntry → null.
+ * Returns null for any entry kind that is not a movie, TV episode, or book:
+ *   Leg, Stay, JEvent, PlaceEntry → null.
  *
  * For Film entries the key uses the film title + release year.
  * For Episode entries the key uses the show title (already parsed by the
  * Netflix connector) with no year — series posters are not season-specific.
+ * For Book entries delegates to bookToArtworkKey.
  */
 export function eventToArtworkKey(entry: Entry): string | null {
   if (entry.kind === "film") {
@@ -119,7 +121,25 @@ export function eventToArtworkKey(entry: Entry): string | null {
     return artworkKey("tv", norm, undefined);
   }
 
+  if (entry.kind === "book") {
+    return bookToArtworkKey(entry);
+  }
+
   return null;
+}
+
+/**
+ * Derive an artwork cache key from a Book entry.
+ *
+ * Key format: `"book|{normTitle}|{year_or_empty}"` — same pattern as films.
+ * Returns null if the entry is not a book or has an empty title.
+ */
+export function bookToArtworkKey(entry: Entry): string | null {
+  if (entry.kind !== "book") return null;
+  const b = entry as Book;
+  const norm = normaliseTitle(b.title);
+  if (!norm) return null;
+  return `book|${norm}|${b.year ?? ""}`;
 }
 
 // ─── Storage interface ────────────────────────────────────────────────────────
