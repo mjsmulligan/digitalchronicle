@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { PosterCard } from "../../src/components/PosterCard";
-import { eventToArtworkKey } from "@chronicle/journal/artwork";
+import { eventToArtworkKey, bookToArtworkKey } from "@chronicle/journal/artwork";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
@@ -184,6 +184,7 @@ function EpisodeDetail({ e, styles, iconColors }: { e: Episode; styles: DetailSt
 function BookDetail({ e, styles, iconColors }: { e: Book; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "book") return null;
+  const artworkKey = bookToArtworkKey(e);
   return (
     <>
       <Text style={styles.title}>{v.title}</Text>
@@ -197,6 +198,7 @@ function BookDetail({ e, styles, iconColors }: { e: Book; styles: DetailStyles; 
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
+      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} />}
       <Divider styles={styles} />
       <Field label="Date read" value={fmt(v.start)} styles={styles} />
       {e.dateStarted && <Field label="Started" value={fmt(e.dateStarted)} styles={styles} />}
