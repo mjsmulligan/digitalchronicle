@@ -1,10 +1,12 @@
 /**
- * Persisted poster preferences — stored in chronicle-prefs.json alongside
+ * Persisted artwork preferences — stored in chronicle-prefs.json alongside
  * other user preferences (theme, home airport, Goodreads user ID, etc.).
  *
- * fetchPosters: whether to call TMDB to look up and download poster images.
- *   Default: true. Turning this off stops all new network requests; posters
- *   already cached on disk continue to display.
+ * fetchPosters:    whether to call TMDB to look up film/show poster images.
+ * fetchBookCovers: whether to call Open Library to look up book cover images.
+ *
+ * Default: true for both. Turning either off stops new network requests;
+ * already-cached images continue to display.
  */
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -33,5 +35,18 @@ export async function getPosterFetchEnabled(): Promise<boolean> {
 export async function setPosterFetchEnabled(enabled: boolean): Promise<void> {
   const prefs = await readPrefs();
   prefs.fetchPosters = enabled;
+  await writePrefs(prefs);
+}
+
+/** Read the "Fetch book covers" toggle. Defaults to true if never set. */
+export async function getBookCoverFetchEnabled(): Promise<boolean> {
+  const v = (await readPrefs()).fetchBookCovers;
+  return v !== false;
+}
+
+/** Persist the "Fetch book covers" toggle. */
+export async function setBookCoverFetchEnabled(enabled: boolean): Promise<void> {
+  const prefs = await readPrefs();
+  prefs.fetchBookCovers = enabled;
   await writePrefs(prefs);
 }

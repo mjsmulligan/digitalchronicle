@@ -3,8 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { clearAll, replaceAll, useJournal } from "@/lib/journal/db";
 import { STORES, type JournalData } from "@/lib/journal/types";
-import { setFetchPostersEnabled } from "@/lib/journal/artworkEnrichment";
-import { getPosterFetchEnabledPref, setPosterFetchEnabledPref } from "@/lib/posterPrefs";
+import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@/lib/journal/artworkEnrichment";
+import { getPosterFetchEnabledPref, setPosterFetchEnabledPref, getBookCoverFetchEnabledPref, setBookCoverFetchEnabledPref } from "@/lib/posterPrefs";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -32,6 +32,7 @@ function Backup() {
   const [restoreOpen, setRestoreOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fetchPosters, setFetchPostersState] = useState(() => getPosterFetchEnabledPref());
+  const [fetchBookCovers, setFetchBookCoversState] = useState(() => getBookCoverFetchEnabledPref());
   useEffect(() => { navigator.storage?.estimate?.().then(setEst); }, [s]);
 
   const handleFetchPostersToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -39,6 +40,13 @@ function Backup() {
     setFetchPostersState(value);
     setFetchPostersEnabled(value);
     setPosterFetchEnabledPref(value);
+  };
+
+  const handleFetchBookCoversToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.checked;
+    setFetchBookCoversState(value);
+    setFetchBookCoversEnabled(value);
+    setBookCoverFetchEnabledPref(value);
   };
   const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, films: s.films, episodes: s.episodes, books: s.books, series: s.series, notes: s.notes, staging: s.staging, people: s.people, gazetteer: s.gazetteer, localityPlaces: s.localityPlaces ?? [], placeEntries: s.placeEntries ?? [], placeBinMarkers: s.placeBinMarkers ?? [] };
   const size = new Blob([JSON.stringify(data)]).size;
@@ -93,8 +101,8 @@ function Backup() {
 
       {/* ── Posters ─────────────────────────────────────────────────────────── */}
       <div className="mt-8">
-        <h2 className="mb-3 text-lg font-semibold">Posters</h2>
-        <div className="rounded-md border border-border bg-card p-4">
+        <h2 className="mb-3 text-lg font-semibold">Posters &amp; covers</h2>
+        <div className="rounded-md border border-border bg-card p-4 space-y-4">
           <label className="flex items-center justify-between gap-4 cursor-pointer">
             <div>
               <p className="font-medium">Fetch posters</p>
@@ -108,8 +116,24 @@ function Backup() {
               aria-label="Fetch posters from TMDB"
             />
           </label>
-          <p className="mt-3 text-xs text-muted-foreground border-t border-border pt-3">
+          <div className="border-t border-border pt-4">
+            <label className="flex items-center justify-between gap-4 cursor-pointer">
+              <div>
+                <p className="font-medium">Fetch book covers</p>
+                <p className="text-sm text-muted-foreground">When on, book titles and authors are sent to Open Library to look up cover images. No API key or account required.</p>
+              </div>
+              <input
+                type="checkbox"
+                checked={fetchBookCovers}
+                onChange={handleFetchBookCoversToggle}
+                className="h-4 w-4 accent-primary cursor-pointer"
+                aria-label="Fetch book covers from Open Library"
+              />
+            </label>
+          </div>
+          <p className="text-xs text-muted-foreground border-t border-border pt-3">
             This product uses the TMDB API but is not endorsed or certified by TMDB.
+            Book cover images from <a href="https://openlibrary.org" target="_blank" rel="noreferrer" className="underline">Open Library</a>.
           </p>
         </div>
       </div>

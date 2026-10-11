@@ -43,8 +43,9 @@ import { SQLiteArtworkStore } from "../src/lib/storage/SQLiteArtworkStore";
 import { setAdapter, initJournal, useJournal } from "@chronicle/journal/db";
 import { setArtworkStorage } from "@chronicle/journal/artwork";
 import { TmdbProvider, setArtworkProvider } from "@chronicle/journal/artworkProvider";
-import { setFetchPostersEnabled } from "@chronicle/journal/artworkEnrichment";
-import { getPosterFetchEnabled } from "../src/lib/posterPrefs";
+import { OpenLibraryProvider, setBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
+import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@chronicle/journal/artworkEnrichment";
+import { getPosterFetchEnabled, getBookCoverFetchEnabled } from "../src/lib/posterPrefs";
 import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
 
 SplashScreen.preventAutoHideAsync();
@@ -135,8 +136,13 @@ function RootLayoutInner() {
 
           const fetchEnabled = await getPosterFetchEnabled();
           setFetchPostersEnabled(fetchEnabled);
+
+          // Book covers — Open Library requires no API key
+          setBookCoverProvider(new OpenLibraryProvider());
+          const fetchBookCoversEnabled = await getBookCoverFetchEnabled();
+          setFetchBookCoversEnabled(fetchBookCoversEnabled);
         } catch (artworkErr) {
-          // Artwork init failure is non-fatal; app continues without posters
+          // Artwork init failure is non-fatal; app continues without posters or covers
           console.warn("[Chronicle] Artwork init failed:", artworkErr);
         }
 
