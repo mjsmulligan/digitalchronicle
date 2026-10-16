@@ -96,7 +96,8 @@ const ENRICH_CONCURRENCY = 3;
  *     - On no match: write status "none" (cached for STALE_NONE_DAYS), return null.
  */
 export async function resolveArtwork(key: string): Promise<ArtworkMatch | null> {
-  const storage = artworkStorage();
+  let storage: ReturnType<typeof artworkStorage>;
+  try { storage = artworkStorage(); } catch { return null; }
 
   // ── 1 & 2: cache check ──────────────────────────────────────────────────────
   const cached = await storage.getByKey(key);
@@ -179,7 +180,8 @@ export async function resolveBookCoverForEntry(entry: Book): Promise<ArtworkMatc
   const key = bookToArtworkKey(entry);
   if (!key) return null;
 
-  const storage = artworkStorage();
+  let storage: ReturnType<typeof artworkStorage>;
+  try { storage = artworkStorage(); } catch { return null; }
 
   // ── 1 & 2: cache check ──────────────────────────────────────────────────────
   const cached = await storage.getByKey(key);
@@ -255,7 +257,8 @@ export async function resolveArtistImage(artistName: string): Promise<ArtworkMat
   const key = artistToArtworkKey(artistName);
   if (!key) return null;
 
-  const storage = artworkStorage();
+  let storage: ReturnType<typeof artworkStorage>;
+  try { storage = artworkStorage(); } catch { return null; }
 
   // ── 1 & 2: cache check ──────────────────────────────────────────────────────
   const cached = await storage.getByKey(key);
@@ -331,7 +334,8 @@ export async function enrichAll(
 ): Promise<void> {
   if (signal?.aborted) return;
 
-  const storage = artworkStorage();
+  let storage: ReturnType<typeof artworkStorage>;
+  try { storage = artworkStorage(); } catch { return; }
   const cutoff = staleCutoff();
 
   // ── Film / TV enrichment ───────────────────────────────────────────────────
