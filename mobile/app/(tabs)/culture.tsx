@@ -35,7 +35,7 @@ import {
   type JEvent,
   type Series,
 } from "@chronicle/journal/types";
-import { eventToArtworkKey, bookToArtworkKey } from "@chronicle/journal/artwork";
+import { eventToArtworkKey, bookToArtworkKey, artistToArtworkKey } from "@chronicle/journal/artwork";
 import {
   useTheme,
   type ThemeColors,
@@ -182,7 +182,7 @@ type ListItem =
       /** Raw artist name for concert groups — used to resolve TheAudioDB image */
       artistName?: string;
     }
-  | { type: "posterGrid"; id: string; items: PosterGridItem[]; kind: "film" | "episode" | "book" }
+  | { type: "posterGrid"; id: string; items: PosterGridItem[]; kind: "film" | "episode" | "book" | "concert" }
   | { type: "entry";      id: string; entry: CultureEntry }
   | { type: "separator";  id: string }
   | { type: "sectionGap"; id: string }
@@ -386,7 +386,7 @@ function PosterGrid({
   onPress,
 }: {
   items: PosterGridItem[];
-  kind: "film" | "episode" | "book";
+  kind: "film" | "episode" | "book" | "concert";
   colors: ThemeColors;
   fonts: ThemeFonts;
   onPress: (entryId: string) => void;
@@ -395,7 +395,8 @@ function PosterGrid({
   const cellW = Math.floor(
     (screenW - 2 * spacingScale.base - (NUM_COLS - 1) * spacingScale.sm) / NUM_COLS,
   );
-  const cellH = Math.floor(cellW * 1.5);
+  // Artist tiles are square; all other media uses portrait (3:2) ratio
+  const cellH = kind === "concert" ? cellW : Math.floor(cellW * 1.5);
 
   const [uriMap, setUriMap]     = useState<Map<string, string | null>>(new Map());
   const [resolved, setResolved] = useState(false);
@@ -407,7 +408,11 @@ function PosterGrid({
     Promise.all(
       items.map(async (item) => {
         let uri: string | null = null;
-        if (item.bookEntry) {
+        if (kind === "concert") {
+          // Artist images — poster_path IS the full URL (TheAudioDB, no imageUrl() needed)
+          const match = await resolveArtistImage(item.title);
+          uri = match?.poster_path ?? null;
+        } else if (item.bookEntry) {
           // Books: use resolveBookCoverForEntry + Open Library image URL
           const match = await resolveBookCoverForEntry(item.bookEntry);
           uri = match?.poster_path && bookProvider
@@ -428,7 +433,7 @@ function PosterGrid({
       setResolved(true);
     });
     return () => { cancelled = true; };
-  }, [items]);
+  }, [items, kind]);
 
   // Before resolution: show all as shimmer. After: split poster / no-poster.
   const posterItems    = resolved ? items.filter((i) => uriMap.get(i.id))  : items;
@@ -475,7 +480,8 @@ function PosterGrid({
                 accessibilityLabel={item.title}
               >
                 <KindIcon
-                  kind={kind === "episode" ? "episode" : kind === "book" ? "book" : "film"}
+                  kind={kind === "episode" ? "episode" : kind === "book" ? "book" : kind === "concert" ? "event" : "film"}
+                  subkind={kind === "concert" ? "concert" : undefined}
                   size={16}
                   color={colors.textTertiary}
                   accessibilityLabel=""
@@ -708,6 +714,19 @@ export default function CultureScreen() {
     [journal.books],
   );
 
+  /** One grid tile per artist (A→Z). Tapping navigates to the most recent concert. */
+  const concertGridItems = useMemo<PosterGridItem[]>(
+    () =>
+      concertsByArtist.map(({ artist, list }) => ({
+        id: `artist:${artist}`,
+        title: artist,
+        artworkKey: artistToArtworkKey(artist) ?? "",
+        // Navigate to the most recent concert for this artist
+        entryId: list[list.length - 1].id,
+      })),
+    [concertsByArtist],
+  );
+
   // ── build flat list ───────────────────────────────────────────────────────
 
   const listItems = useMemo<ListItem[]>(() => {
@@ -782,25 +801,7 @@ export default function CultureScreen() {
           title: `Concerts · ${allConcerts.length} shows · ${concertsByArtist.length} artists`,
         });
       }
-      concertsByArtist.forEach(({ artist, list }, ai) => {
-        if (ai > 0) items.push({ type: "groupGap", id: `gap-ca-${ai}` });
-        const key = `artist:${artist}`;
-        const collapsed = !expandedKeys.has(key);
-        items.push({
-          type: "groupHeader",
-          id: `gh-ca-${ai}`,
-          title: artist,
-          subtitle: list.length === 1
-            ? "1 show"
-            : `${list.length} shows`,
-          collapsible: true,
-          collapsed,
-          seriesKey: key,
-          kind: "concert",
-          artistName: artist,
-        });
-        if (!collapsed) pushEntries(list);
-      });
+      items.push({ type: "posterGrid", id: "grid-concerts", items: concertGridItems, kind: "concert" });
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-concerts" });
     }
 
@@ -836,7 +837,7 @@ export default function CultureScreen() {
     }
 
     return items;
-  }, [filter, allConcerts, concertsByArtist, filmGridItems, tvGridItems, bookGridItems, journal.books, journal.films, journal.episodes, expandedKeys]);
+  }, [filter, allConcerts, concertGridItems, filmGridItems, tvGridItems, bookGridItems, journal.books, journal.films, journal.episodes]);
 
   const isEmpty = counts.all === 0;
 
