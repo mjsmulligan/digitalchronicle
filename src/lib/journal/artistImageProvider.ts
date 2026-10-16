@@ -221,14 +221,10 @@ export class DeezerArtistProvider implements ArtistImageProvider {
     const url = `https://api.deezer.com/search/artist?q=${encodeURIComponent(artistName)}&limit=5`;
     let data: DeezerSearchResponse;
     try {
-      console.log("[Deezer] fetching:", url);
       const res = await fetch(url);
-      console.log("[Deezer] status:", res.status);
       if (!res.ok) return null;
       data = await res.json() as DeezerSearchResponse;
-      console.log("[Deezer] hits:", data.data?.length ?? 0, "first:", data.data?.[0]?.name, data.data?.[0]?.picture_xl?.slice(0, 80));
-    } catch (e) {
-      console.log("[Deezer] fetch error:", e);
+    } catch {
       return null;
     }
 

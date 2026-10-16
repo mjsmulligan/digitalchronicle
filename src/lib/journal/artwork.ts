@@ -143,13 +143,39 @@ export function bookToArtworkKey(entry: Entry): string | null {
 }
 
 /**
+ * Strip tour-name and venue suffixes from a raw artist field for lookup purposes.
+ *
+ * Some imports store the full event title in the artist field, e.g.:
+ *   "Ed Sheeran + - = ÷ x Tour"  →  "Ed Sheeran"
+ *   "Maksim Galkin (Drogheda)"   →  "Maksim Galkin"
+ *
+ * Rules:
+ *  1. Strip trailing parentheticals:  "Artist (Venue)" → "Artist"
+ *  2. Strip math-operator tour names: two or more consecutive operators
+ *     (+, -, =, ÷, ×) are a sign the tour symbol starts here.
+ *     A single operator (e.g. "Florence + the Machine") is left intact.
+ */
+export function cleanArtistForLookup(raw: string): string {
+  let s = raw.trim();
+  // Rule 1 — strip trailing "(anything)"
+  s = s.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  // Rule 2 — strip tour-name operator sequences (2+ operators, optionally spaced)
+  // Matches: " + - = ÷ x Tour" but NOT " + the Machine"
+  s = s.replace(/\s+[+\-=÷×]\s*[+\-=÷×].*$/, "").trim();
+  return s || raw.trim();
+}
+
+/**
  * Derive an artwork cache key for an artist name (used for concert group images).
+ *
+ * Applies cleanArtistForLookup before normalisation so tour-name suffixes stored
+ * in the artist field ("Ed Sheeran + - = ÷ x Tour") don't corrupt the cache key.
  *
  * Key format: `"artist|{normName}"` — normalised artist name, no year component.
  * Returns null if the name is empty after normalisation.
  */
 export function artistToArtworkKey(artistName: string): string | null {
-  const norm = normaliseTitle(artistName);
+  const norm = normaliseTitle(cleanArtistForLookup(artistName));
   if (!norm) return null;
   return `artist|${norm}`;
 }
