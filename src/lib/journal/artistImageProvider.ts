@@ -92,19 +92,22 @@ export class TheAudioDbProvider implements ArtistImageProvider {
     );
     const best = exact ?? data.artists[0];
 
-    // Try every image field in preference order — free tier may have some null.
-    // TADB sometimes returns URLs with literal spaces in filenames; sanitize.
-    const rawUrl =
-      best.strArtistThumb ??
-      best.strArtistWideThumb ??
-      best.strArtistFanart ??
-      best.strArtistFanart2 ??
-      best.strArtistFanart3 ??
-      best.strArtistFanart4 ??
-      best.strArtistBanner ??
-      best.strArtistClearart ??
-      best.strArtistLogo ??
-      null;
+    // Try every image field in preference order, skipping any URL that contains
+    // a literal space. TADB has corrupted CDN entries where the filename has a
+    // space (e.g. "ysytsw1498815 745.jpg") — even %20-encoded these are 404s.
+    // Returning null lets the CompositeArtistImageProvider fall through to Deezer.
+    const candidates = [
+      best.strArtistThumb,
+      best.strArtistWideThumb,
+      best.strArtistFanart,
+      best.strArtistFanart2,
+      best.strArtistFanart3,
+      best.strArtistFanart4,
+      best.strArtistBanner,
+      best.strArtistClearart,
+      best.strArtistLogo,
+    ];
+    const rawUrl = candidates.find((u) => u && !u.includes(" ")) ?? null;
     if (!rawUrl) return null;
     const imageUrl = sanitizeUrl(rawUrl);
 
