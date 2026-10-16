@@ -40,6 +40,9 @@
       ],
       "@chronicle/journal/bookCoverProvider": [
         "../src/lib/journal/bookCoverProvider"
+      ],
+      "@chronicle/journal/artistImageProvider": [
+        "../src/lib/journal/artistImageProvider"
       ]
     }
   },

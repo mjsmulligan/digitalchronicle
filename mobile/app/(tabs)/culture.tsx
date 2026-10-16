@@ -10,8 +10,9 @@
  * Series/show groups are collapsible (collapsed by default) for easy scanning.
  * Filter pills narrow to a single category; all sections show when "All" is active.
  */
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import {
+  Animated,
   FlatList,
   Image,
   LayoutAnimation,
@@ -48,9 +49,10 @@ import {
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
 import { PosterCard } from "../../src/components/PosterCard";
-import { resolveArtwork, resolveBookCoverForEntry } from "@chronicle/journal/artworkEnrichment";
+import { resolveArtwork, resolveBookCoverForEntry, resolveArtistImage } from "@chronicle/journal/artworkEnrichment";
 import { getArtworkProvider } from "@chronicle/journal/artworkProvider";
 import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
+import { getArtistImageProvider } from "@chronicle/journal/artistImageProvider";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -181,8 +183,10 @@ type ListItem =
       seriesKey?: string;
       /** Kind icon to show on the left — only present when collapsible: true */
       kind?: CultureKind;
-      /** Artwork cache key for inline poster (book groups only) */
+      /** Artwork cache key for inline poster (book series groups only) */
       artworkKey?: string;
+      /** Raw artist name for concert groups — used to resolve TheAudioDB image */
+      artistName?: string;
     }
   | { type: "posterGrid"; id: string; items: PosterGridItem[]; kind: "film" | "episode" | "book" }
   | { type: "entry";      id: string; entry: CultureEntry }
@@ -494,6 +498,59 @@ function PosterGrid({
 
 // ── FilterPill ────────────────────────────────────────────────────────────────
 
+// ── ArtistImage ───────────────────────────────────────────────────────────────
+
+/**
+ * Compact artist photo for collapsed concert group headers.
+ * Resolves via TheAudioDB (poster_path is a full URL for artist images).
+ * Renders nothing until resolved; fades in when found.
+ */
+function ArtistImage({
+  artistName,
+  colors,
+}: {
+  artistName: string;
+  colors: ThemeColors;
+}) {
+  const [uri, setUri] = useState<string | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveArtistImage(artistName).then((match) => {
+      if (cancelled || !match?.poster_path) return;
+      // TheAudioDB stores full URLs directly as poster_path
+      const provider = getArtistImageProvider();
+      const imageUri = provider ? provider.imageUrl(match.poster_path) : match.poster_path;
+      setUri(imageUri);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    });
+    return () => { cancelled = true; };
+  }, [artistName]);
+
+  if (!uri) return null;
+
+  return (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        overflow: "hidden",
+        marginLeft: spacingScale.base,
+        marginBottom: spacingScale.sm,
+        backgroundColor: colors.border,
+      }}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`Photo of ${artistName}`}
+    >
+      <Image source={{ uri }} style={{ width: 48, height: 48 }} resizeMode="cover" />
+    </Animated.View>
+  );
+}
+
 function FilterPill({
   label,
   count,
@@ -746,6 +803,7 @@ export default function CultureScreen() {
           collapsed,
           seriesKey: key,
           kind: "concert",
+          artistName: artist,
         });
         if (!collapsed) pushEntries(list);
       });
@@ -896,6 +954,10 @@ export default function CultureScreen() {
                             variant="compact"
                           />
                         </View>
+                      )}
+                      {/* Artist photo — shown when concert group is collapsed */}
+                      {item.collapsed && item.artistName && (
+                        <ArtistImage artistName={item.artistName} colors={colors} />
                       )}
                     </View>
                   );

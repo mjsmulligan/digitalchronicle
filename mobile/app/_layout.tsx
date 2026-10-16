@@ -44,6 +44,7 @@ import { setAdapter, initJournal, useJournal, allEntries, getState } from "@chro
 import { setArtworkStorage } from "@chronicle/journal/artwork";
 import { TmdbProvider, setArtworkProvider } from "@chronicle/journal/artworkProvider";
 import { OpenLibraryProvider, setBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
+import { TheAudioDbProvider, setArtistImageProvider } from "@chronicle/journal/artistImageProvider";
 import { setFetchPostersEnabled, setFetchBookCoversEnabled, enrichAll } from "@chronicle/journal/artworkEnrichment";
 import { getPosterFetchEnabled, getBookCoverFetchEnabled } from "../src/lib/posterPrefs";
 import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
@@ -141,6 +142,10 @@ function RootLayoutInner() {
           setBookCoverProvider(new OpenLibraryProvider());
           const fetchBookCoversEnabled = await getBookCoverFetchEnabled();
           setFetchBookCoversEnabled(fetchBookCoversEnabled);
+
+          // Artist images — TheAudioDB free tier (key "123" is public)
+          const tadbKey = process.env.EXPO_PUBLIC_TADB_API_KEY ?? "123";
+          setArtistImageProvider(new TheAudioDbProvider(tadbKey));
 
           // Warm the artwork cache in the background for all film/TV/book entries.
           // Fire-and-forget: don't await, don't block splash hide.

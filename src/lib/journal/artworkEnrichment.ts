@@ -1,34 +1,39 @@
 /**
- * Artwork enrichment service — event posters WP4 + book covers WP3.
+ * Artwork enrichment service — event posters WP4 + book covers WP3 + artist images.
  *
  * Public functions:
  *
  *   resolveArtwork(key)              — single-key lookup for films/TV: cache → provider → store.
  *   resolveBookCoverForEntry(entry)  — book cover lookup: cache → provider → store.
- *   enrichAll(entries, signal)       — background batch for all unmatched entries (films + books).
+ *   resolveArtistImage(artistName)   — artist image lookup: cache → TheAudioDB → store.
+ *   enrichAll(entries, signal)       — background batch for all unmatched entries (films + books + artists).
  *
  * Films/TV respect the "Fetch posters" toggle (setFetchPostersEnabled).
  * Books respect the "Fetch book covers" toggle (setFetchBookCoversEnabled).
+ * Artist images are always fetched when the provider is set (no separate toggle).
  * WP5 wires up the toggles to persisted user preferences; this module manages
  * in-memory state so unit tests can flip them without any I/O.
  *
  * Storage and providers are resolved lazily via injected singletons:
- *   artwork.ts         — setArtworkStorage()
- *   artworkProvider.ts — setArtworkProvider()
- *   bookCoverProvider.ts — setBookCoverProvider()
+ *   artwork.ts             — setArtworkStorage()
+ *   artworkProvider.ts     — setArtworkProvider()
+ *   bookCoverProvider.ts   — setBookCoverProvider()
+ *   artistImageProvider.ts — setArtistImageProvider()
  */
 
 import {
   artworkStorage,
   eventToArtworkKey,
   bookToArtworkKey,
+  artistToArtworkKey,
   type ArtworkMatch,
   type ArtworkMediaType,
 } from "./artwork";
 import { getArtworkProvider, CONFIDENCE_THRESHOLD } from "./artworkProvider";
 import { getBookCoverProvider } from "./bookCoverProvider";
+import { getArtistImageProvider } from "./artistImageProvider";
 import { normaliseTitle } from "./artwork";
-import type { Entry, Book } from "./types";
+import type { Entry, Book, JEvent } from "./types";
 
 // ─── Settings toggles ─────────────────────────────────────────────────────────
 
@@ -232,10 +237,80 @@ export async function resolveBookCoverForEntry(entry: Book): Promise<ArtworkMatc
   }
 }
 
+// ─── resolveArtistImage ───────────────────────────────────────────────────────
+
+/**
+ * Resolve a concert artist image from TheAudioDB.
+ *
+ * Resolution order mirrors resolveArtwork:
+ *  1. Return any cached "manual" or "matched" hit immediately.
+ *  2. Return null for a "none" hit younger than STALE_NONE_DAYS.
+ *  3. If no provider is set, return null.
+ *  4. Fetch from TheAudioDB, cache result.
+ *
+ * poster_path stores the full image URL for TheAudioDB (no imageUrl() needed
+ * on the provider — just return the path directly).
+ */
+export async function resolveArtistImage(artistName: string): Promise<ArtworkMatch | null> {
+  const key = artistToArtworkKey(artistName);
+  if (!key) return null;
+
+  const storage = artworkStorage();
+
+  // ── 1 & 2: cache check ──────────────────────────────────────────────────────
+  const cached = await storage.getByKey(key);
+  if (cached) {
+    if (cached.status === "manual" || cached.status === "matched") return cached;
+    if (cached.status === "none") {
+      const cutoff = staleCutoff();
+      if (cached.fetched_at >= cutoff) return null;
+    }
+  }
+
+  // ── 3: provider check ────────────────────────────────────────────────────────
+  const provider = getArtistImageProvider();
+  if (!provider) return null;
+
+  // ── 4: fetch ─────────────────────────────────────────────────────────────────
+  const now = new Date().toISOString();
+  try {
+    const result = await provider.findArtist(artistName);
+    if (result !== null && result.confidence >= CONFIDENCE_THRESHOLD) {
+      const match: ArtworkMatch = {
+        id: key,
+        key,
+        media_type: "artist",
+        status: "matched",
+        provider: result.provider,
+        // Store the full image URL directly as poster_path
+        poster_path: result.imageUrl,
+        title_matched: result.artistName,
+        confidence: result.confidence,
+        fetched_at: now,
+      };
+      await storage.upsert(match);
+      return match;
+    }
+    // No match — cache as "none"
+    const none: ArtworkMatch = {
+      id: key,
+      key,
+      media_type: "artist",
+      status: "none",
+      provider: "theaudiodb",
+      fetched_at: now,
+    };
+    await storage.upsert(none);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ─── enrichAll ────────────────────────────────────────────────────────────────
 
 /**
- * Background enrichment of all unmatched Film, Episode, and Book entries.
+ * Background enrichment of all unmatched Film, Episode, Book, and concert artist entries.
  *
  * Steps:
  *  1. Collect distinct film/TV artwork keys; collect unresolved Book entries.
@@ -325,6 +400,49 @@ export async function enrichAll(
       }
       const wc = Math.min(ENRICH_CONCURRENCY, bookEntries.length);
       await Promise.all(Array.from({ length: wc }, bookWorker));
+    }
+  }
+
+  if (signal?.aborted) return;
+
+  // ── Artist image enrichment ────────────────────────────────────────────────
+
+  if (getArtistImageProvider()) {
+    // 1: collect distinct concert artist names
+    const artistNames = new Set<string>();
+    for (const entry of entries) {
+      if (entry.kind !== "event") continue;
+      const ev = entry as JEvent;
+      if (ev.category !== "concert") continue;
+      const name = ev.artist?.trim();
+      if (name) artistNames.add(name);
+    }
+
+    if (artistNames.size && !signal?.aborted) {
+      // 2: filter to unresolved
+      const toResolve: string[] = [];
+      for (const name of artistNames) {
+        if (signal?.aborted) break;
+        const key = artistToArtworkKey(name);
+        if (!key) continue;
+        const cached = await storage.getByKey(key);
+        if (!cached || (cached.status === "none" && cached.fetched_at < cutoff)) {
+          toResolve.push(name);
+        }
+      }
+
+      // 3: resolve with concurrency limit
+      if (toResolve.length && !signal?.aborted) {
+        let k = 0;
+        async function artistWorker(): Promise<void> {
+          while (k < toResolve.length) {
+            if (signal?.aborted) return;
+            await resolveArtistImage(toResolve[k++]);
+          }
+        }
+        const wc = Math.min(ENRICH_CONCURRENCY, toResolve.length);
+        await Promise.all(Array.from({ length: wc }, artistWorker));
+      }
     }
   }
 }
