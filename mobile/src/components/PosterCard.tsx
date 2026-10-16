@@ -122,7 +122,7 @@ export function PosterCard({ artworkKey, title, variant = "detail", bookEntry, a
   // Films/TV: imageUrl() from TMDB provider.
   const imageUri = (() => {
     if (!match?.poster_path) return null;
-    if (artistName) return match.poster_path;
+    if (artistName) return match.poster_path.replace(/ /g, "%20");
     if (bookEntry) {
       const bookProvider = getBookCoverProvider();
       return bookProvider ? bookProvider.imageUrl(match.poster_path) : null;

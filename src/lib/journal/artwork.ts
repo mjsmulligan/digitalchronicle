@@ -143,13 +143,74 @@ export function bookToArtworkKey(entry: Entry): string | null {
 }
 
 /**
+ * Strip tour-name and venue suffixes from a raw artist field for lookup purposes.
+ *
+ * Some imports store the full event title in the artist field, e.g.:
+ *   "Ed Sheeran + - = ÷ x Tour"  →  "Ed Sheeran"
+ *   "Maksim Galkin (Drogheda)"   →  "Maksim Galkin"
+ *
+ * Rules:
+ *  1. Strip trailing parentheticals:  "Artist (Venue)" → "Artist"
+ *  2. Strip math-operator tour names: two or more consecutive operators
+ *     (+, -, =, ÷, ×) are a sign the tour symbol starts here.
+ *     A single operator (e.g. "Florence + the Machine") is left intact.
+ */
+/**
+ * Returns true for ASCII math/symbol chars used in tour name symbols
+ * (+, -, =) plus their common Unicode equivalents (÷ U+00F7, × U+00D7).
+ * Avoid putting ÷/× in a regex character class — Hermes can reject
+ * non-ASCII literals in character classes.
+ */
+function _isTourOperator(ch: string): boolean {
+  if (!ch) return false;
+  if (ch === "+" || ch === "-" || ch === "=") return true;
+  const code = ch.charCodeAt(0);
+  return code === 0x00f7 /* ÷ */ || code === 0x00d7 /* × */;
+}
+
+export function cleanArtistForLookup(raw: string): string {
+  // Rule 1 — strip trailing "(anything)": "Maksim Galkin (Drogheda)" → "Maksim Galkin"
+  let s = raw.trim().replace(/\s*\([^)]*\)\s*$/, "").trim();
+
+  // Rule 2 — strip tour-name operator sequences.
+  // Split on whitespace; if two CONSECUTIVE single-char operator tokens appear,
+  // everything from the first operator onwards is the tour name.
+  // "Ed Sheeran + - = ÷ x Tour" → words [Ed, Sheeran, +, -, =, ÷, x, Tour]
+  //   first op at index 2 (+), second consecutive op at index 3 (-) → keep words 0-1.
+  // "Florence + the Machine" → [Florence, +, the, Machine]
+  //   op at index 1 (+), but "the" (index 2) is NOT an op → no strip.
+  const words = s.split(/\s+/);
+  let opStart = -1;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w.length === 1 && _isTourOperator(w)) {
+      if (opStart === -1) {
+        opStart = i;
+      } else if (i === opStart + 1) {
+        // Two consecutive operator tokens — everything from opStart is tour name
+        s = words.slice(0, opStart).join(" ").trim();
+        break;
+      }
+      // Non-consecutive operator (gap of 2+) — not a tour sequence; reset
+    } else {
+      opStart = -1;
+    }
+  }
+
+  return s || raw.trim();
+}
+
+/**
  * Derive an artwork cache key for an artist name (used for concert group images).
+ *
+ * Applies cleanArtistForLookup before normalisation so tour-name suffixes stored
+ * in the artist field ("Ed Sheeran + - = ÷ x Tour") don't corrupt the cache key.
  *
  * Key format: `"artist|{normName}"` — normalised artist name, no year component.
  * Returns null if the name is empty after normalisation.
  */
 export function artistToArtworkKey(artistName: string): string | null {
-  const norm = normaliseTitle(artistName);
+  const norm = normaliseTitle(cleanArtistForLookup(artistName));
   if (!norm) return null;
   return `artist|${norm}`;
 }

@@ -26,6 +26,7 @@ import {
   eventToArtworkKey,
   bookToArtworkKey,
   artistToArtworkKey,
+  cleanArtistForLookup,
   type ArtworkMatch,
   type ArtworkMediaType,
 } from "./artwork";
@@ -254,7 +255,10 @@ export async function resolveBookCoverForEntry(entry: Book): Promise<ArtworkMatc
  * on the provider — just return the path directly).
  */
 export async function resolveArtistImage(artistName: string): Promise<ArtworkMatch | null> {
-  const key = artistToArtworkKey(artistName);
+  // Clean tour-name suffixes ("Ed Sheeran + - = ÷ x Tour" → "Ed Sheeran") so
+  // the cache key and provider search use just the artist name.
+  const lookupName = cleanArtistForLookup(artistName);
+  const key = artistToArtworkKey(lookupName);
   if (!key) return null;
 
   let storage: ReturnType<typeof artworkStorage>;
@@ -277,7 +281,7 @@ export async function resolveArtistImage(artistName: string): Promise<ArtworkMat
   // ── 4: fetch ─────────────────────────────────────────────────────────────────
   const now = new Date().toISOString();
   try {
-    const result = await provider.findArtist(artistName);
+    const result = await provider.findArtist(lookupName);
     if (result !== null && result.confidence >= CONFIDENCE_THRESHOLD) {
       const match: ArtworkMatch = {
         id: key,

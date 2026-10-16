@@ -17,6 +17,7 @@ import {
   Image,
   LayoutAnimation,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -384,12 +385,14 @@ function PosterGrid({
   colors,
   fonts,
   onPress,
+  refreshKey = 0,
 }: {
   items: PosterGridItem[];
   kind: "film" | "episode" | "book" | "concert";
   colors: ThemeColors;
   fonts: ThemeFonts;
   onPress: (entryId: string) => void;
+  refreshKey?: number;
 }) {
   const { width: screenW } = useWindowDimensions();
   const cellW = Math.floor(
@@ -400,18 +403,32 @@ function PosterGrid({
 
   const [uriMap, setUriMap]     = useState<Map<string, string | null>>(new Map());
   const [resolved, setResolved] = useState(false);
+  // retryKey bumps to 1 once if the first pass returns all-null (artwork
+  // storage / providers not ready yet at mount time). Capped at 1 retry.
+  const [retryKey, setRetryKey] = useState(0);
+  // Reset retry window when items or refreshKey changes
+  const prevItemsRef = useRef(items);
+  const prevRefreshKey = useRef(refreshKey);
+  if (prevItemsRef.current !== items || prevRefreshKey.current !== refreshKey) {
+    prevItemsRef.current = items;
+    prevRefreshKey.current = refreshKey;
+    if (retryKey !== 0) setRetryKey(0);
+  }
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const filmProvider = getArtworkProvider();
     const bookProvider = getBookCoverProvider();
     Promise.all(
       items.map(async (item) => {
         let uri: string | null = null;
         if (kind === "concert") {
-          // Artist images — poster_path IS the full URL (TheAudioDB, no imageUrl() needed)
+          // Artist images — poster_path IS the full URL (TheAudioDB/Deezer).
+          // Sanitize spaces: TADB sometimes stores URLs with literal spaces in
+          // filenames; React Native Image silently rejects those.
           const match = await resolveArtistImage(item.title);
-          uri = match?.poster_path ?? null;
+          uri = match?.poster_path ? match.poster_path.replace(/ /g, "%20") : null;
         } else if (item.bookEntry) {
           // Books: use resolveBookCoverForEntry + Open Library image URL
           const match = await resolveBookCoverForEntry(item.bookEntry);
@@ -431,9 +448,21 @@ function PosterGrid({
       if (cancelled) return;
       setUriMap(new Map(results));
       setResolved(true);
+      // If every URI is null and this is the first attempt, the artwork storage
+      // or providers weren't ready yet (boot is async). Schedule one retry after
+      // 3s to give enrichAll time to warm the cache.
+      const allNull = results.every(([, uri]) => uri === null);
+      if (allNull && retryKey === 0 && items.length > 0) {
+        retryTimer = setTimeout(() => {
+          if (!cancelled) setRetryKey(1);
+        }, 3000);
+      }
     });
-    return () => { cancelled = true; };
-  }, [items, kind]);
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [items, kind, retryKey, refreshKey]);
 
   // Before resolution: show all as shimmer. After: split poster / no-poster.
   const posterItems    = resolved ? items.filter((i) => uriMap.get(i.id))  : items;
@@ -580,6 +609,17 @@ export default function CultureScreen() {
   const [filter, setFilter] = useState<Filter>("all");
   const { colors, fonts } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
+
+  // Pull-to-refresh — bumping refreshKey forces all PosterGrids to re-resolve
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setRefreshKey((k) => k + 1);
+    // Give artwork resolution a moment then clear the spinner
+    setTimeout(() => setRefreshing(false), 1500);
+  }, []);
 
   // Track which series are expanded (default: all collapsed)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
@@ -881,6 +921,14 @@ export default function CultureScreen() {
           style={styles.list}
           data={listItems}
           keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.textTertiary}
+              colors={[colors.accent]}
+            />
+          }
           renderItem={({ item }) => {
             switch (item.type) {
 
@@ -899,6 +947,7 @@ export default function CultureScreen() {
                     colors={colors}
                     fonts={fonts}
                     onPress={(entryId) => router.push(`/entry/${entryId}`)}
+                    refreshKey={refreshKey}
                   />
                 );
 

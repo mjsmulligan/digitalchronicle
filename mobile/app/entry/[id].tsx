@@ -5,11 +5,16 @@
  * WP-E1/E2 — Edit button in header routes to entry/edit/[id].tsx
  * WP-E3    — Merge action shows same-day entries; merges two into one.
  */
-import { useMemo, useState } from "react";
-import { FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { FlatList, Image, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { PosterCard } from "../../src/components/PosterCard";
 import { eventToArtworkKey, bookToArtworkKey } from "@chronicle/journal/artwork";
+import { resolveArtwork, resolveBookCoverForEntry, resolveArtistImage } from "@chronicle/journal/artworkEnrichment";
+import { getArtworkProvider } from "@chronicle/journal/artworkProvider";
+import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
+import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
@@ -22,6 +27,62 @@ import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Ionicons } from "@expo/vector-icons";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Convert a 6-char hex colour to rgba with the given alpha.
+ * Used to build multi-step gradient overlays without expo-linear-gradient.
+ */
+function hexAlpha(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha.toFixed(3)})`;
+}
+
+/** True for entry kinds that get the hero image treatment. */
+function isMediaEntry(entry: Entry): boolean {
+  if (entry.kind === "film" || entry.kind === "episode" || entry.kind === "book") return true;
+  if (entry.kind === "event") return (entry as JEvent).category === "concert";
+  return false;
+}
+
+/**
+ * Resolves the hero image URI for media entries (film, TV, book, concert).
+ * Accepts undefined so it can be called unconditionally before entry loads.
+ * Returns null while loading, when entry is undefined, or when no artwork found.
+ */
+function useHeroUri(entry: Entry | undefined): string | null {
+  const [uri, setUri] = useState<string | null>(null);
+  useEffect(() => {
+    if (!entry || !isMediaEntry(entry)) { setUri(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        let resolved: string | null = null;
+        if (entry.kind === "film" || entry.kind === "episode") {
+          const key = eventToArtworkKey(entry);
+          if (key) {
+            const match = await resolveArtwork(key);
+            const provider = getArtworkProvider();
+            if (match?.poster_path && provider) resolved = provider.imageUrl(match.poster_path);
+          }
+        } else if (entry.kind === "book") {
+          const match = await resolveBookCoverForEntry(entry as Book);
+          const provider = getBookCoverProvider();
+          if (match?.poster_path && provider) resolved = provider.imageUrl(match.poster_path);
+        } else if (entry.kind === "event" && (entry as JEvent).category === "concert") {
+          const match = await resolveArtistImage((entry as JEvent).artist ?? "");
+          if (match?.poster_path) resolved = match.poster_path.replace(/ /g, "%20");
+        }
+        if (!cancelled) setUri(resolved);
+      } catch { /* leave as null */ }
+    })();
+    return () => { cancelled = true; };
+  }, [entry?.id]);
+  return uri;
+}
+
 
 function fmt(date: string): string {
   const d = date.slice(0, 10);
@@ -126,7 +187,7 @@ function StayDetail({ e, styles, iconColors }: { e: Stay; styles: DetailStyles; 
   );
 }
 
-function FilmDetail({ e, styles, iconColors }: { e: Film; styles: DetailStyles; iconColors: IconColors }) {
+function FilmDetail({ e, styles, iconColors, showPoster = true }: { e: Film; styles: DetailStyles; iconColors: IconColors; showPoster?: boolean }) {
   const v = view(e);
   if (v.kind !== "film") return null;
   const artworkKey = eventToArtworkKey(e);
@@ -143,7 +204,7 @@ function FilmDetail({ e, styles, iconColors }: { e: Film; styles: DetailStyles; 
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
-      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} />}
+      {showPoster && artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} />}
       <Divider styles={styles} />
       <Field label="Watched" value={fmt(v.start)} styles={styles} />
       <Field label="Director" value={v.director} styles={styles} />
@@ -152,7 +213,7 @@ function FilmDetail({ e, styles, iconColors }: { e: Film; styles: DetailStyles; 
   );
 }
 
-function EpisodeDetail({ e, styles, iconColors }: { e: Episode; styles: DetailStyles; iconColors: IconColors }) {
+function EpisodeDetail({ e, styles, iconColors, showPoster = true }: { e: Episode; styles: DetailStyles; iconColors: IconColors; showPoster?: boolean }) {
   const v = view(e);
   if (v.kind !== "episode") return null;
   const artworkKey = eventToArtworkKey(e);
@@ -169,7 +230,7 @@ function EpisodeDetail({ e, styles, iconColors }: { e: Episode; styles: DetailSt
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
-      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.showTitle} />}
+      {showPoster && artworkKey && <PosterCard artworkKey={artworkKey} title={v.showTitle} />}
       <Divider styles={styles} />
       <Field label="Watched" value={fmt(v.start)} styles={styles} />
       <Field label="Show" value={v.showTitle} styles={styles} />
@@ -181,7 +242,7 @@ function EpisodeDetail({ e, styles, iconColors }: { e: Episode; styles: DetailSt
   );
 }
 
-function BookDetail({ e, styles, iconColors }: { e: Book; styles: DetailStyles; iconColors: IconColors }) {
+function BookDetail({ e, styles, iconColors, showPoster = true }: { e: Book; styles: DetailStyles; iconColors: IconColors; showPoster?: boolean }) {
   const v = view(e);
   if (v.kind !== "book") return null;
   const artworkKey = bookToArtworkKey(e);
@@ -198,7 +259,7 @@ function BookDetail({ e, styles, iconColors }: { e: Book; styles: DetailStyles; 
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
-      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} bookEntry={e} />}
+      {showPoster && artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} bookEntry={e} />}
       <Divider styles={styles} />
       <Field label="Date read" value={fmt(v.start)} styles={styles} />
       {e.dateStarted && <Field label="Started" value={fmt(e.dateStarted)} styles={styles} />}
@@ -311,7 +372,7 @@ function PlaceEntryDetail({
   );
 }
 
-function EventDetail({ e, styles, iconColors }: { e: JEvent; styles: DetailStyles; iconColors: IconColors }) {
+function EventDetail({ e, styles, iconColors, showPoster = true }: { e: JEvent; styles: DetailStyles; iconColors: IconColors; showPoster?: boolean }) {
   const v = view(e);
   if (v.kind !== "event") return null;
   const isConcert = v.category === "concert";
@@ -322,8 +383,8 @@ function EventDetail({ e, styles, iconColors }: { e: JEvent; styles: DetailStyle
         <KindIcon kind="event" subkind={v.category} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{CATEGORY_LABEL[v.category]}</Text>
       </View>
-      {/* Artist photo for concerts — resolves from TheAudioDB */}
-      {isConcert && v.artist && (
+      {/* Artist photo for concerts — resolves from TheAudioDB / Deezer */}
+      {showPoster && isConcert && v.artist && (
         <PosterCard artworkKey="" title={v.artist} artistName={v.artist} />
       )}
       <Divider styles={styles} />
@@ -351,6 +412,23 @@ export default function EntryDetailScreen() {
   const [mergeVisible, setMergeVisible] = useState(false);
   const [mergeSaving, setMergeSaving] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const { width: screenW, height: screenH } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  /**
+   * Concert artist images (Deezer/TADB) are square (1:1).
+   * TMDB film/TV/book posters are portrait (2:3).
+   * We size the hero to match the natural aspect ratio so resizeMode="cover"
+   * requires zero cropping.
+   */
+  const heroIsPortrait =
+    entry?.kind === "film" || entry?.kind === "episode" || entry?.kind === "book";
+
+  // Actual image ratio (w/h). Starts at the expected default; updated once the
+  // image loads so the container exactly matches reality → resizeMode cover = no crop.
+  const [heroImgRatio, setHeroImgRatio] = useState<number>(
+    heroIsPortrait ? 2 / 3 : 1
+  );
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
@@ -403,6 +481,13 @@ export default function EntryDetailScreen() {
     headerActions: { flexDirection: "row" as const, alignItems: "center" as const, gap: 2, marginRight: 4 },
     headerBtn:     { padding: 8 },
 
+    // hero layout
+    heroOuter:     { flex: 1, backgroundColor: colors.bg },
+    heroImageWrap: { position: "absolute" as const, top: 0, left: 0, right: 0 },
+    heroImage:     { width: "100%", height: "100%" },
+    heroGradLayer: { position: "absolute" as const, left: 0, right: 0 },
+    heroScroll:    { flex: 1 },
+
     // merge modal
     modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" as const },
     modalSheet: {
@@ -445,6 +530,14 @@ export default function EntryDetailScreen() {
     () => allEntries(journal).find((e) => e.id === id),
     [journal, id]
   );
+
+  const heroUri = useHeroUri(entry);
+  const showHero = entry ? isMediaEntry(entry) : false;
+
+  // Reset the measured ratio whenever the URI changes (new entry or re-navigation)
+  useEffect(() => {
+    setHeroImgRatio(heroIsPortrait ? 2 / 3 : 1);
+  }, [heroUri, heroIsPortrait]);
 
   // For place-entry kind, look up the Place container for canonical name/region/country
   const placeContainer = useMemo(() => {
@@ -539,45 +632,40 @@ export default function EntryDetailScreen() {
 
   const isEditable = EDITABLE_KINDS.has(entry.kind);
 
-  return (
-    <>
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Stack.Screen
-        options={{
-          title: "",
-          ...common.header,
-          headerRight: () => (
-            <View style={styles.headerActions}>
-              {sameDayEntries.length > 0 && (
-                <Pressable style={styles.headerBtn} onPress={() => setMergeVisible(true)}>
-                  <Ionicons name="git-merge-outline" size={22} color={colors.textTertiary} />
-                </Pressable>
-              )}
-              {isEditable && (
-                <Pressable
-                  style={styles.headerBtn}
-                  onPress={() => router.push({ pathname: "/entry/edit/[id]", params: { id: entry.id } })}
-                >
-                  <Ionicons name="create-outline" size={22} color={colors.accentSoft} />
-                </Pressable>
-              )}
-              <Pressable style={styles.headerBtn} onPress={handleHide}>
-                <Ionicons name="trash-outline" size={22} color={colors.textTertiary} />
-              </Pressable>
-            </View>
-          ),
-        }}
-      />
+  // ── shared header options ──────────────────────────────────────────────────
+  const headerRight = () => (
+    <View style={styles.headerActions}>
+      {sameDayEntries.length > 0 && (
+        <Pressable style={styles.headerBtn} onPress={() => setMergeVisible(true)}>
+          <Ionicons name="git-merge-outline" size={22} color={showHero && heroUri ? "#fff" : colors.textTertiary} />
+        </Pressable>
+      )}
+      {isEditable && (
+        <Pressable
+          style={styles.headerBtn}
+          onPress={() => router.push({ pathname: "/entry/edit/[id]", params: { id: entry.id } })}
+        >
+          <Ionicons name="create-outline" size={22} color={showHero && heroUri ? "#fff" : colors.accentSoft} />
+        </Pressable>
+      )}
+      <Pressable style={styles.headerBtn} onPress={handleHide}>
+        <Ionicons name="trash-outline" size={22} color={showHero && heroUri ? "#fff" : colors.textTertiary} />
+      </Pressable>
+    </View>
+  );
 
+  // ── shared content (cards) ────────────────────────────────────────────────
+  const contentCards = (
+    <>
       <View style={styles.card}>
         {entry.kind === "leg"         && <LegDetail         e={entry as Leg}        styles={styles} iconColors={iconColors} />}
         {entry.kind === "stay"        && <StayDetail        e={entry as Stay}       styles={styles} iconColors={iconColors} />}
         {entry.kind === "place"       && <PlaceDetail       e={entry as PlaceEvent} styles={styles} iconColors={iconColors} />}
         {entry.kind === "place-entry" && <PlaceEntryDetail  e={entry as PlaceEntry} place={placeContainer} styles={styles} iconColors={iconColors} />}
-        {entry.kind === "film"        && <FilmDetail        e={entry as Film}       styles={styles} iconColors={iconColors} />}
-        {entry.kind === "episode"     && <EpisodeDetail     e={entry as Episode}    styles={styles} iconColors={iconColors} />}
-        {entry.kind === "book"        && <BookDetail        e={entry as Book}       styles={styles} iconColors={iconColors} />}
-        {entry.kind === "event"       && <EventDetail       e={entry as JEvent}     styles={styles} iconColors={iconColors} />}
+        {entry.kind === "film"        && <FilmDetail        e={entry as Film}       styles={styles} iconColors={iconColors} showPoster={!heroUri} />}
+        {entry.kind === "episode"     && <EpisodeDetail     e={entry as Episode}    styles={styles} iconColors={iconColors} showPoster={!heroUri} />}
+        {entry.kind === "book"        && <BookDetail        e={entry as Book}       styles={styles} iconColors={iconColors} showPoster={!heroUri} />}
+        {entry.kind === "event"       && <EventDetail       e={entry as JEvent}     styles={styles} iconColors={iconColors} showPoster={!heroUri} />}
       </View>
 
       {/* Reflection */}
@@ -634,7 +722,88 @@ export default function EntryDetailScreen() {
           </View>
         ))}
       </View>
-    </ScrollView>
+    </>
+  );
+
+  return (
+    <>
+    {showHero && heroUri ? (
+      /* ── Hero layout (film / TV / book / concert) ─────────────────────────
+         headerShown: false → ScrollView content starts at y=0 (no offset).
+         Custom back+actions overlay positioned with safe-area top inset.
+         Portrait (film/TV/book): height = screenW × 1.5  (2:3 TMDB poster)
+         Square   (concert):      height = screenW         (1:1 artist photo) */
+      <View style={styles.heroOuter}>
+        <Stack.Screen options={{ headerShown: false }} />
+        {/* Custom header: white icons floating over the hero image */}
+        <View style={{
+          position: "absolute" as const,
+          top: insets.top,
+          left: 0, right: 0,
+          zIndex: 20,
+          flexDirection: "row" as const,
+          alignItems: "center" as const,
+          paddingHorizontal: 4,
+        }}>
+          <Pressable style={styles.headerBtn} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </Pressable>
+          <View style={{ flex: 1 }} />
+          {headerRight()}
+        </View>
+        <ScrollView
+          style={styles.heroScroll}
+          contentContainerStyle={{ paddingBottom: spacing["3xl"] }}
+        >
+          <ImageBackground
+            source={{ uri: heroUri }}
+            style={{
+              width: screenW,
+              height: Math.round(screenW / heroImgRatio),
+            }}
+            resizeMode="cover"
+            onLoad={(e: any) => {
+              const { width, height } = e.nativeEvent.source;
+              if (width && height) setHeroImgRatio(width / height);
+            }}
+          >
+            {/* Top scrim — keeps back/action icons readable */}
+            <LinearGradient
+              colors={[hexAlpha(colors.bg, 0.55), hexAlpha(colors.bg, 0.30), "transparent"]}
+              style={{ position: "absolute", top: 0, left: 0, right: 0, height: 120 }}
+            />
+            {/* Bottom fade — image dissolves into card background */}
+            <LinearGradient
+              colors={["transparent", hexAlpha(colors.bg, 0.6), colors.bg]}
+              locations={[0, 0.6, 1]}
+              style={{
+                position: "absolute",
+                bottom: 0, left: 0, right: 0,
+                height: Math.round(
+                  Math.round(screenW / heroImgRatio) * (heroIsPortrait ? 0.40 : 0.55)
+                ),
+              }}
+            />
+          </ImageBackground>
+          {/* Cards overlap the image bottom by 48dp */}
+          <View style={{ marginTop: -48, padding: spacing.base, gap: spacing.md }}>
+            {contentCards}
+          </View>
+        </ScrollView>
+      </View>
+    ) : (
+      /* ── Standard layout ── */
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Stack.Screen
+          options={{
+            title: "",
+            ...common.header,
+            headerRight,
+          }}
+        />
+        {contentCards}
+      </ScrollView>
+    )}
 
     {/* ── Merge modal (WP-E3) ── */}
     <Modal
