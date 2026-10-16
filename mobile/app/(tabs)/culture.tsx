@@ -84,34 +84,6 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 // ── grouping helpers ──────────────────────────────────────────────────────────
 
-// ── Books ─────────────────────────────────────────────────────────────────────
-
-interface BookSeriesGroup {
-  name: string;
-  books: Book[];
-}
-
-function groupBooksBySeries(books: Book[]): { standalone: Book[]; series: BookSeriesGroup[] } {
-  const seriesMap = new Map<string, Book[]>();
-  const standalone: Book[] = [];
-  for (const b of books) {
-    if (b.series) {
-      const arr = seriesMap.get(b.series) ?? [];
-      arr.push(b);
-      seriesMap.set(b.series, arr);
-    } else {
-      standalone.push(b);
-    }
-  }
-  const series: BookSeriesGroup[] = [...seriesMap.entries()]
-    .map(([name, bks]) => ({
-      name,
-      books: [...bks].sort((a, b) => (a.seriesNumber ?? 999) - (b.seriesNumber ?? 999)),
-    }))
-    .sort((a, b) => sortDate(b.books[0]).localeCompare(sortDate(a.books[0])));
-  return { standalone, series };
-}
-
 // ── Films ─────────────────────────────────────────────────────────────────────
 
 interface FilmSeriesGroup {
@@ -615,18 +587,6 @@ export default function CultureScreen() {
     [journal.episodes, journal.series],
   );
 
-  const bookSections = useMemo(() => {
-    const { standalone, series } = groupBooksBySeries(journal.books);
-    type Section =
-      | { type: "series";     data: BookSeriesGroup; date: string }
-      | { type: "standalone"; data: Book;            date: string };
-    const all: Section[] = [
-      ...series.map((sg) => ({ type: "series"     as const, data: sg, date: sortDate(sg.books[0]) })),
-      ...standalone.map((b) => ({ type: "standalone" as const, data: b, date: sortDate(b) })),
-    ];
-    return all.sort((a, b) => b.date.localeCompare(a.date));
-  }, [journal.books]);
-
   /**
    * Stable grid item lists for PosterGrid — one item per standalone film or
    * film-series, and one per TV show. Stable references prevent unnecessary
@@ -668,39 +628,23 @@ export default function CultureScreen() {
   );
 
   /**
-   * Book grid: one tile per standalone book or book series.
-   * For a series, we use book #1 for the cover (most recognisable) and the
-   * most recently read book as the navigation target.
+   * Book grid: one tile per book — no series grouping.
+   * Series grouping produces a single representative tile which hides most of
+   * the collection; showing every book individually works better in a grid.
+   * Sorted newest-read first (same order as the feed).
    */
   const bookGridItems = useMemo<PosterGridItem[]>(
     () =>
-      bookSections.map((sec) => {
-        if (sec.type === "standalone") {
-          const b = sec.data as Book;
-          return {
-            id: b.id,
-            title: entryTitle(view(b)),
-            artworkKey: bookToArtworkKey(b) ?? "",
-            entryId: b.id,
-            bookEntry: b,
-          };
-        }
-        const sg = sec.data as BookSeriesGroup;
-        // Cover: book #1 in the series (lowest seriesNumber, sorted earlier)
-        const coverBook = sg.books[0];
-        // Navigate to most recently read book in the series
-        const latestBook = [...sg.books].sort((a, b) =>
-          sortDate(b).localeCompare(sortDate(a))
-        )[0];
-        return {
-          id: `bookseries:${sg.name}`,
-          title: sg.name,
-          artworkKey: bookToArtworkKey(coverBook) ?? "",
-          entryId: latestBook.id,
-          bookEntry: coverBook,
-        };
-      }),
-    [bookSections],
+      [...journal.books]
+        .sort((a, b) => sortDate(b).localeCompare(sortDate(a)))
+        .map((b) => ({
+          id: b.id,
+          title: entryTitle(view(b)),
+          artworkKey: bookToArtworkKey(b) ?? "",
+          entryId: b.id,
+          bookEntry: b,
+        })),
+    [journal.books],
   );
 
   // ── build flat list ───────────────────────────────────────────────────────
@@ -822,7 +766,7 @@ export default function CultureScreen() {
     }
 
     return items;
-  }, [filter, allConcerts, concertsByYear, filmGridItems, tvGridItems, bookGridItems, journal, expandedKeys]);
+  }, [filter, allConcerts, concertsByYear, filmGridItems, tvGridItems, bookGridItems, journal.books, journal.films, journal.episodes, expandedKeys]);
 
   const isEmpty = counts.all === 0;
 
