@@ -400,9 +400,19 @@ function PosterGrid({
 
   const [uriMap, setUriMap]     = useState<Map<string, string | null>>(new Map());
   const [resolved, setResolved] = useState(false);
+  // retryKey bumps to 1 once if the first pass returns all-null (artwork
+  // storage / providers not ready yet at mount time). Capped at 1 retry.
+  const [retryKey, setRetryKey] = useState(0);
+  // Reset retry window when the item list changes (new data loaded)
+  const prevItemsRef = useRef(items);
+  if (prevItemsRef.current !== items) {
+    prevItemsRef.current = items;
+    if (retryKey !== 0) setRetryKey(0);
+  }
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const filmProvider = getArtworkProvider();
     const bookProvider = getBookCoverProvider();
     Promise.all(
@@ -431,9 +441,21 @@ function PosterGrid({
       if (cancelled) return;
       setUriMap(new Map(results));
       setResolved(true);
+      // If every URI is null and this is the first attempt, the artwork storage
+      // or providers weren't ready yet (boot is async). Schedule one retry after
+      // 3s to give enrichAll time to warm the cache.
+      const allNull = results.every(([, uri]) => uri === null);
+      if (allNull && retryKey === 0 && items.length > 0) {
+        retryTimer = setTimeout(() => {
+          if (!cancelled) setRetryKey(1);
+        }, 3000);
+      }
     });
-    return () => { cancelled = true; };
-  }, [items, kind]);
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [items, kind, retryKey]);
 
   // Before resolution: show all as shimmer. After: split poster / no-poster.
   const posterItems    = resolved ? items.filter((i) => uriMap.get(i.id))  : items;
