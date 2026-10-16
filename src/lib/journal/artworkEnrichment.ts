@@ -255,29 +255,34 @@ export async function resolveBookCoverForEntry(entry: Book): Promise<ArtworkMatc
  */
 export async function resolveArtistImage(artistName: string): Promise<ArtworkMatch | null> {
   const key = artistToArtworkKey(artistName);
-  if (!key) return null;
+  if (!key) { console.log("[ArtistImg] no key for:", artistName); return null; }
 
   let storage: ReturnType<typeof artworkStorage>;
-  try { storage = artworkStorage(); } catch { return null; }
+  try { storage = artworkStorage(); } catch (e) { console.log("[ArtistImg] storage not ready:", e); return null; }
 
   // ── 1 & 2: cache check ──────────────────────────────────────────────────────
   const cached = await storage.getByKey(key);
   if (cached) {
+    console.log("[ArtistImg] cache hit:", artistName, cached.status, cached.poster_path?.slice(0, 80));
     if (cached.status === "manual" || cached.status === "matched") return cached;
     if (cached.status === "none") {
       const cutoff = staleCutoff();
-      if (cached.fetched_at >= cutoff) return null;
+      if (cached.fetched_at >= cutoff) { console.log("[ArtistImg] stale none, skipping:", artistName); return null; }
     }
+  } else {
+    console.log("[ArtistImg] cache miss:", artistName);
   }
 
   // ── 3: provider check ────────────────────────────────────────────────────────
   const provider = getArtistImageProvider();
-  if (!provider) return null;
+  if (!provider) { console.log("[ArtistImg] no provider set"); return null; }
 
   // ── 4: fetch ─────────────────────────────────────────────────────────────────
   const now = new Date().toISOString();
   try {
+    console.log("[ArtistImg] fetching:", artistName);
     const result = await provider.findArtist(artistName);
+    console.log("[ArtistImg] result:", artistName, result ? `${result.provider} conf=${result.confidence} url=${result.imageUrl.slice(0, 80)}` : "null");
     if (result !== null && result.confidence >= CONFIDENCE_THRESHOLD) {
       const match: ArtworkMatch = {
         id: key,
@@ -295,6 +300,7 @@ export async function resolveArtistImage(artistName: string): Promise<ArtworkMat
       return match;
     }
     // No match — cache as "none"
+    console.log("[ArtistImg] no match, caching none:", artistName);
     const none: ArtworkMatch = {
       id: key,
       key,
@@ -305,7 +311,8 @@ export async function resolveArtistImage(artistName: string): Promise<ArtworkMat
     };
     await storage.upsert(none);
     return null;
-  } catch {
+  } catch (e) {
+    console.log("[ArtistImg] fetch error:", artistName, e);
     return null;
   }
 }
