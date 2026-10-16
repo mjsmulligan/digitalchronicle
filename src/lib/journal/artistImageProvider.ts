@@ -92,8 +92,9 @@ export class TheAudioDbProvider implements ArtistImageProvider {
     );
     const best = exact ?? data.artists[0];
 
-    // Try every image field in preference order — free tier may have some null
-    const imageUrl =
+    // Try every image field in preference order — free tier may have some null.
+    // TADB sometimes returns URLs with literal spaces in filenames; sanitize.
+    const rawUrl =
       best.strArtistThumb ??
       best.strArtistWideThumb ??
       best.strArtistFanart ??
@@ -104,7 +105,8 @@ export class TheAudioDbProvider implements ArtistImageProvider {
       best.strArtistClearart ??
       best.strArtistLogo ??
       null;
-    if (!imageUrl) return null;
+    if (!rawUrl) return null;
+    const imageUrl = sanitizeUrl(rawUrl);
 
     return {
       provider: "theaudiodb",
@@ -146,6 +148,15 @@ export class TheAudioDbProvider implements ArtistImageProvider {
 
 function delay(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * TADB sometimes returns image URLs with literal spaces in the filename,
+ * e.g. "…/thumb/ysytsw1498815 745.jpg". React Native's Image rejects
+ * these silently. Replace unencoded spaces so the URL is valid.
+ */
+function sanitizeUrl(url: string): string {
+  return url.replace(/ /g, "%20");
 }
 
 // ── TheAudioDB response shapes (minimal) ──────────────────────────────────────
