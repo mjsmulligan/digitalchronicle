@@ -17,16 +17,81 @@
  * - Hairline vertical rule separates date column from entry column.
  * - Optional trip label (mono, accentSoft) above the rows.
  * - EntryRow items separated by hairlines (spec: rows, not cards).
+ * - 2+ episodes from the same series on a day are collapsed into an
+ *   EpisodeGroupRow (expandable) to reduce clutter.
  *
  * Accepts `colors` and `fonts` as props so it is safe inside FlatList
  * renderItem without calling useTheme() per row.
  */
 import React, { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { type Entry, type Note } from "@chronicle/journal/types";
+import { type Entry, type Episode, type Note } from "@chronicle/journal/types";
 import { type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale } from "./ThemeProvider";
 import { EntryRow } from "./EntryRow";
+import { EpisodeGroupRow } from "./EpisodeGroupRow";
 import { DateColumn } from "./DateColumn";
+
+// ── episode grouping ──────────────────────────────────────────────────────────
+
+/**
+ * A row item in the rendered entry list.
+ * Regular entries render as EntryRow; episode groups (2+ episodes from the
+ * same series on the same day) render as a collapsible EpisodeGroupRow.
+ */
+type RowItem =
+  | { type: "entry"; entry: Entry; key: string }
+  | { type: "episode-group"; showTitle: string; episodes: Episode[]; key: string };
+
+/**
+ * Transform a flat entry array into renderable row items, collapsing episode
+ * runs of 2+ from the same series into a single EpisodeGroupRow.
+ * Order within the list is preserved (the group appears at the position of the
+ * first episode from that series).
+ */
+function buildRowItems(items: Entry[]): RowItem[] {
+  // Collect all episodes per series key (seriesId preferred, showTitle fallback)
+  const episodeMap = new Map<string, Episode[]>();
+  for (const entry of items) {
+    if (entry.kind === "episode") {
+      const ep = entry as Episode;
+      const key = ep.seriesId ?? ep.showTitle;
+      if (!episodeMap.has(key)) episodeMap.set(key, []);
+      episodeMap.get(key)!.push(ep);
+    }
+  }
+
+  // Walk the original order, emitting groups once and skipping their members
+  const emittedGroups = new Set<string>();
+  const result: RowItem[] = [];
+
+  for (const entry of items) {
+    if (entry.kind === "episode") {
+      const ep = entry as Episode;
+      const groupKey = ep.seriesId ?? ep.showTitle;
+      const group = episodeMap.get(groupKey)!;
+
+      if (group.length >= 2) {
+        // Only emit the group once (at the position of the first episode)
+        if (!emittedGroups.has(groupKey)) {
+          emittedGroups.add(groupKey);
+          result.push({
+            type: "episode-group",
+            showTitle: ep.showTitle,
+            episodes: group,
+            key: `epgroup-${groupKey}`,
+          });
+        }
+      } else {
+        // Single episode — render as a normal row
+        result.push({ type: "entry", entry, key: entry.id });
+      }
+    } else {
+      result.push({ type: "entry", entry, key: entry.id });
+    }
+  }
+
+  return result;
+}
 
 // ── styles ────────────────────────────────────────────────────────────────────
 
@@ -104,6 +169,7 @@ export interface DayGroupProps {
  */
 export function DayGroup({ group, colors, fonts, onEntryPress, showReflection = true }: DayGroupProps) {
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
+  const rowItems = useMemo(() => buildRowItems(group.items), [group.items]);
 
   return (
     <View style={styles.outer}>
@@ -117,16 +183,26 @@ export function DayGroup({ group, colors, fonts, onEntryPress, showReflection = 
           <Text style={styles.tripLabel}>{"✦ "}{group.tripTitle}</Text>
         ) : null}
 
-        {/* Entry rows with hairline separators */}
-        {group.items.map((entry, idx) => (
-          <React.Fragment key={entry.id}>
+        {/* Entry rows — episodes from the same series are collapsed into a group */}
+        {rowItems.map((item, idx) => (
+          <React.Fragment key={item.key}>
             {idx > 0 && <View style={styles.separator} />}
-            <EntryRow
-              entry={entry}
-              colors={colors}
-              fonts={fonts}
-              onPress={() => onEntryPress(entry)}
-            />
+            {item.type === "entry" ? (
+              <EntryRow
+                entry={item.entry}
+                colors={colors}
+                fonts={fonts}
+                onPress={() => onEntryPress(item.entry)}
+              />
+            ) : (
+              <EpisodeGroupRow
+                showTitle={item.showTitle}
+                episodes={item.episodes}
+                colors={colors}
+                fonts={fonts}
+                onEntryPress={onEntryPress}
+              />
+            )}
           </React.Fragment>
         ))}
 
