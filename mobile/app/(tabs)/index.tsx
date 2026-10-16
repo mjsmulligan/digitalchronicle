@@ -22,13 +22,16 @@ import { MonthHeader, type IconCount } from "../../src/components/MonthHeader";
 
 // ── filter types & helpers ────────────────────────────────────────────────────
 
-type F = "all" | "travel" | "concert" | "social" | "milestone" | "memory";
+type F = "all" | "travel" | "film" | "episode" | "book" | "concert" | "social" | "milestone" | "memory";
 
 const FILTERS: { id: F; label: string }[] = [
   { id: "all",       label: "Everything" },
   { id: "travel",    label: "Travel" },
+  { id: "film",      label: "Films" },
+  { id: "episode",   label: "TV" },
+  { id: "book",      label: "Books" },
   { id: "concert",   label: "Concerts" },
-  { id: "social",    label: "Gatherings & celebrations" },
+  { id: "social",    label: "Gatherings" },
   { id: "milestone", label: "Milestones" },
   { id: "memory",    label: "Memories" },
 ];
@@ -36,17 +39,23 @@ const FILTERS: { id: F; label: string }[] = [
 /** Icon to show for each kind filter button. `null` = render "All" as text. */
 const FILTER_ICONS: Record<F, { kind: string; subkind?: string } | null> = {
   all:       null,
-  travel:    { kind: "leg",   subkind: "air" },
-  concert:   { kind: "event", subkind: "concert" },
-  social:    { kind: "event", subkind: "gathering" },
-  milestone: { kind: "event", subkind: "milestone" },
-  memory:    { kind: "event", subkind: "memory" },
+  travel:    { kind: "leg",     subkind: "air" },
+  film:      { kind: "film" },
+  episode:   { kind: "episode" },
+  book:      { kind: "book" },
+  concert:   { kind: "event",   subkind: "concert" },
+  social:    { kind: "event",   subkind: "gathering" },
+  milestone: { kind: "event",   subkind: "milestone" },
+  memory:    { kind: "event",   subkind: "memory" },
 };
 
 /** Short label shown in the active-filter pill. */
 const FILTER_SHORT: Record<F, string> = {
   all:       "Everything",
   travel:    "Travel",
+  film:      "Films",
+  episode:   "TV",
+  book:      "Books",
   concert:   "Concerts",
   social:    "Gatherings",
   milestone: "Milestones",
@@ -55,8 +64,11 @@ const FILTER_SHORT: Record<F, string> = {
 
 /** Mirror of web `matches()` in src/routes/index.tsx */
 function matchesFilter(e: Entry, f: F): boolean {
-  if (f === "all") return true;
-  if (f === "travel") return e.kind === "leg" || e.kind === "stay";
+  if (f === "all")     return true;
+  if (f === "travel")  return e.kind === "leg" || e.kind === "stay";
+  if (f === "film")    return e.kind === "film";
+  if (f === "episode") return e.kind === "episode";
+  if (f === "book")    return e.kind === "book";
   if (e.kind !== "event") return false;
   const ev = e as JEvent;
   if (f === "social")    return ev.category === "gathering" || ev.category === "celebration";
