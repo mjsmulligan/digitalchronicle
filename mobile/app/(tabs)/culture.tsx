@@ -554,19 +554,20 @@ export default function CultureScreen() {
 
   // ── grouped data ──────────────────────────────────────────────────────────
 
-  const concertsByYear = useMemo(() => {
+  /** Concerts grouped by artist, artists sorted A→Z, shows within each artist oldest→newest. */
+  const concertsByArtist = useMemo(() => {
     const map = new Map<string, JEvent[]>();
     for (const c of allConcerts) {
-      const yr = (c.overrides?.start ?? c.start).slice(0, 4) || "????";
-      const arr = map.get(yr) ?? [];
+      const artist = (view(c).kind === "event" ? view(c).artist : c.artist) || "Unknown";
+      const arr = map.get(artist) ?? [];
       arr.push(c);
-      map.set(yr, arr);
+      map.set(artist, arr);
     }
     return [...map.entries()]
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([year, list]) => ({
-        year,
-        list: list.sort((a, b) => sortDate(b).localeCompare(sortDate(a))),
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([artist, list]) => ({
+        artist,
+        list: list.sort((a, b) => sortDate(a).localeCompare(sortDate(b))),
       }));
   }, [allConcerts]);
 
@@ -579,7 +580,12 @@ export default function CultureScreen() {
       ...series.map((sg) => ({ type: "series"     as const, data: sg, date: sortDate(sg.films[0]) })),
       ...standalone.map((f) => ({ type: "standalone" as const, data: f, date: sortDate(f) })),
     ];
-    return all.sort((a, b) => b.date.localeCompare(a.date));
+    // Library sort: alphabetical by title (series name / standalone title)
+    return all.sort((a, b) => {
+      const titleA = a.type === "series" ? (a.data as FilmSeriesGroup).name : entryTitle(view(a.data as Film));
+      const titleB = b.type === "series" ? (b.data as FilmSeriesGroup).name : entryTitle(view(b.data as Film));
+      return titleA.localeCompare(titleB);
+    });
   }, [journal.films]);
 
   const showGroups = useMemo(
@@ -618,25 +624,29 @@ export default function CultureScreen() {
 
   const tvGridItems = useMemo<PosterGridItem[]>(
     () =>
-      showGroups.map(({ title, episodes: eps }) => ({
-        id: `show:${title}`,
-        title,
-        artworkKey: eventToArtworkKey(eps[0]) ?? "",
-        entryId: eps[0].id,
-      })),
+      [...showGroups]
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .map(({ title, episodes: eps }) => ({
+          id: `show:${title}`,
+          title,
+          artworkKey: eventToArtworkKey(eps[0]) ?? "",
+          entryId: eps[0].id,
+        })),
     [showGroups],
   );
 
   /**
    * Book grid: one tile per book — no series grouping.
-   * Series grouping produces a single representative tile which hides most of
-   * the collection; showing every book individually works better in a grid.
-   * Sorted newest-read first (same order as the feed).
+   * Library sort: alphabetical by author, then by title within each author.
    */
   const bookGridItems = useMemo<PosterGridItem[]>(
     () =>
       [...journal.books]
-        .sort((a, b) => sortDate(b).localeCompare(sortDate(a)))
+        .sort((a, b) => {
+          const authorCmp = (a.author ?? "").localeCompare(b.author ?? "");
+          if (authorCmp !== 0) return authorCmp;
+          return a.title.localeCompare(b.title);
+        })
         .map((b) => ({
           id: b.id,
           title: entryTitle(view(b)),
@@ -715,21 +725,29 @@ export default function CultureScreen() {
     // ── Concerts ──────────────────────────────────────────────────────────
     if ((filter === "all" || filter === "concert") && allConcerts.length > 0) {
       if (showHeaders) {
-        items.push({ type: "sectionHeader", id: "sh-concerts", title: `Concerts · ${allConcerts.length}` });
+        items.push({
+          type: "sectionHeader",
+          id: "sh-concerts",
+          title: `Concerts · ${allConcerts.length} shows · ${concertsByArtist.length} artists`,
+        });
       }
-      concertsByYear.forEach(({ year, list }, yi) => {
-        if (yi > 0) items.push({ type: "groupGap", id: `gap-c-${year}` });
-        if (concertsByYear.length > 1 || !showHeaders) {
-          items.push({
-            type: "groupHeader",
-            id: `gh-c-${year}`,
-            title: year,
-            subtitle: String(list.length),
-            collapsible: false,
-            collapsed: false,
-          });
-        }
-        pushEntries(list);
+      concertsByArtist.forEach(({ artist, list }, ai) => {
+        if (ai > 0) items.push({ type: "groupGap", id: `gap-ca-${ai}` });
+        const key = `artist:${artist}`;
+        const collapsed = !expandedKeys.has(key);
+        items.push({
+          type: "groupHeader",
+          id: `gh-ca-${ai}`,
+          title: artist,
+          subtitle: list.length === 1
+            ? "1 show"
+            : `${list.length} shows`,
+          collapsible: true,
+          collapsed,
+          seriesKey: key,
+          kind: "concert",
+        });
+        if (!collapsed) pushEntries(list);
       });
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-concerts" });
     }
@@ -766,7 +784,7 @@ export default function CultureScreen() {
     }
 
     return items;
-  }, [filter, allConcerts, concertsByYear, filmGridItems, tvGridItems, bookGridItems, journal.books, journal.films, journal.episodes, expandedKeys]);
+  }, [filter, allConcerts, concertsByArtist, filmGridItems, tvGridItems, bookGridItems, journal.books, journal.films, journal.episodes, expandedKeys]);
 
   const isEmpty = counts.all === 0;
 
@@ -848,7 +866,8 @@ export default function CultureScreen() {
                         {/* Leading icon — mirrors EntryRow's markWrap position */}
                         <View style={styles.groupHeaderMark}>
                           <KindIcon
-                            kind={item.kind === "episode" ? "episode" : item.kind === "book" ? "book" : "film"}
+                            kind={item.kind === "episode" ? "episode" : item.kind === "book" ? "book" : item.kind === "concert" ? "event" : "film"}
+                            subkind={item.kind === "concert" ? "concert" : undefined}
                             size={18}
                             color={colors.textTertiary}
                             accessibilityLabel=""
