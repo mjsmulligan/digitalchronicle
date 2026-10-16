@@ -50,12 +50,16 @@ export class SQLiteArtworkStore implements ArtworkStorage {
    */
   static async open(dbName = "chronicle-artwork.db"): Promise<SQLiteArtworkStore> {
     const db = await SQLite.openDatabaseAsync(dbName);
-    await db.execAsync("PRAGMA journal_mode = WAL;");
-    await db.execAsync(`
+    // Use runAsync instead of execAsync — on Android, execAsync calls through
+    // to SQLiteDatabase.execSQL() which can throw a NullPointerException on a
+    // freshly-opened database. runAsync uses the statement compilation path
+    // (SQLiteStatement.execute()) which is more robust on Android.
+    await db.runAsync("PRAGMA journal_mode = WAL");
+    await db.runAsync(`
       CREATE TABLE IF NOT EXISTS artwork_match (
         id   TEXT PRIMARY KEY NOT NULL,
         data TEXT NOT NULL
-      );
+      )
     `);
     return new SQLiteArtworkStore(db);
   }

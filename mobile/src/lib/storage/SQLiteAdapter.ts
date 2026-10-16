@@ -55,13 +55,17 @@ export class SQLiteAdapter implements StorageAdapter {
 
   /** Create tables and enable WAL. Idempotent — safe to call on every launch. */
   private async init(): Promise<void> {
-    await this.db.execAsync("PRAGMA journal_mode = WAL;");
+    // Use runAsync instead of execAsync — on Android, execAsync calls through
+    // to SQLiteDatabase.execSQL() which can throw a NullPointerException on a
+    // freshly-opened database. runAsync uses the statement compilation path
+    // (SQLiteStatement.execute()) which is more robust on Android.
+    await this.db.runAsync("PRAGMA journal_mode = WAL");
     for (const store of STORES) {
-      await this.db.execAsync(`
+      await this.db.runAsync(`
         CREATE TABLE IF NOT EXISTS "${store}" (
           id   TEXT PRIMARY KEY NOT NULL,
           data TEXT NOT NULL
-        );
+        )
       `);
     }
   }
