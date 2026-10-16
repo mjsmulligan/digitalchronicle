@@ -48,8 +48,9 @@ import {
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
 import { PosterCard } from "../../src/components/PosterCard";
-import { resolveArtwork } from "@chronicle/journal/artworkEnrichment";
+import { resolveArtwork, resolveBookCoverForEntry } from "@chronicle/journal/artworkEnrichment";
 import { getArtworkProvider } from "@chronicle/journal/artworkProvider";
+import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -176,7 +177,7 @@ function groupEpisodesBySeries(episodes: Episode[], seriesContainers: Series[]):
 
 // ── poster grid types ─────────────────────────────────────────────────────────
 
-/** One tile in the poster grid — a film, film series, or TV show. */
+/** One tile in the poster grid — a film, film series, TV show, or book. */
 interface PosterGridItem {
   id: string;
   title: string;
@@ -184,6 +185,11 @@ interface PosterGridItem {
   artworkKey: string;
   /** Entry to navigate to when tapped (latest entry for series/show) */
   entryId: string;
+  /**
+   * Full Book entry for book grid tiles.
+   * resolveBookCoverForEntry needs author + isbn13 which aren't in artworkKey.
+   */
+  bookEntry?: Book;
 }
 
 // ── flat list item types ─────────────────────────────────────────────────────
@@ -206,7 +212,7 @@ type ListItem =
       /** Artwork cache key for inline poster (book groups only) */
       artworkKey?: string;
     }
-  | { type: "posterGrid"; id: string; items: PosterGridItem[]; kind: "film" | "episode" }
+  | { type: "posterGrid"; id: string; items: PosterGridItem[]; kind: "film" | "episode" | "book" }
   | { type: "entry";      id: string; entry: CultureEntry }
   | { type: "separator";  id: string }
   | { type: "sectionGap"; id: string }
@@ -410,7 +416,7 @@ function PosterGrid({
   onPress,
 }: {
   items: PosterGridItem[];
-  kind: "film" | "episode";
+  kind: "film" | "episode" | "book";
   colors: ThemeColors;
   fonts: ThemeFonts;
   onPress: (entryId: string) => void;
@@ -426,11 +432,24 @@ function PosterGrid({
 
   useEffect(() => {
     let cancelled = false;
-    const provider = getArtworkProvider();
+    const filmProvider = getArtworkProvider();
+    const bookProvider = getBookCoverProvider();
     Promise.all(
       items.map(async (item) => {
-        const match = item.artworkKey ? await resolveArtwork(item.artworkKey) : null;
-        const uri = match?.poster_path && provider ? provider.imageUrl(match.poster_path) : null;
+        let uri: string | null = null;
+        if (item.bookEntry) {
+          // Books: use resolveBookCoverForEntry + Open Library image URL
+          const match = await resolveBookCoverForEntry(item.bookEntry);
+          uri = match?.poster_path && bookProvider
+            ? bookProvider.imageUrl(match.poster_path)
+            : null;
+        } else if (item.artworkKey) {
+          // Films / TV: use resolveArtwork + TMDB image URL
+          const match = await resolveArtwork(item.artworkKey);
+          uri = match?.poster_path && filmProvider
+            ? filmProvider.imageUrl(match.poster_path)
+            : null;
+        }
         return [item.id, uri] as const;
       }),
     ).then((results) => {
@@ -486,7 +505,7 @@ function PosterGrid({
                 accessibilityLabel={item.title}
               >
                 <KindIcon
-                  kind={kind === "episode" ? "episode" : "film"}
+                  kind={kind === "episode" ? "episode" : kind === "book" ? "book" : "film"}
                   size={16}
                   color={colors.textTertiary}
                   accessibilityLabel=""
@@ -648,6 +667,42 @@ export default function CultureScreen() {
     [showGroups],
   );
 
+  /**
+   * Book grid: one tile per standalone book or book series.
+   * For a series, we use book #1 for the cover (most recognisable) and the
+   * most recently read book as the navigation target.
+   */
+  const bookGridItems = useMemo<PosterGridItem[]>(
+    () =>
+      bookSections.map((sec) => {
+        if (sec.type === "standalone") {
+          const b = sec.data as Book;
+          return {
+            id: b.id,
+            title: entryTitle(view(b)),
+            artworkKey: bookToArtworkKey(b) ?? "",
+            entryId: b.id,
+            bookEntry: b,
+          };
+        }
+        const sg = sec.data as BookSeriesGroup;
+        // Cover: book #1 in the series (lowest seriesNumber, sorted earlier)
+        const coverBook = sg.books[0];
+        // Navigate to most recently read book in the series
+        const latestBook = [...sg.books].sort((a, b) =>
+          sortDate(b).localeCompare(sortDate(a))
+        )[0];
+        return {
+          id: `bookseries:${sg.name}`,
+          title: sg.name,
+          artworkKey: bookToArtworkKey(coverBook) ?? "",
+          entryId: latestBook.id,
+          bookEntry: coverBook,
+        };
+      }),
+    [bookSections],
+  );
+
   // ── build flat list ───────────────────────────────────────────────────────
 
   const listItems = useMemo<ListItem[]>(() => {
@@ -757,22 +812,17 @@ export default function CultureScreen() {
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-tv" });
     }
 
-    // ── Books ─────────────────────────────────────────────────────────────
+    // ── Books (poster grid) ───────────────────────────────────────────────
     if ((filter === "all" || filter === "book") && journal.books.length > 0) {
       if (showHeaders) {
         items.push({ type: "sectionHeader", id: "sh-books", title: `Books · ${journal.books.length}` });
       }
-      pushSeriesSection(
-        bookSections,
-        (g: BookSeriesGroup) => g.books,
-        (n) => `${n} ${n === 1 ? "book" : "books"} read`,
-        "book",
-        (books) => bookToArtworkKey(books[0]),
-      );
+      items.push({ type: "posterGrid", id: "grid-books", items: bookGridItems, kind: "book" });
+      if (showHeaders) items.push({ type: "sectionGap", id: "sgap-books" });
     }
 
     return items;
-  }, [filter, allConcerts, concertsByYear, filmGridItems, tvGridItems, bookSections, journal, expandedKeys]);
+  }, [filter, allConcerts, concertsByYear, filmGridItems, tvGridItems, bookGridItems, journal, expandedKeys]);
 
   const isEmpty = counts.all === 0;
 
@@ -895,10 +945,10 @@ export default function CultureScreen() {
                 );
 
               case "entry": {
-                // Standalone films and books get a compact poster below their row.
-                // Episodes (inside expanded show groups) are excluded.
+                // Standalone films get a compact poster below their row.
+                // (Books are now in the poster grid, not as list entries.)
                 const entryAk =
-                  item.entry.kind === "film" || item.entry.kind === "book"
+                  item.entry.kind === "film"
                     ? (eventToArtworkKey(item.entry) ?? undefined)
                     : undefined;
                 return (
