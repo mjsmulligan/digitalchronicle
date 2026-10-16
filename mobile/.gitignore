@@ -5,6 +5,11 @@
 expo-env.d.ts
 # @end expo-cli
 
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
 # Expo local state — not project code
 .expo/
 
