@@ -419,9 +419,11 @@ function PosterGrid({
       items.map(async (item) => {
         let uri: string | null = null;
         if (kind === "concert") {
-          // Artist images — poster_path IS the full URL (TheAudioDB, no imageUrl() needed)
+          // Artist images — poster_path IS the full URL (TheAudioDB/Deezer).
+          // Sanitize spaces: TADB sometimes stores URLs with literal spaces in
+          // filenames; React Native Image silently rejects those.
           const match = await resolveArtistImage(item.title);
-          uri = match?.poster_path ?? null;
+          uri = match?.poster_path ? match.poster_path.replace(/ /g, "%20") : null;
         } else if (item.bookEntry) {
           // Books: use resolveBookCoverForEntry + Open Library image URL
           const match = await resolveBookCoverForEntry(item.bookEntry);
