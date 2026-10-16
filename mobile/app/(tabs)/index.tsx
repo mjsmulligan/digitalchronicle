@@ -14,10 +14,11 @@ import { FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput,
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useJournal, allEntries } from "@chronicle/journal/db";
-import { type Entry, type JEvent, type Person, entryTitle } from "@chronicle/journal/types";
+import { type Entry, type JEvent, type Leg, type Person, entryTitle } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
 import { DayGroup, type DayGroupData } from "../../src/components/DayGroup";
+import { MonthHeader, type IconCount } from "../../src/components/MonthHeader";
 
 // ── filter types & helpers ────────────────────────────────────────────────────
 
@@ -47,6 +48,62 @@ function matchesFilter(e: Entry, f: F): boolean {
 function entryHasPerson(e: Entry, person: Person): boolean {
   if (person.isSelf) return !e.participants || e.participants.includes(person.id);
   return e.participants?.includes(person.id) ?? false;
+}
+
+// ── feed item types ───────────────────────────────────────────────────────────
+
+/**
+ * Items in the flat FlatList data array.
+ * Month headers are injected whenever the month changes (newest-first order).
+ */
+type FeedItem =
+  | { type: "day";   key: string; group: DayGroupData }
+  | { type: "month"; key: string; label: string; iconCounts: IconCount[] };
+
+/**
+ * Aggregate a set of entries into per-kind icon counts for the month header
+ * summary. Entries are bucketed by (kind, subkind); legs split by mode;
+ * events split by category. Sorted by count descending, capped at 7.
+ */
+function buildIconCounts(entries: Entry[]): IconCount[] {
+  const buckets = new Map<string, IconCount>();
+
+  const inc = (key: string, kind: string, subkind?: string) => {
+    if (!buckets.has(key)) buckets.set(key, { kind, subkind, count: 0 });
+    buckets.get(key)!.count++;
+  };
+
+  for (const e of entries) {
+    switch (e.kind) {
+      case "leg":
+        inc(`leg-${(e as Leg).mode ?? "road"}`, "leg", (e as Leg).mode ?? "road");
+        break;
+      case "stay":
+        inc("stay", "stay");
+        break;
+      case "film":
+        inc("film", "film");
+        break;
+      case "episode":
+        inc("episode", "episode");
+        break;
+      case "book":
+        inc("book", "book");
+        break;
+      case "event": {
+        const cat = (e as JEvent).category ?? "activity";
+        inc(`event-${cat}`, "event", cat);
+        break;
+      }
+      // place / place-entry: background data, not shown in summary
+      default:
+        break;
+    }
+  }
+
+  return [...buckets.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 7);
 }
 
 // ── styles ────────────────────────────────────────────────────────────────────
@@ -188,22 +245,19 @@ export default function ChronicleScreen() {
     [journal.people, personId]
   );
 
-  // ── day groups with filter/search/person applied ───────────────────────────
+  // ── feed items: day groups interleaved with month headers ────────────────────
   //
-  // Mirrors the web logic in src/routes/index.tsx exactly:
-  //   Pass 1 — collect filtered entries into a day map
-  //   Pass 2 — decide which days get their notes attached
-  //     • filter==="all": all note days (after search + person guard)
-  //     • filter==="notes": all note days (ignores entries; people filter suppresses)
-  //     • other filters: only days that already have matched entries
-  const groups = useMemo<DayGroupData[]>(() => {
+  // Pass 1 — filter entries into a day map (mirrors web src/routes/index.tsx).
+  // Pass 2 — walk days newest-first; inject a MonthHeader item whenever the
+  //           month changes, carrying a per-month icon count summary.
+  const feedItems = useMemo<FeedItem[]>(() => {
     const qLower = q.trim().toLowerCase();
 
     // Resolve trip for each day by date range (mirrors web `tripOf`)
     const tripOf = (d: string) =>
       journal.trips.find((t) => d >= t.start && d <= t.end);
 
-    // Build day → matched-entries map (entries only — no day-level notes)
+    // Build day → matched-entries map
     const entryMap = new Map<string, Entry[]>();
     const entries = allEntries(journal);
     for (const e of entries) {
@@ -215,15 +269,49 @@ export default function ChronicleScreen() {
       entryMap.get(d)!.push(e);
     }
 
-    // Build result groups — each day shows its matched entries (reflection excerpts
-    // are rendered inline by EntryRow when an entry has a reflection)
-    return [...entryMap.keys()]
-      .sort((a, b) => b.localeCompare(a))  // newest day first
-      .map((iso) => ({
-        iso,
-        items: entryMap.get(iso)!,
-        tripTitle: tripOf(iso)?.title,
-      }));
+    // Aggregate per-month entries for the icon summary
+    const monthMap = new Map<string, Entry[]>();
+    for (const [iso, dayEntries] of entryMap) {
+      const monthKey = iso.slice(0, 7); // "YYYY-MM"
+      if (!monthMap.has(monthKey)) monthMap.set(monthKey, []);
+      monthMap.get(monthKey)!.push(...dayEntries);
+    }
+
+    // Walk days newest-first, injecting a month header on each month change
+    const sortedDays = [...entryMap.keys()].sort((a, b) => b.localeCompare(a));
+    const items: FeedItem[] = [];
+    let currentMonth = "";
+
+    for (const iso of sortedDays) {
+      const monthKey = iso.slice(0, 7);
+
+      if (monthKey !== currentMonth) {
+        currentMonth = monthKey;
+        const [yearStr, monthStr] = monthKey.split("-");
+        // Build a locale-independent label: "OCTOBER · 2026"
+        const monthName = new Date(Number(yearStr), Number(monthStr) - 1, 1)
+          .toLocaleString("en-US", { month: "long" })
+          .toUpperCase();
+        items.push({
+          type: "month",
+          key: `month-${monthKey}`,
+          label: `${monthName} · ${yearStr}`,
+          iconCounts: buildIconCounts(monthMap.get(monthKey) ?? []),
+        });
+      }
+
+      items.push({
+        type: "day",
+        key: iso,
+        group: {
+          iso,
+          items: entryMap.get(iso)!,
+          tripTitle: tripOf(iso)?.title,
+        },
+      });
+    }
+
+    return items;
   }, [journal, filter, q, selectedPerson]);
 
   // ── header component (search + chips) ─────────────────────────────────────
@@ -300,6 +388,7 @@ export default function ChronicleScreen() {
   // ── render ─────────────────────────────────────────────────────────────────
 
   const hasAnyData = allEntries(journal).length > 0;
+  const hasFilteredData = feedItems.some((i) => i.type === "day");
 
   if (!hasAnyData) {
     return (
@@ -324,24 +413,40 @@ export default function ChronicleScreen() {
   return (
     <FlatList
       style={styles.list}
-      data={groups}
-      keyExtractor={(g) => g.iso}
-      renderItem={({ item: group }) => (
-        <DayGroup
-          group={group}
-          colors={colors}
-          fonts={fonts}
-          onEntryPress={(entry) => router.push(`/entry/${entry.id}`)}
-        />
-      )}
+      data={feedItems}
+      keyExtractor={(item) => item.key}
+      renderItem={({ item }) => {
+        if (item.type === "month") {
+          return (
+            <MonthHeader
+              label={item.label}
+              iconCounts={item.iconCounts}
+              colors={colors}
+              fonts={fonts}
+            />
+          );
+        }
+        return (
+          <DayGroup
+            group={item.group}
+            colors={colors}
+            fonts={fonts}
+            onEntryPress={(entry) => router.push(`/entry/${entry.id}`)}
+          />
+        );
+      }}
       ListHeaderComponent={listHeader}
       ListEmptyComponent={
         <View style={styles.empty}>
           <Text style={styles.emptyHint}>No entries match your search.</Text>
         </View>
       }
-      ItemSeparatorComponent={() => <View style={styles.daySeparator} />}
-      contentContainerStyle={styles.content}
+      // Only draw hairline separators between consecutive day rows —
+      // month headers have their own top/bottom borders.
+      ItemSeparatorComponent={({ leadingItem }) =>
+        leadingItem.type === "day" ? <View style={styles.daySeparator} /> : null
+      }
+      contentContainerStyle={[styles.content, !hasFilteredData && { flex: 1 }]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
       removeClippedSubviews

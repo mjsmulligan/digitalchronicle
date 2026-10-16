@@ -23,10 +23,13 @@ function resolveIcon(kind: string, subkind?: string): { name: IoniconName; label
     case "episode": return { name: "tv-outline",      label: "Episode" };
     case "book":    return { name: "book",           label: "Book" };
     case "event":
-      if (subkind === "concert")     return { name: "musical-notes", label: "Concert" };
-      if (subkind === "celebration") return { name: "gift",          label: "Celebration" };
-      if (subkind === "milestone")   return { name: "trophy",        label: "Milestone" };
-      return                                { name: "location",      label: "Event" };
+      if (subkind === "concert")     return { name: "musical-notes",  label: "Concert" };
+      if (subkind === "celebration") return { name: "gift",            label: "Celebration" };
+      if (subkind === "milestone")   return { name: "trophy",          label: "Milestone" };
+      if (subkind === "gathering")   return { name: "people-outline",  label: "Gathering" };
+      if (subkind === "memory")      return { name: "heart-outline",   label: "Memory" };
+      if (subkind === "activity")    return { name: "bicycle-outline", label: "Activity" };
+      return                                { name: "calendar-outline", label: "Event" };
     // Trip purpose
     case "leisure": return { name: "sunny",     label: "Leisure" };
     case "work":    return { name: "briefcase", label: "Work trip" };
