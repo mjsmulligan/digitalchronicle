@@ -21,9 +21,9 @@ import { normaliseTitle } from "./artwork";
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export interface ArtistImageResult {
-  provider: "theaudiodb";
+  provider: "theaudiodb" | "deezer";
   /**
-   * Full image URL from TheAudioDB (strArtistThumb).
+   * Full image URL (strArtistThumb from TheAudioDB, picture_xl from Deezer).
    * Stored directly as poster_path in ArtworkMatch — no imageUrl() needed.
    */
   imageUrl: string;
@@ -244,7 +244,7 @@ export class DeezerArtistProvider implements ArtistImageProvider {
     if (!imageUrl || imageUrl.includes("/images/artist//")) return null;
 
     return {
-      provider: "theaudiodb", // reuse the same union literal — stored in DB
+      provider: "deezer",
       imageUrl,
       artistName: best.name,
       confidence: exact ? 1.0 : 0.8,

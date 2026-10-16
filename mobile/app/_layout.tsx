@@ -143,13 +143,12 @@ function RootLayoutInner() {
           const fetchBookCoversEnabled = await getBookCoverFetchEnabled();
           setFetchBookCoversEnabled(fetchBookCoversEnabled);
 
-          // Artist images — TADB first, Deezer fallback for better coverage.
-          // TADB free tier (key "123") often has no image data for mainstream
-          // artists even when the record exists; Deezer fills the gap.
+          // Artist images — Deezer first (better CDN, broader mainstream coverage),
+          // TADB as fallback for artists not indexed by Deezer.
           const tadbKey = process.env.EXPO_PUBLIC_TADB_API_KEY ?? "123";
           setArtistImageProvider(new CompositeArtistImageProvider([
-            new TheAudioDbProvider(tadbKey),
             new DeezerArtistProvider(),
+            new TheAudioDbProvider(tadbKey),
           ]));
 
           // Warm the artwork cache in the background for all film/TV/book entries.
