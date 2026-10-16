@@ -17,6 +17,7 @@ import {
   Image,
   LayoutAnimation,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -384,12 +385,14 @@ function PosterGrid({
   colors,
   fonts,
   onPress,
+  refreshKey = 0,
 }: {
   items: PosterGridItem[];
   kind: "film" | "episode" | "book" | "concert";
   colors: ThemeColors;
   fonts: ThemeFonts;
   onPress: (entryId: string) => void;
+  refreshKey?: number;
 }) {
   const { width: screenW } = useWindowDimensions();
   const cellW = Math.floor(
@@ -403,10 +406,12 @@ function PosterGrid({
   // retryKey bumps to 1 once if the first pass returns all-null (artwork
   // storage / providers not ready yet at mount time). Capped at 1 retry.
   const [retryKey, setRetryKey] = useState(0);
-  // Reset retry window when the item list changes (new data loaded)
+  // Reset retry window when items or refreshKey changes
   const prevItemsRef = useRef(items);
-  if (prevItemsRef.current !== items) {
+  const prevRefreshKey = useRef(refreshKey);
+  if (prevItemsRef.current !== items || prevRefreshKey.current !== refreshKey) {
     prevItemsRef.current = items;
+    prevRefreshKey.current = refreshKey;
     if (retryKey !== 0) setRetryKey(0);
   }
 
@@ -457,7 +462,7 @@ function PosterGrid({
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [items, kind, retryKey]);
+  }, [items, kind, retryKey, refreshKey]);
 
   // Before resolution: show all as shimmer. After: split poster / no-poster.
   const posterItems    = resolved ? items.filter((i) => uriMap.get(i.id))  : items;
@@ -604,6 +609,17 @@ export default function CultureScreen() {
   const [filter, setFilter] = useState<Filter>("all");
   const { colors, fonts } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
+
+  // Pull-to-refresh — bumping refreshKey forces all PosterGrids to re-resolve
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setRefreshKey((k) => k + 1);
+    // Give artwork resolution a moment then clear the spinner
+    setTimeout(() => setRefreshing(false), 1500);
+  }, []);
 
   // Track which series are expanded (default: all collapsed)
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
@@ -905,6 +921,14 @@ export default function CultureScreen() {
           style={styles.list}
           data={listItems}
           keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.textTertiary}
+              colors={[colors.accent]}
+            />
+          }
           renderItem={({ item }) => {
             switch (item.type) {
 
@@ -923,6 +947,7 @@ export default function CultureScreen() {
                     colors={colors}
                     fonts={fonts}
                     onPress={(entryId) => router.push(`/entry/${entryId}`)}
+                    refreshKey={refreshKey}
                   />
                 );
 
