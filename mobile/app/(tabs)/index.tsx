@@ -206,6 +206,10 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     kindBtn: {
       paddingVertical: spacingScale.sm2,
     },
+    // Person toggle pushed to the right end of the kind row
+    kindBtnPerson: {
+      marginLeft: "auto",
+    },
 
     // People filter — minimal name tags below the kind row
     peopleRow: {
@@ -288,9 +292,11 @@ export default function ChronicleScreen() {
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
 
   // ── filter / search state ──────────────────────────────────────────────────
-  const [filter, setFilter]   = useState<F>("all");
-  const [q, setQ]             = useState("");
+  const [filter, setFilter]     = useState<F>("all");
+  const [q, setQ]               = useState("");
   const [personId, setPersonId] = useState<string | null>(null);
+  // People row is hidden until the person icon is tapped (or a person is active)
+  const [showPeopleRow, setShowPeopleRow] = useState(false);
 
   const selectedPerson = useMemo(
     () => (personId ? journal.people.find((p) => p.id === personId) ?? null : null),
@@ -397,6 +403,7 @@ export default function ChronicleScreen() {
     setFilter("all");
     setPersonId(null);
     setQ("");
+    setShowPeopleRow(false);
   }, []);
 
   // ── active-filter pill ─────────────────────────────────────────────────────
@@ -464,7 +471,7 @@ export default function ChronicleScreen() {
         )}
       </View>
 
-      {/* Kind filter — icon buttons, no chip borders */}
+      {/* Kind filter — icon buttons + person toggle at the end */}
       <View style={styles.kindRow}>
         {FILTERS.map((f) => {
           const ic = FILTER_ICONS[f.id];
@@ -492,10 +499,25 @@ export default function ChronicleScreen() {
             </Pressable>
           );
         })}
+
+        {/* Person toggle — only shown when journal has people */}
+        {journal.people.length > 0 && (
+          <Pressable
+            style={[styles.kindBtn, styles.kindBtnPerson]}
+            onPress={() => setShowPeopleRow((v) => !v)}
+            accessibilityLabel="Filter by person"
+          >
+            <Ionicons
+              name={personId !== null ? "people" : "people-outline"}
+              size={18}
+              color={(showPeopleRow || personId !== null) ? colors.accentSoft : colors.textMuted}
+            />
+          </Pressable>
+        )}
       </View>
 
-      {/* People filter — only rendered when the journal has people */}
-      {journal.people.length > 0 && (
+      {/* People row — revealed by tapping the person icon, or when a person filter is active */}
+      {journal.people.length > 0 && (showPeopleRow || personId !== null) && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
