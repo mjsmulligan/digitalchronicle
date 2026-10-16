@@ -40,11 +40,11 @@ import {
 } from "@expo-google-fonts/lora";
 import { SQLiteAdapter } from "../src/lib/storage/SQLiteAdapter";
 import { SQLiteArtworkStore } from "../src/lib/storage/SQLiteArtworkStore";
-import { setAdapter, initJournal, useJournal } from "@chronicle/journal/db";
+import { setAdapter, initJournal, useJournal, allEntries, getState } from "@chronicle/journal/db";
 import { setArtworkStorage } from "@chronicle/journal/artwork";
 import { TmdbProvider, setArtworkProvider } from "@chronicle/journal/artworkProvider";
 import { OpenLibraryProvider, setBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
-import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@chronicle/journal/artworkEnrichment";
+import { setFetchPostersEnabled, setFetchBookCoversEnabled, enrichAll } from "@chronicle/journal/artworkEnrichment";
 import { getPosterFetchEnabled, getBookCoverFetchEnabled } from "../src/lib/posterPrefs";
 import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
 
@@ -141,6 +141,14 @@ function RootLayoutInner() {
           setBookCoverProvider(new OpenLibraryProvider());
           const fetchBookCoversEnabled = await getBookCoverFetchEnabled();
           setFetchBookCoversEnabled(fetchBookCoversEnabled);
+
+          // Warm the artwork cache in the background for all film/TV/book entries.
+          // Fire-and-forget: don't await, don't block splash hide.
+          // PosterCard also triggers on-demand resolution when an entry is opened,
+          // but enrichAll pre-caches so images appear immediately on first visit.
+          enrichAll(allEntries(getState())).catch((e) =>
+            console.warn("[Chronicle] enrichAll failed:", e)
+          );
         } catch (artworkErr) {
           // Artwork init failure is non-fatal; app continues without posters or covers
           console.warn("[Chronicle] Artwork init failed:", artworkErr);
