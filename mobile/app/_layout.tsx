@@ -44,7 +44,7 @@ import { setAdapter, initJournal, useJournal, allEntries, getState } from "@chro
 import { setArtworkStorage } from "@chronicle/journal/artwork";
 import { TmdbProvider, setArtworkProvider } from "@chronicle/journal/artworkProvider";
 import { OpenLibraryProvider, setBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
-import { TheAudioDbProvider, setArtistImageProvider } from "@chronicle/journal/artistImageProvider";
+import { TheAudioDbProvider, DeezerArtistProvider, CompositeArtistImageProvider, setArtistImageProvider } from "@chronicle/journal/artistImageProvider";
 import { setFetchPostersEnabled, setFetchBookCoversEnabled, enrichAll } from "@chronicle/journal/artworkEnrichment";
 import { getPosterFetchEnabled, getBookCoverFetchEnabled } from "../src/lib/posterPrefs";
 import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
@@ -143,9 +143,14 @@ function RootLayoutInner() {
           const fetchBookCoversEnabled = await getBookCoverFetchEnabled();
           setFetchBookCoversEnabled(fetchBookCoversEnabled);
 
-          // Artist images — TheAudioDB free tier (key "123" is public)
+          // Artist images — TADB first, Deezer fallback for better coverage.
+          // TADB free tier (key "123") often has no image data for mainstream
+          // artists even when the record exists; Deezer fills the gap.
           const tadbKey = process.env.EXPO_PUBLIC_TADB_API_KEY ?? "123";
-          setArtistImageProvider(new TheAudioDbProvider(tadbKey));
+          setArtistImageProvider(new CompositeArtistImageProvider([
+            new TheAudioDbProvider(tadbKey),
+            new DeezerArtistProvider(),
+          ]));
 
           // Warm the artwork cache in the background for all film/TV/book entries.
           // Fire-and-forget: don't await, don't block splash hide.
