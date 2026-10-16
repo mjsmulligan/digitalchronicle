@@ -314,6 +314,7 @@ function PlaceEntryDetail({
 function EventDetail({ e, styles, iconColors }: { e: JEvent; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "event") return null;
+  const isConcert = v.category === "concert";
   return (
     <>
       <Text style={styles.title}>{v.artist}</Text>
@@ -321,12 +322,16 @@ function EventDetail({ e, styles, iconColors }: { e: JEvent; styles: DetailStyle
         <KindIcon kind="event" subkind={v.category} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{CATEGORY_LABEL[v.category]}</Text>
       </View>
+      {/* Artist photo for concerts — resolves from TheAudioDB */}
+      {isConcert && v.artist && (
+        <PosterCard artworkKey="" title={v.artist} artistName={v.artist} />
+      )}
       <Divider styles={styles} />
       <Field label="Date" value={fmt(v.start)} styles={styles} />
       <Field label="Venue" value={v.venue} styles={styles} />
       <Field label="City" value={v.city} styles={styles} />
       <Field label="Country" value={e.country} styles={styles} />
-      {v.category === "concert" && <Field label="Tour" value={e.tour} styles={styles} />}
+      {isConcert && <Field label="Tour" value={e.tour} styles={styles} />}
     </>
   );
 }

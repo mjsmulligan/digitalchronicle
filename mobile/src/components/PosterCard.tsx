@@ -28,7 +28,7 @@ import {
   type ImageStyle,
   type ViewStyle,
 } from "react-native";
-import { resolveArtwork, resolveBookCoverForEntry } from "@chronicle/journal/artworkEnrichment";
+import { resolveArtwork, resolveBookCoverForEntry, resolveArtistImage } from "@chronicle/journal/artworkEnrichment";
 import { getArtworkProvider } from "@chronicle/journal/artworkProvider";
 import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { useTheme } from "./ThemeProvider";
@@ -63,11 +63,18 @@ interface Props {
    * instead of resolveArtwork (which only handles film/TV keys).
    */
   bookEntry?: Book;
+  /**
+   * Pass the artist name for concert entries.
+   * resolveArtistImage looks up TheAudioDB and stores the full URL directly
+   * as poster_path (no imageUrl() translation needed).
+   * When provided, this resolver is used instead of resolveArtwork.
+   */
+  artistName?: string;
 }
 
 type PosterState = "loading" | "found" | "none";
 
-export function PosterCard({ artworkKey, title, variant = "detail", bookEntry }: Props) {
+export function PosterCard({ artworkKey, title, variant = "detail", bookEntry, artistName }: Props) {
   const compact = variant === "compact";
   const { colors, radius } = useTheme();
   const [state, setState] = useState<PosterState>("loading");
@@ -82,11 +89,12 @@ export function PosterCard({ artworkKey, title, variant = "detail", bookEntry }:
     setMatch(null);
     fadeAnim.setValue(0);
 
-    // Books use a dedicated resolver that needs the full entry (author + isbn13).
-    // Films/TV use the key-based resolver.
-    const resolve = bookEntry
-      ? resolveBookCoverForEntry(bookEntry)
-      : resolveArtwork(artworkKey);
+    // Priority: artist (concert) → book → film/TV
+    const resolve = artistName
+      ? resolveArtistImage(artistName)
+      : bookEntry
+        ? resolveBookCoverForEntry(bookEntry)
+        : resolveArtwork(artworkKey);
 
     resolve.then((m) => {
       if (cancelled) return;
@@ -104,14 +112,17 @@ export function PosterCard({ artworkKey, title, variant = "detail", bookEntry }:
     return () => {
       cancelled = true;
     };
-  }, [artworkKey, bookEntry]);
+  }, [artworkKey, bookEntry, artistName]);
 
   // "None" or loading-resolved-to-none: render nothing (no poster section)
   if (state === "none") return null;
 
-  // Book covers use the Open Library provider; films/TV use TMDB.
+  // Artists: poster_path is already a full URL (TheAudioDB).
+  // Books: imageUrl() from Open Library provider.
+  // Films/TV: imageUrl() from TMDB provider.
   const imageUri = (() => {
     if (!match?.poster_path) return null;
+    if (artistName) return match.poster_path;
     if (bookEntry) {
       const bookProvider = getBookCoverProvider();
       return bookProvider ? bookProvider.imageUrl(match.poster_path) : null;
@@ -120,8 +131,11 @@ export function PosterCard({ artworkKey, title, variant = "detail", bookEntry }:
     return provider ? provider.imageUrl(match.poster_path) : null;
   })();
 
+  // Artist images are square; all other media uses 2:3 portrait ratio
   const w = compact ? COMPACT_WIDTH  : POSTER_WIDTH;
-  const h = compact ? COMPACT_HEIGHT : POSTER_HEIGHT;
+  const h = artistName
+    ? (compact ? COMPACT_WIDTH : POSTER_WIDTH)   // square
+    : compact ? COMPACT_HEIGHT : POSTER_HEIGHT;  // 2:3
 
   const containerStyle: ViewStyle = compact
     ? {

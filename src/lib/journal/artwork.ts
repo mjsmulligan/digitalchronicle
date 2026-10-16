@@ -20,7 +20,7 @@ import { view } from "./types";
 
 // ─── Core types ───────────────────────────────────────────────────────────────
 
-export type ArtworkMediaType = "movie" | "tv" | "book";
+export type ArtworkMediaType = "movie" | "tv" | "book" | "artist";
 
 /** "matched" = poster found; "none" = no match (cached, retried after 30 days); "manual" = user override */
 export type ArtworkMatchStatus = "matched" | "none" | "manual";
@@ -140,6 +140,18 @@ export function bookToArtworkKey(entry: Entry): string | null {
   const norm = normaliseTitle(b.title);
   if (!norm) return null;
   return `book|${norm}|${b.year ?? ""}`;
+}
+
+/**
+ * Derive an artwork cache key for an artist name (used for concert group images).
+ *
+ * Key format: `"artist|{normName}"` — normalised artist name, no year component.
+ * Returns null if the name is empty after normalisation.
+ */
+export function artistToArtworkKey(artistName: string): string | null {
+  const norm = normaliseTitle(artistName);
+  if (!norm) return null;
+  return `artist|${norm}`;
 }
 
 // ─── Storage interface ────────────────────────────────────────────────────────

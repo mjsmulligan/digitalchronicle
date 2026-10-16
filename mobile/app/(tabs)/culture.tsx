@@ -10,17 +10,16 @@
  * Series/show groups are collapsible (collapsed by default) for easy scanning.
  * Filter pills narrow to a single category; all sections show when "All" is active.
  */
-import { useMemo, useState, useCallback, useEffect } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import {
+  Animated,
   FlatList,
   Image,
   LayoutAnimation,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  UIManager,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -36,7 +35,7 @@ import {
   type JEvent,
   type Series,
 } from "@chronicle/journal/types";
-import { eventToArtworkKey, bookToArtworkKey } from "@chronicle/journal/artwork";
+import { eventToArtworkKey, bookToArtworkKey, artistToArtworkKey } from "@chronicle/journal/artwork";
 import {
   useTheme,
   type ThemeColors,
@@ -48,14 +47,11 @@ import {
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
 import { PosterCard } from "../../src/components/PosterCard";
-import { resolveArtwork, resolveBookCoverForEntry } from "@chronicle/journal/artworkEnrichment";
+import { resolveArtwork, resolveBookCoverForEntry, resolveArtistImage } from "@chronicle/journal/artworkEnrichment";
 import { getArtworkProvider } from "@chronicle/journal/artworkProvider";
 import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
+import { getArtistImageProvider } from "@chronicle/journal/artistImageProvider";
 
-// Enable LayoutAnimation on Android
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // ── types & helpers ───────────────────────────────────────────────────────────
 
@@ -83,34 +79,6 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 // ── grouping helpers ──────────────────────────────────────────────────────────
-
-// ── Books ─────────────────────────────────────────────────────────────────────
-
-interface BookSeriesGroup {
-  name: string;
-  books: Book[];
-}
-
-function groupBooksBySeries(books: Book[]): { standalone: Book[]; series: BookSeriesGroup[] } {
-  const seriesMap = new Map<string, Book[]>();
-  const standalone: Book[] = [];
-  for (const b of books) {
-    if (b.series) {
-      const arr = seriesMap.get(b.series) ?? [];
-      arr.push(b);
-      seriesMap.set(b.series, arr);
-    } else {
-      standalone.push(b);
-    }
-  }
-  const series: BookSeriesGroup[] = [...seriesMap.entries()]
-    .map(([name, bks]) => ({
-      name,
-      books: [...bks].sort((a, b) => (a.seriesNumber ?? 999) - (b.seriesNumber ?? 999)),
-    }))
-    .sort((a, b) => sortDate(b.books[0]).localeCompare(sortDate(a.books[0])));
-  return { standalone, series };
-}
 
 // ── Films ─────────────────────────────────────────────────────────────────────
 
@@ -209,10 +177,12 @@ type ListItem =
       seriesKey?: string;
       /** Kind icon to show on the left — only present when collapsible: true */
       kind?: CultureKind;
-      /** Artwork cache key for inline poster (book groups only) */
+      /** Artwork cache key for inline poster (book series groups only) */
       artworkKey?: string;
+      /** Raw artist name for concert groups — used to resolve TheAudioDB image */
+      artistName?: string;
     }
-  | { type: "posterGrid"; id: string; items: PosterGridItem[]; kind: "film" | "episode" | "book" }
+  | { type: "posterGrid"; id: string; items: PosterGridItem[]; kind: "film" | "episode" | "book" | "concert" }
   | { type: "entry";      id: string; entry: CultureEntry }
   | { type: "separator";  id: string }
   | { type: "sectionGap"; id: string }
@@ -416,7 +386,7 @@ function PosterGrid({
   onPress,
 }: {
   items: PosterGridItem[];
-  kind: "film" | "episode" | "book";
+  kind: "film" | "episode" | "book" | "concert";
   colors: ThemeColors;
   fonts: ThemeFonts;
   onPress: (entryId: string) => void;
@@ -425,7 +395,8 @@ function PosterGrid({
   const cellW = Math.floor(
     (screenW - 2 * spacingScale.base - (NUM_COLS - 1) * spacingScale.sm) / NUM_COLS,
   );
-  const cellH = Math.floor(cellW * 1.5);
+  // Artist tiles are square; all other media uses portrait (3:2) ratio
+  const cellH = kind === "concert" ? cellW : Math.floor(cellW * 1.5);
 
   const [uriMap, setUriMap]     = useState<Map<string, string | null>>(new Map());
   const [resolved, setResolved] = useState(false);
@@ -437,7 +408,11 @@ function PosterGrid({
     Promise.all(
       items.map(async (item) => {
         let uri: string | null = null;
-        if (item.bookEntry) {
+        if (kind === "concert") {
+          // Artist images — poster_path IS the full URL (TheAudioDB, no imageUrl() needed)
+          const match = await resolveArtistImage(item.title);
+          uri = match?.poster_path ?? null;
+        } else if (item.bookEntry) {
           // Books: use resolveBookCoverForEntry + Open Library image URL
           const match = await resolveBookCoverForEntry(item.bookEntry);
           uri = match?.poster_path && bookProvider
@@ -458,7 +433,7 @@ function PosterGrid({
       setResolved(true);
     });
     return () => { cancelled = true; };
-  }, [items]);
+  }, [items, kind]);
 
   // Before resolution: show all as shimmer. After: split poster / no-poster.
   const posterItems    = resolved ? items.filter((i) => uriMap.get(i.id))  : items;
@@ -505,7 +480,8 @@ function PosterGrid({
                 accessibilityLabel={item.title}
               >
                 <KindIcon
-                  kind={kind === "episode" ? "episode" : kind === "book" ? "book" : "film"}
+                  kind={kind === "episode" ? "episode" : kind === "book" ? "book" : kind === "concert" ? "event" : "film"}
+                  subkind={kind === "concert" ? "concert" : undefined}
                   size={16}
                   color={colors.textTertiary}
                   accessibilityLabel=""
@@ -521,6 +497,59 @@ function PosterGrid({
 }
 
 // ── FilterPill ────────────────────────────────────────────────────────────────
+
+// ── ArtistImage ───────────────────────────────────────────────────────────────
+
+/**
+ * Compact artist photo for collapsed concert group headers.
+ * Resolves via TheAudioDB (poster_path is a full URL for artist images).
+ * Renders nothing until resolved; fades in when found.
+ */
+function ArtistImage({
+  artistName,
+  colors,
+}: {
+  artistName: string;
+  colors: ThemeColors;
+}) {
+  const [uri, setUri] = useState<string | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveArtistImage(artistName).then((match) => {
+      if (cancelled || !match?.poster_path) return;
+      // TheAudioDB stores full URLs directly as poster_path
+      const provider = getArtistImageProvider();
+      const imageUri = provider ? provider.imageUrl(match.poster_path) : match.poster_path;
+      setUri(imageUri);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    });
+    return () => { cancelled = true; };
+  }, [artistName]);
+
+  if (!uri) return null;
+
+  return (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        overflow: "hidden",
+        marginLeft: spacingScale.base,
+        marginBottom: spacingScale.sm,
+        backgroundColor: colors.border,
+      }}
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`Photo of ${artistName}`}
+    >
+      <Image source={{ uri }} style={{ width: 48, height: 48 }} resizeMode="cover" />
+    </Animated.View>
+  );
+}
 
 function FilterPill({
   label,
@@ -582,19 +611,20 @@ export default function CultureScreen() {
 
   // ── grouped data ──────────────────────────────────────────────────────────
 
-  const concertsByYear = useMemo(() => {
+  /** Concerts grouped by artist, artists sorted A→Z, shows within each artist oldest→newest. */
+  const concertsByArtist = useMemo(() => {
     const map = new Map<string, JEvent[]>();
     for (const c of allConcerts) {
-      const yr = (c.overrides?.start ?? c.start).slice(0, 4) || "????";
-      const arr = map.get(yr) ?? [];
+      const artist = (view(c).kind === "event" ? view(c).artist : c.artist) || "Unknown";
+      const arr = map.get(artist) ?? [];
       arr.push(c);
-      map.set(yr, arr);
+      map.set(artist, arr);
     }
     return [...map.entries()]
-      .sort(([a], [b]) => b.localeCompare(a))
-      .map(([year, list]) => ({
-        year,
-        list: list.sort((a, b) => sortDate(b).localeCompare(sortDate(a))),
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([artist, list]) => ({
+        artist,
+        list: list.sort((a, b) => sortDate(a).localeCompare(sortDate(b))),
       }));
   }, [allConcerts]);
 
@@ -607,25 +637,18 @@ export default function CultureScreen() {
       ...series.map((sg) => ({ type: "series"     as const, data: sg, date: sortDate(sg.films[0]) })),
       ...standalone.map((f) => ({ type: "standalone" as const, data: f, date: sortDate(f) })),
     ];
-    return all.sort((a, b) => b.date.localeCompare(a.date));
+    // Library sort: alphabetical by title (series name / standalone title)
+    return all.sort((a, b) => {
+      const titleA = a.type === "series" ? (a.data as FilmSeriesGroup).name : entryTitle(view(a.data as Film));
+      const titleB = b.type === "series" ? (b.data as FilmSeriesGroup).name : entryTitle(view(b.data as Film));
+      return titleA.localeCompare(titleB);
+    });
   }, [journal.films]);
 
   const showGroups = useMemo(
     () => groupEpisodesBySeries(journal.episodes, journal.series),
     [journal.episodes, journal.series],
   );
-
-  const bookSections = useMemo(() => {
-    const { standalone, series } = groupBooksBySeries(journal.books);
-    type Section =
-      | { type: "series";     data: BookSeriesGroup; date: string }
-      | { type: "standalone"; data: Book;            date: string };
-    const all: Section[] = [
-      ...series.map((sg) => ({ type: "series"     as const, data: sg, date: sortDate(sg.books[0]) })),
-      ...standalone.map((b) => ({ type: "standalone" as const, data: b, date: sortDate(b) })),
-    ];
-    return all.sort((a, b) => b.date.localeCompare(a.date));
-  }, [journal.books]);
 
   /**
    * Stable grid item lists for PosterGrid — one item per standalone film or
@@ -658,49 +681,50 @@ export default function CultureScreen() {
 
   const tvGridItems = useMemo<PosterGridItem[]>(
     () =>
-      showGroups.map(({ title, episodes: eps }) => ({
-        id: `show:${title}`,
-        title,
-        artworkKey: eventToArtworkKey(eps[0]) ?? "",
-        entryId: eps[0].id,
-      })),
+      [...showGroups]
+        .sort((a, b) => a.title.localeCompare(b.title))
+        .map(({ title, episodes: eps }) => ({
+          id: `show:${title}`,
+          title,
+          artworkKey: eventToArtworkKey(eps[0]) ?? "",
+          entryId: eps[0].id,
+        })),
     [showGroups],
   );
 
   /**
-   * Book grid: one tile per standalone book or book series.
-   * For a series, we use book #1 for the cover (most recognisable) and the
-   * most recently read book as the navigation target.
+   * Book grid: one tile per book — no series grouping.
+   * Library sort: alphabetical by author, then by title within each author.
    */
   const bookGridItems = useMemo<PosterGridItem[]>(
     () =>
-      bookSections.map((sec) => {
-        if (sec.type === "standalone") {
-          const b = sec.data as Book;
-          return {
-            id: b.id,
-            title: entryTitle(view(b)),
-            artworkKey: bookToArtworkKey(b) ?? "",
-            entryId: b.id,
-            bookEntry: b,
-          };
-        }
-        const sg = sec.data as BookSeriesGroup;
-        // Cover: book #1 in the series (lowest seriesNumber, sorted earlier)
-        const coverBook = sg.books[0];
-        // Navigate to most recently read book in the series
-        const latestBook = [...sg.books].sort((a, b) =>
-          sortDate(b).localeCompare(sortDate(a))
-        )[0];
-        return {
-          id: `bookseries:${sg.name}`,
-          title: sg.name,
-          artworkKey: bookToArtworkKey(coverBook) ?? "",
-          entryId: latestBook.id,
-          bookEntry: coverBook,
-        };
-      }),
-    [bookSections],
+      [...journal.books]
+        .sort((a, b) => {
+          const authorCmp = (a.author ?? "").localeCompare(b.author ?? "");
+          if (authorCmp !== 0) return authorCmp;
+          return a.title.localeCompare(b.title);
+        })
+        .map((b) => ({
+          id: b.id,
+          title: entryTitle(view(b)),
+          artworkKey: bookToArtworkKey(b) ?? "",
+          entryId: b.id,
+          bookEntry: b,
+        })),
+    [journal.books],
+  );
+
+  /** One grid tile per artist (A→Z). Tapping navigates to the most recent concert. */
+  const concertGridItems = useMemo<PosterGridItem[]>(
+    () =>
+      concertsByArtist.map(({ artist, list }) => ({
+        id: `artist:${artist}`,
+        title: artist,
+        artworkKey: artistToArtworkKey(artist) ?? "",
+        // Navigate to the most recent concert for this artist
+        entryId: list[list.length - 1].id,
+      })),
+    [concertsByArtist],
   );
 
   // ── build flat list ───────────────────────────────────────────────────────
@@ -771,22 +795,13 @@ export default function CultureScreen() {
     // ── Concerts ──────────────────────────────────────────────────────────
     if ((filter === "all" || filter === "concert") && allConcerts.length > 0) {
       if (showHeaders) {
-        items.push({ type: "sectionHeader", id: "sh-concerts", title: `Concerts · ${allConcerts.length}` });
+        items.push({
+          type: "sectionHeader",
+          id: "sh-concerts",
+          title: `Concerts · ${allConcerts.length} shows · ${concertsByArtist.length} artists`,
+        });
       }
-      concertsByYear.forEach(({ year, list }, yi) => {
-        if (yi > 0) items.push({ type: "groupGap", id: `gap-c-${year}` });
-        if (concertsByYear.length > 1 || !showHeaders) {
-          items.push({
-            type: "groupHeader",
-            id: `gh-c-${year}`,
-            title: year,
-            subtitle: String(list.length),
-            collapsible: false,
-            collapsed: false,
-          });
-        }
-        pushEntries(list);
-      });
+      items.push({ type: "posterGrid", id: "grid-concerts", items: concertGridItems, kind: "concert" });
       if (showHeaders) items.push({ type: "sectionGap", id: "sgap-concerts" });
     }
 
@@ -822,7 +837,7 @@ export default function CultureScreen() {
     }
 
     return items;
-  }, [filter, allConcerts, concertsByYear, filmGridItems, tvGridItems, bookGridItems, journal, expandedKeys]);
+  }, [filter, allConcerts, concertGridItems, filmGridItems, tvGridItems, bookGridItems, journal.books, journal.films, journal.episodes]);
 
   const isEmpty = counts.all === 0;
 
@@ -904,7 +919,8 @@ export default function CultureScreen() {
                         {/* Leading icon — mirrors EntryRow's markWrap position */}
                         <View style={styles.groupHeaderMark}>
                           <KindIcon
-                            kind={item.kind === "episode" ? "episode" : item.kind === "book" ? "book" : "film"}
+                            kind={item.kind === "episode" ? "episode" : item.kind === "book" ? "book" : item.kind === "concert" ? "event" : "film"}
+                            subkind={item.kind === "concert" ? "concert" : undefined}
                             size={18}
                             color={colors.textTertiary}
                             accessibilityLabel=""
@@ -933,6 +949,10 @@ export default function CultureScreen() {
                             variant="compact"
                           />
                         </View>
+                      )}
+                      {/* Artist photo — shown when concert group is collapsed */}
+                      {item.collapsed && item.artistName && (
+                        <ArtistImage artistName={item.artistName} colors={colors} />
                       )}
                     </View>
                   );

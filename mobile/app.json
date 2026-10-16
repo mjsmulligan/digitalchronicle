@@ -81,6 +81,10 @@
         }
       ]
     ],
+    "assetBundlePatterns": [
+      "**/*",
+      "node_modules/@expo-google-fonts/**/*"
+    ],
     "experiments": {
       "typedRoutes": true
     }

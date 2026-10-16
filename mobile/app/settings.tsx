@@ -13,11 +13,13 @@ import { useTheme, THEMES } from "../src/components/ThemeProvider";
 import { useHomePrefs } from "../src/lib/useHomePrefs";
 import { getPosterFetchEnabled, setPosterFetchEnabled, getBookCoverFetchEnabled, setBookCoverFetchEnabled } from "../src/lib/posterPrefs";
 import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@chronicle/journal/artworkEnrichment";
+import { artworkStorage } from "@chronicle/journal/artwork";
 
 export default function SettingsScreen() {
   const journal = useJournal();
   const router = useRouter();
   const [clearing, setClearing] = useState(false);
+  const [clearingArtwork, setClearingArtwork] = useState(false);
   const [exporting, setExporting] = useState(false);
   const dialog = useDialog();
   const { colors, fonts, text, spacing, radius, themeId, setThemeId } = useTheme();
@@ -226,6 +228,17 @@ export default function SettingsScreen() {
       console.warn("Export failed", e);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleClearArtworkCache = async () => {
+    setClearingArtwork(true);
+    try {
+      await artworkStorage().clearAll();
+    } catch (e) {
+      console.warn("Failed to clear artwork cache", e);
+    } finally {
+      setClearingArtwork(false);
     }
   };
 
@@ -450,6 +463,20 @@ export default function SettingsScreen() {
           {exporting ? "Exporting…" : "Export JSON"}
         </Text>
       </Pressable>
+
+      <Pressable
+        style={[styles.resetBtn, clearingArtwork && styles.resetBtnDisabled, { borderColor: colors.border, marginBottom: spacing.sm }]}
+        onPress={handleClearArtworkCache}
+        disabled={clearingArtwork}
+      >
+        <Ionicons name="image-outline" size={18} color={colors.textPrimary} />
+        <Text style={[styles.resetBtnText, { color: colors.textPrimary }]}>
+          {clearingArtwork ? "Clearing…" : "Clear artwork cache"}
+        </Text>
+      </Pressable>
+      <Text style={[styles.resetHint, { marginBottom: spacing.md }]}>
+        Clears cached posters, book covers, and artist images. They will be re-fetched next time entries are viewed.
+      </Text>
 
       <Pressable
         style={[styles.resetBtn, clearing && styles.resetBtnDisabled]}
