@@ -155,13 +155,48 @@ export function bookToArtworkKey(entry: Entry): string | null {
  *     (+, -, =, ÷, ×) are a sign the tour symbol starts here.
  *     A single operator (e.g. "Florence + the Machine") is left intact.
  */
+/**
+ * Returns true for ASCII math/symbol chars used in tour name symbols
+ * (+, -, =) plus their common Unicode equivalents (÷ U+00F7, × U+00D7).
+ * Avoid putting ÷/× in a regex character class — Hermes can reject
+ * non-ASCII literals in character classes.
+ */
+function _isTourOperator(ch: string): boolean {
+  if (!ch) return false;
+  if (ch === "+" || ch === "-" || ch === "=") return true;
+  const code = ch.charCodeAt(0);
+  return code === 0x00f7 /* ÷ */ || code === 0x00d7 /* × */;
+}
+
 export function cleanArtistForLookup(raw: string): string {
-  let s = raw.trim();
-  // Rule 1 — strip trailing "(anything)"
-  s = s.replace(/\s*\([^)]*\)\s*$/, "").trim();
-  // Rule 2 — strip tour-name operator sequences (2+ operators, optionally spaced)
-  // Matches: " + - = ÷ x Tour" but NOT " + the Machine"
-  s = s.replace(/\s+[+\-=÷×]\s*[+\-=÷×].*$/, "").trim();
+  // Rule 1 — strip trailing "(anything)": "Maksim Galkin (Drogheda)" → "Maksim Galkin"
+  let s = raw.trim().replace(/\s*\([^)]*\)\s*$/, "").trim();
+
+  // Rule 2 — strip tour-name operator sequences.
+  // Split on whitespace; if two CONSECUTIVE single-char operator tokens appear,
+  // everything from the first operator onwards is the tour name.
+  // "Ed Sheeran + - = ÷ x Tour" → words [Ed, Sheeran, +, -, =, ÷, x, Tour]
+  //   first op at index 2 (+), second consecutive op at index 3 (-) → keep words 0-1.
+  // "Florence + the Machine" → [Florence, +, the, Machine]
+  //   op at index 1 (+), but "the" (index 2) is NOT an op → no strip.
+  const words = s.split(/\s+/);
+  let opStart = -1;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (w.length === 1 && _isTourOperator(w)) {
+      if (opStart === -1) {
+        opStart = i;
+      } else if (i === opStart + 1) {
+        // Two consecutive operator tokens — everything from opStart is tour name
+        s = words.slice(0, opStart).join(" ").trim();
+        break;
+      }
+      // Non-consecutive operator (gap of 2+) — not a tour sequence; reset
+    } else {
+      opStart = -1;
+    }
+  }
+
   return s || raw.trim();
 }
 
