@@ -198,7 +198,7 @@ function BookDetail({ e, styles, iconColors }: { e: Book; styles: DetailStyles; 
           <Text style={styles.ratingNum}>{(v.rating / 2).toFixed(1)}</Text>
         </View>
       )}
-      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} />}
+      {artworkKey && <PosterCard artworkKey={artworkKey} title={v.title} bookEntry={e} />}
       <Divider styles={styles} />
       <Field label="Date read" value={fmt(v.start)} styles={styles} />
       {e.dateStarted && <Field label="Started" value={fmt(e.dateStarted)} styles={styles} />}

@@ -28,10 +28,12 @@ import {
   type ImageStyle,
   type ViewStyle,
 } from "react-native";
-import { resolveArtwork } from "@chronicle/journal/artworkEnrichment";
+import { resolveArtwork, resolveBookCoverForEntry } from "@chronicle/journal/artworkEnrichment";
 import { getArtworkProvider } from "@chronicle/journal/artworkProvider";
+import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { useTheme } from "./ThemeProvider";
 import type { ArtworkMatch } from "@chronicle/journal/artwork";
+import type { Book } from "@chronicle/journal/types";
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -54,11 +56,18 @@ interface Props {
    *   (culture page group headers and standalone entries).
    */
   variant?: "detail" | "compact";
+  /**
+   * Pass the full Book entry when rendering a book cover.
+   * resolveBookCoverForEntry needs author + isbn13 to look up Open Library,
+   * which are not encoded in artworkKey. When provided, this resolver is used
+   * instead of resolveArtwork (which only handles film/TV keys).
+   */
+  bookEntry?: Book;
 }
 
 type PosterState = "loading" | "found" | "none";
 
-export function PosterCard({ artworkKey, title, variant = "detail" }: Props) {
+export function PosterCard({ artworkKey, title, variant = "detail", bookEntry }: Props) {
   const compact = variant === "compact";
   const { colors, radius } = useTheme();
   const [state, setState] = useState<PosterState>("loading");
@@ -73,7 +82,13 @@ export function PosterCard({ artworkKey, title, variant = "detail" }: Props) {
     setMatch(null);
     fadeAnim.setValue(0);
 
-    resolveArtwork(artworkKey).then((m) => {
+    // Books use a dedicated resolver that needs the full entry (author + isbn13).
+    // Films/TV use the key-based resolver.
+    const resolve = bookEntry
+      ? resolveBookCoverForEntry(bookEntry)
+      : resolveArtwork(artworkKey);
+
+    resolve.then((m) => {
       if (cancelled) return;
       setMatch(m);
       setState(m ? "found" : "none");
@@ -89,14 +104,21 @@ export function PosterCard({ artworkKey, title, variant = "detail" }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [artworkKey]);
+  }, [artworkKey, bookEntry]);
 
   // "None" or loading-resolved-to-none: render nothing (no poster section)
   if (state === "none") return null;
 
-  const provider = getArtworkProvider();
-  const imageUri =
-    match?.poster_path && provider ? provider.imageUrl(match.poster_path) : null;
+  // Book covers use the Open Library provider; films/TV use TMDB.
+  const imageUri = (() => {
+    if (!match?.poster_path) return null;
+    if (bookEntry) {
+      const bookProvider = getBookCoverProvider();
+      return bookProvider ? bookProvider.imageUrl(match.poster_path) : null;
+    }
+    const provider = getArtworkProvider();
+    return provider ? provider.imageUrl(match.poster_path) : null;
+  })();
 
   const w = compact ? COMPACT_WIDTH  : POSTER_WIDTH;
   const h = compact ? COMPACT_HEIGHT : POSTER_HEIGHT;
