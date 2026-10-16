@@ -101,7 +101,18 @@ export class TheAudioDbProvider implements ArtistImageProvider {
     );
     const best = exact ?? data.artists[0];
 
-    const imageUrl = best.strArtistThumb ?? best.strArtistFanart ?? null;
+    // Try every image field in preference order — free tier may have some null
+    const imageUrl =
+      best.strArtistThumb ??
+      best.strArtistWideThumb ??
+      best.strArtistFanart ??
+      best.strArtistFanart2 ??
+      best.strArtistFanart3 ??
+      best.strArtistFanart4 ??
+      best.strArtistBanner ??
+      best.strArtistClearart ??
+      best.strArtistLogo ??
+      null;
     if (!imageUrl) return null;
 
     return {
@@ -151,7 +162,14 @@ function delay(ms: number): Promise<void> {
 interface TADBArtist {
   strArtist?: string;
   strArtistThumb?: string;
+  strArtistWideThumb?: string;
   strArtistFanart?: string;
+  strArtistFanart2?: string;
+  strArtistFanart3?: string;
+  strArtistFanart4?: string;
+  strArtistBanner?: string;
+  strArtistClearart?: string;
+  strArtistLogo?: string;
   strMusicBrainzID?: string;
 }
 
