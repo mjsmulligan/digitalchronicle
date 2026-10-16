@@ -16,12 +16,10 @@ import {
   FlatList,
   Image,
   LayoutAnimation,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  UIManager,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -54,10 +52,6 @@ import { getArtworkProvider } from "@chronicle/journal/artworkProvider";
 import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { getArtistImageProvider } from "@chronicle/journal/artistImageProvider";
 
-// Enable LayoutAnimation on Android
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 // ── types & helpers ───────────────────────────────────────────────────────────
 
