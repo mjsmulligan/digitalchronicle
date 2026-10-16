@@ -1,19 +1,24 @@
 /**
- * MonthHeader — a full-width section divider shown in the Chronicle feed
+ * MonthHeader — a journal chapter-page divider shown in the Chronicle feed
  * whenever the month changes.
  *
- * Layout:
- *   OCTOBER · 2026         [✈ 3]  [🎬 8]  [📺 22]  [🎵 1]
+ * Design intent: feels like turning to a new section in a Moleskine —
+ * a deliberate pen-mark (2px accentSoft top rule), warm surfaceAccentDeep
+ * background, and the month name in the app's large serif. The icon tally
+ * below reads as a soft marginal note rather than a data dashboard.
  *
- * Left: month + year in mono uppercase.
- * Right: a scrollable row of KindIcon + count bubbles summarising what
- *        happened during the month (computed by the parent and passed in).
+ *   ══════════════════════════════════════════  ← 2px accentSoft rule
+ *
+ *   October · 2026                              ← serifSemiBold, 22px
+ *   ✈ 3 · 🎬 8 · 📺 22 · 🎵 1                ← icon tally, textTertiary
+ *
+ *   ──────────────────────────────────────────  ← hairline borderFaint
  *
  * Accepts `colors` and `fonts` as props so it is safe inside a FlatList
  * renderItem without calling useTheme() per item.
  */
 import React, { useMemo } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import {
   type ThemeColors,
   type ThemeFonts,
@@ -37,52 +42,55 @@ export interface IconCount {
 
 function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
   return StyleSheet.create({
-    // Full-width surface strip — visually separates months
+    // Chapter-page section block
     container: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: spacingScale.base,
-      paddingVertical: spacingScale.sm2,
-      backgroundColor: colors.surface,
-      borderTopWidth: StyleSheet.hairlineWidth,
+      backgroundColor: colors.surfaceAccentDeep,
+      // 2px top rule — deliberate, like a pen line marking the new section
+      borderTopWidth: 2,
+      borderTopColor: colors.accentSoft,
+      // Faint hairline closes the block at the bottom
       borderBottomWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.borderFaint,
-      gap: spacingScale.md,
+      borderBottomColor: colors.borderFaint,
+      paddingHorizontal: spacingScale.base,
+      paddingTop: spacingScale.xl,     // generous breathing room above
+      paddingBottom: spacingScale.base, // slightly tighter below — visually anchors text
     },
 
-    // "OCTOBER · 2026"
+    // "October · 2026" — large serif heading
     monthLabel: {
-      ...textScale.xs,
-      fontFamily: fonts.mono,
-      fontWeight: "700",
-      letterSpacing: 1,
-      textTransform: "uppercase" as const,
-      color: colors.textSecondary,
-      flexShrink: 0,
+      fontFamily: fonts.serifSemiBold,
+      ...textScale["3xl"],             // 22px / 30 line-height
+      color: colors.textPrimary,
+      marginBottom: spacingScale.sm,
     },
 
-    // Scrollable icon strip
-    iconScroll: {
-      flex: 1,
-    },
-    iconScrollContent: {
+    // Icon tally row — wraps gracefully on busy months
+    tallyRow: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
-      gap: spacingScale.md,
-      justifyContent: "flex-end",
+      gap: spacingScale.sm,
+      marginBottom: spacingScale.sm,
+    },
+
+    // Separator between tally groups
+    tallySep: {
+      ...textScale.xs,
+      color: colors.textMuted,
+      lineHeight: 16,
     },
 
     // One icon + count pair
-    iconItem: {
+    tallyItem: {
       flexDirection: "row",
       alignItems: "center",
       gap: 3,
     },
-    countText: {
-      fontSize: 10,
+    tallyCount: {
+      fontSize: 11,
       fontFamily: fonts.mono,
       color: colors.textTertiary,
-      lineHeight: 14,
+      lineHeight: 16,
     },
   });
 }
@@ -90,7 +98,7 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
 // ── component ─────────────────────────────────────────────────────────────────
 
 export interface MonthHeaderProps {
-  /** Full label string, e.g. "OCTOBER · 2026". */
+  /** Label string, e.g. "October · 2026" (title-case month, already formatted). */
   label: string;
   /** Pre-computed icon+count pairs for this month, sorted by count desc. */
   iconCounts: IconCount[];
@@ -103,28 +111,28 @@ export function MonthHeader({ label, iconCounts, colors, fonts }: MonthHeaderPro
 
   return (
     <View style={styles.container}>
+      {/* Section heading */}
       <Text style={styles.monthLabel}>{label}</Text>
 
+      {/* Icon tally — only rendered when there are counted entries */}
       {iconCounts.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.iconScroll}
-          contentContainerStyle={styles.iconScrollContent}
-        >
-          {iconCounts.map((ic) => (
-            <View key={`${ic.kind}-${ic.subkind ?? ""}`} style={styles.iconItem}>
-              <KindIcon
-                kind={ic.kind}
-                subkind={ic.subkind}
-                size={13}
-                color={colors.textTertiary}
-                accessibilityLabel=""
-              />
-              <Text style={styles.countText}>{ic.count}</Text>
-            </View>
+        <View style={styles.tallyRow}>
+          {iconCounts.map((ic, i) => (
+            <React.Fragment key={`${ic.kind}-${ic.subkind ?? ""}`}>
+              {i > 0 && <Text style={styles.tallySep}>·</Text>}
+              <View style={styles.tallyItem}>
+                <KindIcon
+                  kind={ic.kind}
+                  subkind={ic.subkind}
+                  size={12}
+                  color={colors.textTertiary}
+                  accessibilityLabel=""
+                />
+                <Text style={styles.tallyCount}>{ic.count}</Text>
+              </View>
+            </React.Fragment>
           ))}
-        </ScrollView>
+        </View>
       )}
     </View>
   );

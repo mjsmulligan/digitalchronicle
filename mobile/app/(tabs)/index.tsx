@@ -288,10 +288,9 @@ export default function ChronicleScreen() {
       if (monthKey !== currentMonth) {
         currentMonth = monthKey;
         const [yearStr, monthStr] = monthKey.split("-");
-        // Build a locale-independent label: "OCTOBER · 2026"
+        // Title-case month name: "October · 2026"
         const monthName = new Date(Number(yearStr), Number(monthStr) - 1, 1)
-          .toLocaleString("en-US", { month: "long" })
-          .toUpperCase();
+          .toLocaleString("en-US", { month: "long" });
         items.push({
           type: "month",
           key: `month-${monthKey}`,
