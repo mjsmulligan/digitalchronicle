@@ -1,6 +1,6 @@
 # Auto-import and review in the feed: Specification
 
-**Status:** Draft v0.3. Decisions from the first review are folded in (section 12). Open questions in section 11, one of which blocks WP12.
+**Status:** Draft v0.5. Decisions from the review so far are folded in (section 12). The remaining open questions in section 11 are small and none of them blocks a work package.
 **Location:** `docs/specs/auto-import.md`
 **Branching:** one feature branch per work package, e.g. `feat/auto-import-wp1`, merged by PR
 **Platform focus:** mobile first. The engine changes live in `src/lib/journal/` and are shared, so web is affected (see section 9).
@@ -41,13 +41,13 @@ Chronicle is a passive journal: activity is imported and the journal assembles i
 
 **Change:** remove the gate. After parsing and the dedup check, every record that is not a duplicate is written straight to the journal and marked as **new**. The user reviews it in the main feed: new entries carry a visible indicator, and the user keeps, corrects or hides each one in place.
 
-**Going further for connected sources:** sources that need no file (Goodreads, device calendar, photo library) are checked silently on every app start once connected, so the journal keeps itself current with no user action at all.
+**Going further for connected sources:** sources that need no file (Goodreads, device calendar, photo library) are checked silently on every app start once connected, so the journal keeps itself current with no user action at all. The photo library joins the same model: its day-level place entries are added to the feed as new entries instead of waiting in a Staging Hub, and the one-time cost of the first scan is accepted.
 
 **Design intent in one line:** import is one tap or no tap, review happens in the feed, and nothing is ever lost or locked in by the automatic step.
 
 ### Goals
 1. One-step import for every file and device source (no staging screen).
-2. Connected sources are checked silently on startup.
+2. Connected sources, including the photo library, are checked silently on startup.
 3. New and changed entries are visibly marked in the feed until the user has looked at them.
 4. Safe by default: a hidden entry does not come back on the next sync, a whole import can be undone, and a bulk "mark all new as read" exists for when volume is high.
 5. Re-importing the same data is a no-op.
@@ -55,7 +55,7 @@ Chronicle is a passive journal: activity is imported and the journal assembles i
 ### Non-goals (this spec)
 - Redesigning source precedence (tiers). `classify()` keeps its current rules and stays one swappable function, because the tier model is due its own spec.
 - Contacts import. It creates People, not entries, and keeps its review panel.
-- Hard deletion of entries. Hide (soft delete) is the only removal (D5).
+- Hard deletion of entries. Hide (soft delete) is the only removal (D5), including for photo place entries (D12).
 - Background sync while the app is closed, push notifications, or direct API connectors beyond the three above.
 
 ---
@@ -78,7 +78,7 @@ Facts verified in code, so the next agent does not have to rediscover them.
 **Connected sources today (all manual)**
 - **Goodreads:** the user id is saved in `chronicle-prefs.json` (`goodreadsPrefs.ts`). `fetchGoodreadsShelfCsv` pages through the public RSS feed (up to 20 pages, stops when a page adds nothing new) and the result is staged.
 - **Device calendar:** `readDeviceCalendar(pastDays, futureDays)` calls `requestCalendarPermissionsAsync` (this would show a permission prompt, so it is not safe to call at startup), reads all event calendars, skips recurring events and untitled events, and builds `.ics` text for the iCalendar connector. Nothing about the connection is persisted.
-- **Photo library:** `useExifScan` runs the scan and `scanPrefs.ts` persists a scan marker (`lastScannedAt`, `scope`). `ScanScope` supports `all`, `date-range` and `albums`. Results become `PlaceEntry` rows with status `pending` in the Staging Hub.
+- **Photo library:** `useExifScan` runs the scan and `scanPrefs.ts` persists a scan marker (`lastScannedAt`, `scope`). `ScanScope` supports `all`, `date-range` and `albums`. `buildStagingPlan` (`sources/exif/stagingService.ts`) turns the built day-level entries into new `PlaceEntry` rows with status `pending`, skips entries that are already `pending` or `dismissed`, skips photos covered by a `PlaceBinMarker`, and only extends the photo evidence of `accepted` entries. The scan writes straight to `placeEntries` (it does not use the `staging` store).
 - **Startup:** `mobile/app/_layout.tsx` boots the adapter, `initJournal`, artwork providers and `enrichAll` (fire and forget), then handles an initial share-intent URL.
 
 **Things that matter for this change**
@@ -88,6 +88,7 @@ Facts verified in code, so the next agent does not have to rediscover them.
 4. **Enrichment runs at app start.** `enrichAll` (posters, covers) is called from `mobile/app/_layout.tsx` on boot. New entries would wait for the next launch unless the import triggers it.
 5. **Database rule.** `db.ts` documents a migration rule (bump `DB_VERSION`, add an IDB upgrade, a boot migration, a `SQLiteAdapter` equivalent, and an idempotence test) for any change to stored record shapes. Adding a store is covered by it. Adding optional fields that default to "absent means reviewed" needs no backfill.
 6. **Hide already has a home.** `hideMany` and `unhideMany` exist in `db.ts`, and Settings has a Hidden Entries screen (`mobile/app/hidden-entries.tsx`) with a count. Nothing new is needed to review and unhide.
+7. **Photo place entries have a second lifecycle.** `allEntries` includes a `PlaceEntry` only when its status is `accepted`, so `pending` and `dismissed` entries are invisible to the feed. Dismissing is a separate removal path from hide, and `emptyBin` hard-deletes dismissed entries and keeps only a `PlaceBinMarker` (photo ids) so a rescan skips them. The scan writes directly to `placeEntries`, so it also has no run record. The user already has scan results on the device from the first implementation.
 
 ---
 
@@ -170,6 +171,14 @@ type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-du
 
 `removed` means the `dedupeKey` matches a `hidden` entry. It is skipped and counted.
 
+### 4.4 Photo place entries
+
+- New `PlaceEntry` rows from a scan are written with `status: "accepted"` and `unreviewed: "new"`, with `importId` pointing at an `ImportRun` (`source: "photo-library"`, `filename: "Photo library scan"`). They appear in the feed like any other entry.
+- `pending` and `dismissed` are no longer produced. Hiding a place entry uses the same `hidden` flag as every other entry (D12). `PlaceBinMarker` rows that already exist keep working: a rescan still skips photos covered by a marker. No new markers are created and `emptyBin` is retired (WP12c).
+- Extending the photo evidence of an existing entry changes no flag.
+- No per-place mute in v1 (D14). Revisit after real use of the photo source.
+- Existing `pending` and `dismissed` rows are migrated at boot (section 8).
+
 ---
 
 ## 5. Engine behaviour
@@ -232,7 +241,7 @@ export async function markAllReviewed(): Promise<number>;   // Settings: mark al
 
 WP4 lists every UI call site that writes a user edit (entry edit screen, reflection editor, participant picker, trip attach, hide) and routes it through one `saveUserEdit(entry)` that strips `unreviewed` and `importNotes` before `putMany`. Connector writes and imports never go through it.
 
-`markAllReviewed` clears `unreviewed` and `importNotes` on every entry that has them, in chunks, and returns the count. It does not touch pending photo place entries, which have their own review model.
+`markAllReviewed` clears `unreviewed` and `importNotes` on every entry that has them, in chunks, and returns the count. It covers photo place entries too, since they carry the same flag.
 
 ### 5.5 Enrichment after import
 
@@ -293,8 +302,8 @@ Each connected source also has `autoCheck` (default true once connected). It is 
 - Known limit: renaming an event in the calendar after it was imported creates a second entry, because the title is part of the key. The first one stays as it is and the user can hide it.
 
 **Photo library**
-- Needs a new scan scope, `{ kind: "since"; timestamp: string }`, applied on top of the stored scope (albums or date range) so only photos added after `lastScannedAt` are read and geocoded (WP12).
-- Result handling is **not** auto-add. New day-level place entries enter the Staging Hub as `pending`, exactly as a manual scan does today, because the earlier decision was that every place entry waits for confirmation (Q1, assumption A1).
+- Needs a new scan scope, `{ kind: "since"; timestamp: string }`, applied on top of the stored scope (albums or date range) so only photos added after `lastScannedAt` are read and geocoded (WP12b).
+- Results are added to the feed. New day-level place entries are written as `accepted` and flagged `new` (4.4), the same as every other source, and recorded in an `ImportRun`. The user accepted the flooding risk for photos (D11): the first scan is a one-time cost, and after that each launch only adds the days since the last check.
 - Cap of 500 new photos per startup check (a constant). The rest are picked up on the next launch. A manual scan is not capped.
 - The scan marker advances only when a check completes.
 
@@ -307,9 +316,10 @@ Each connected source also has `autoCheck` (default true once connected). It is 
 
 ### 6.5 Volume
 
-Silent checks and large files can add many entries at once (a first Goodreads connect, a 4,000 row Netflix history, a calendar backfill). There is no size threshold and no per-source gate (D3). The mitigations are:
+Silent checks and large files can add many entries at once (a first Goodreads connect, a 4,000 row Netflix history, a calendar backfill, the first photo library scan). There is no size threshold and no per-source gate (D3). The mitigations are:
 - **Settings > Mark all new as read** (7.5): one action clears every flag.
 - `Keep all` in the New filter, `Keep all from this import` and `Undo import` in Recent imports (7.3, 7.4).
+- For photos, bulk hide by place, region or country in the Places screen (7.7), targets the usual noise source, the home place. A per-place mute is deferred until real use shows it is needed (D14).
 - The flag never blocks anything: unreviewed entries are ordinary entries for search, trips, culture and enrichment.
 
 ### 6.6 Privacy
@@ -351,7 +361,7 @@ After a user-started import (file picker, share intent, Connect or Check now on 
 
 ### 7.4 Signalling
 
-- The dot on the sources icon shows when the `unreviewed` count is above zero or pending place entries exist. No count badge, no banner at the top of the feed, no inbox icon, per the earlier mobile decisions.
+- The dot on the sources icon shows when the `unreviewed` count is above zero. Pending place entries no longer exist, so they no longer contribute. No count badge, no banner at the top of the feed, no inbox icon, per the earlier mobile decisions.
 - The Chronicle tab itself does not get a badge.
 
 ### 7.5 Settings
@@ -367,6 +377,16 @@ After a user-started import (file picker, share intent, Connect or Check now on 
 - Progress for manual imports uses the existing slim bar and `commitProgress`.
 - There is no legacy pending card: no staged batches exist (D4).
 
+### 7.7 Places screen (replaces the photo Staging Hub)
+
+The screens under `mobile/app/staging/` become a Places screen for managing what photo scans have added. Triage is no longer a gate, so this is optional housekeeping.
+
+- Same hierarchy as today (country, region, place), with entry counts and the unusual versus routine ordering from `stagingHints.ts`, which still helps decide what to hide.
+- Actions replace accept and dismiss: `Hide all` for a place, region or country (calls `hideMany`, clears flags) and `Keep all` (calls `markReviewed`). Per entry: Keep and Hide, as in the feed.
+- `Merge places` stays (spelling variants, `mergePlaces`).
+- The bin is removed. Hidden place entries are reviewed and unhidden in Settings > Hidden Entries, like everything else. `emptyBin` and `resetDecisions` are retired; existing markers keep working.
+- The entry point stays on the Sources photo card ("Manage places"). It has no count dot of its own.
+
 ---
 
 ## 8. Migration and compatibility
@@ -378,6 +398,7 @@ After a user-started import (file picker, share intent, Connect or Check now on 
 - `STORES` change follows the migration rule in `db.ts` (bump to 9, IDB upgrade, SQLite table, idempotence test).
 - Trip suggestions (`suggestTrips`, in-window suggestions on trip detail) keep using `allEntries`, so flagged entries take part. This is intentional: a freshly imported flight can start a suggested trip.
 - Prefs additions in `chronicle-prefs.json` are optional keys with defaults, so no migration.
+- Photo place entries: a boot migration (idempotent, in `db.ts`, with a `SQLiteAdapter` path and a test) maps `pending` to `accepted` with `unreviewed: "new"`, and `dismissed` to `accepted` with `hidden: true`. Scan results already on the device then show up in the feed and earlier dismissals stay hidden (D13). Existing `PlaceBinMarker` rows are left alone.
 
 ---
 
@@ -416,7 +437,9 @@ Each WP is one commit unless it genuinely needs more. Do one at a time, then sto
 
 - [ ] **WP10: sync runner.** A `connectedSources` module in `mobile/src/lib/` with the source registry, prefs keys, 6 hour throttle, foreground-only guard, single-flight use, `lastError`, and the startup hook in `mobile/app/_layout.tsx` (after `runAfterInteractions`). Add the per-source auto-check switch and "Check now" and status line on cards, and the master switch in Settings. *Done when:* a fake source proves the runner is sequential, throttled, silent on success and failure, and does not advance `lastCheckedAt` on failure; no dialog or progress UI appears on startup.
 - [ ] **WP11: Goodreads and calendar sources.** Goodreads: `knownIds` option on `fetchGoodreadsShelfCsv`, startup path through `importFile`. Calendar: persist Connect state and chosen calendars, calendar picker at Connect with the default exclusion rule, silent permission check (`getCalendarPermissionsAsync`), incremental window with 7 day overlap, ended events only. *Done when:* verified on a device: a normal launch makes one Goodreads request when nothing is new; a revoked calendar permission produces no prompt and shows "Permission needed"; a new calendar event appears flagged `new` after the next launch.
-- [ ] **WP12: photo library source (blocked by Q1).** Add `{ kind: "since" }` scope, startup check with the 500 photo cap, results into the Staging Hub as pending, marker advances on completion only. *Done when:* verified on a device: new photos since the last scan produce pending entries on the next launch; nothing is added to the feed without confirmation (or per Q1's answer); no prompt when permission is revoked.
+- [ ] **WP12a: photo entries join auto-import (engine and migration).** Change `buildStagingPlan` to create `accepted` entries flagged `new` with `importId`, write an `ImportRun` (`source: "photo-library"`) when entries are added, keep the marker rule and evidence extension. Add the boot migration for legacy `pending` and `dismissed` rows. Update `useExifScan` to write the run. *Done when:* `exif-v2.test.ts` is updated and green; tests cover a new entry flagged, a re-scan being a no-op with no run row, evidence extension changing no flag, marker skip, and the migration being idempotent on both adapter paths; `bun run test` green.
+- [ ] **WP12b: photo startup check.** Add the `{ kind: "since" }` scope, register the photo source with the sync runner (WP10), apply the 500 photo cap, advance the marker on completion only, never prompt if permission is revoked. *Done when:* verified on a device: new photos since the last scan produce flagged entries on the next launch with no dialog; revoked permission shows "Permission needed" and no prompt.
+- [ ] **WP12c: Places screen.** Rework `mobile/app/staging/*` into the Places screen (7.7): bulk Keep and Hide by place, region and country, per-entry actions, merge places; retire the bin, `emptyBin` and `resetDecisions`; remove pending place entries from the tab dot. *Done when:* hiding a place hides all its entries and they appear in Hidden Entries; unhide returns them; the dot reflects only `unreviewed`; checked in all three themes.
 
 ### Phase 4: web
 
@@ -435,13 +458,14 @@ Later phases have goals but not yet detailed tasks. Propose the breakdown and wa
 
 Recommendations are mine. Anything marked BLOCKING stops its WP.
 
-- **Q1 (BLOCKING WP12): what does the photo startup check produce?** Assumption A1: new photos produce `pending` place entries in the Staging Hub, as a manual scan does, because each place entry was decided to wait for confirmation. The alternative is to auto-add them as flagged entries, which would flood the feed with day-level places. Confirm A1 or say otherwise.
+- **Q1 (closed, deferred): mute a place?** Not in v1 (D14). The home place will add entries on most days, which is accepted for now. Revisit with real usage; the options then are an optional `Place.muted` switch or relying on bulk hide and Mark all as read.
 - **Q2: what clears the flag.** Recommend any user-authored change including hide and trip attach (5.4). Alternative: trip links do not count.
 - **Q3: flag replaced entries as Updated?** Recommend yes, so an automatic replacement is never silent. Alternative: replace silently when the user has not touched the entry.
 - **Q4: suspected duplicate flights.** Recommend import with a note (5.3) rather than skip. Alternative: keep skipping and count them in the summary.
 - **Q5: precedence redesign.** The tier model is due its own spec. Auto-applying `supersedes` depends on it. This spec isolates `classify()` so the redesign can replace it, and marks replaced entries `updated` so a change of source data stays visible either way.
 - **Q6: is the app live?** `db.ts` still carries the go-live migration rule. This spec treats the `importRuns` store as a normal migration. If dev data can still be reset, WP1 can skip upgrade tests for old versions.
 - **Q7: tunable defaults.** Startup interval 6 hours, photo cap 500 per launch, calendar overlap 7 days, default calendar selection excludes non-modifiable calendars. Confirm or adjust.
+- **Q8 (closed): photo migration mapping.** Confirmed (D13): `pending` become flagged new and `dismissed` become hidden.
 
 ---
 
@@ -459,13 +483,19 @@ Recommendations are mine. Anything marked BLOCKING stops its WP.
 | D8 | 2026-10-17 | Add `importRuns` store with replaced snapshots, persisted only when a run changes something | Needed for undo, bulk keep and the summary; silent checks leave no clutter |
 | D9 | 2026-10-17 | Classification includes hidden entries (`removed`) | Hiding must survive re-import and silent checks |
 | D10 | 2026-10-17 | Keep `stageFile` and `commitBatch` until web moves (WP15) | Avoid a big-bang change and keep tests green |
-| D11 | 2026-10-17 | Photo startup check feeds the Staging Hub as pending (assumption A1, Q1) | Earlier decision that each place entry waits for confirmation |
+| D11 | 2026-10-17 | Photo place entries are auto-added as accepted and flagged new, like every other source. Flooding risk accepted: a one-time cost at the first scan, then only the days since the last check | User decision. Replaces the earlier rule that each place entry waits for confirmation |
+| D12 | 2026-10-17 | The photo bin and dismiss are replaced by hide. Existing `PlaceBinMarker` rows keep working, no new ones are created | Extends D5 to photos: one removal model |
+| D13 | 2026-10-17 | Legacy `pending` and `dismissed` place entries are migrated at boot: pending become flagged new, dismissed become hidden | Scan results from the first implementation already exist on the device |
+| D14 | 2026-10-17 | No per-place mute in v1. Revisit after real use of the photo source | User decision: gather real usage before adding a control. Bulk hide in the Places screen covers the home place meanwhile |
 
 ---
 
 ## 13. Progress log
 
 Newest first. One entry per session.
+
+- **2026-10-17 (design session, no code, update 4):** Deferred the per-place mute until there is real usage (D14, Q1 closed) and confirmed the photo migration mapping (D13, Q8 closed). WP12a no longer waits on a question. Next: WP1.
+- **2026-10-17 (design session, no code, update 3):** Photo place entries now join auto-import: added as accepted and flagged new, bin and dismiss replaced by hide (D11, D12). Read `buildStagingPlan` and `useExifScan` to ground this: the scan currently creates `pending` entries invisible to the feed and writes straight to `placeEntries`. Split WP12 into 12a (engine and migration), 12b (startup check), 12c (Places screen). New open questions: Q1 (mute a place, to handle the home place) and Q8 (migration mapping). Next: answer Q1, then WP1.
 
 - **2026-10-17 (design session, no code, update 2):** Folded in the first round of decisions: connected sources check silently on startup (new section 6), Settings "Mark all new as read" as the volume mitigation, no legacy staging data, hide as the only removal with Settings review and unhide (undo now hides). Added WP8 and WP10 to WP12, renumbered web and cleanup. Open: Q1 (photo check), Q2 to Q7. Next: answer Q1, then WP1.
 - **2026-10-17 (design session, no code):** Reviewed `staging.ts`, `db.ts`, `types.ts`, the connector contract, mobile Sources, share intent, BatchReview, the place staging hub and the feed. Found that hidden entries are not part of the dedup lookup (section 2, item 1). Wrote the first draft of this spec.
