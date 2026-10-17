@@ -45,3 +45,13 @@ export interface StorageAdapter {
   /** Wipe all stores — equivalent to replaceAll with empty arrays. */
   clearAll(): Promise<void>;
 }
+
+/**
+ * SQL the mobile adapter runs to create one store's table. Idempotent
+ * (`IF NOT EXISTS`), so adding a store to STORES creates its table on the next
+ * launch with no separate migration. Kept here, free of expo imports, so it can
+ * be tested in node.
+ */
+export function storeTableSql(store: StoreName): string {
+  return `CREATE TABLE IF NOT EXISTS "${store}" (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL)`;
+}

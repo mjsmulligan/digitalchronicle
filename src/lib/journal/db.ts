@@ -8,7 +8,32 @@ import type { StorageAdapter, Row } from "./storage";
 // ─── IndexedDB implementation ─────────────────────────────────────────────────
 
 const DB_NAME = "waypoint-journal";
-const DB_VERSION = 8; // v8: DM4 — removed placeEvents store, renamed places→gazetteer
+// v8: DM4, removed placeEvents store, renamed places→gazetteer
+// v9: auto-import, added the importRuns store (the new Base fields are optional, so no backfill)
+const DB_VERSION = 9;
+
+/** The slice of IDBDatabase that the upgrade needs. Lets tests run it without a browser. */
+export interface UpgradableDB {
+  objectStoreNames: { contains(name: string): boolean };
+  createObjectStore(name: string, options?: { keyPath?: string }): unknown;
+  deleteObjectStore(name: string): void;
+}
+
+/**
+ * Brings an IndexedDB database up to the current schema. Idempotent: running it
+ * again on an up-to-date database changes nothing. Runs inside onupgradeneeded.
+ */
+export function applyUpgrade(db: UpgradableDB, oldVersion: number): void {
+  // Create any missing stores (covers fresh installs and every upgrade, including v9 importRuns)
+  for (const s of STORES) {
+    if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: "id" });
+  }
+  // v8: remove legacy stores
+  if (oldVersion < 8) {
+    if (db.objectStoreNames.contains("placeEvents")) db.deleteObjectStore("placeEvents");
+    if (db.objectStoreNames.contains("places")) db.deleteObjectStore("places");
+  }
+}
 
 /**
  * MIGRATION RULE (DM10 — go-live gate)
@@ -28,17 +53,7 @@ class IDBAdapter implements StorageAdapter {
       this.dbPromise = new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (event) => {
-          const db = req.result;
-          const oldVersion = event.oldVersion;
-          // Create any missing stores (covers fresh installs and upgrades)
-          for (const s of STORES) {
-            if (!db.objectStoreNames.contains(s)) db.createObjectStore(s, { keyPath: "id" });
-          }
-          // v8: remove legacy stores
-          if (oldVersion < 8) {
-            if (db.objectStoreNames.contains("placeEvents")) db.deleteObjectStore("placeEvents");
-            if (db.objectStoreNames.contains("places")) db.deleteObjectStore("places");
-          }
+          applyUpgrade(req.result, event.oldVersion);
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);

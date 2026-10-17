@@ -10,7 +10,7 @@
  */
 import * as SQLite from "expo-sqlite";
 import { STORES, emptyJournalData, type JournalData, type StoreName } from "@chronicle/journal/types";
-import type { StorageAdapter, Row } from "@chronicle/journal/storage";
+import { storeTableSql, type StorageAdapter, type Row } from "@chronicle/journal/storage";
 
 export class SQLiteAdapter implements StorageAdapter {
   private db: SQLite.SQLiteDatabase;
@@ -61,12 +61,7 @@ export class SQLiteAdapter implements StorageAdapter {
     // (SQLiteStatement.execute()) which is more robust on Android.
     await this.db.runAsync("PRAGMA journal_mode = WAL");
     for (const store of STORES) {
-      await this.db.runAsync(`
-        CREATE TABLE IF NOT EXISTS "${store}" (
-          id   TEXT PRIMARY KEY NOT NULL,
-          data TEXT NOT NULL
-        )
-      `);
+      await this.db.runAsync(storeTableSql(store));
     }
   }
 
