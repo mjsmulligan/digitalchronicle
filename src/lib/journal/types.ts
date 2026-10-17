@@ -92,6 +92,19 @@ interface Base {
    * Absent (undefined) means visible — the field is never set to `false`.
    */
   hidden?: true;
+  /**
+   * Set by automatic import (docs/specs/auto-import.md). Absent means the user
+   * has seen this entry.
+   *   "new"     was added by an import and has not been looked at.
+   *   "updated" an import replaced the source data of an entry that was already reviewed.
+   * Never set to false: clear it by deleting the key (same convention as `hidden`).
+   * Not to be confused with `review`, which is source-supplied text.
+   */
+  unreviewed?: "new" | "updated";
+  /** Id of the ImportRun that last wrote this entry. */
+  importId?: string;
+  /** Short notes from import that the user may want to see (e.g. possible duplicate). Max 3. */
+  importNotes?: string[];
 }
 
 export interface Leg extends Base {
@@ -409,6 +422,41 @@ export interface StagingBatch {
   errors: string[];
 }
 
+/** Why an incoming record was not written by an import. */
+export interface ImportSkipCounts {
+  /** Same or lower precedence than what already exists. */
+  duplicate: number;
+  /** Repeated inside the same file. */
+  inFile: number;
+  /** Matches an entry the user hid. */
+  removed: number;
+}
+
+/**
+ * One automatic import. Persisted only when the import added or updated at
+ * least one entry, so a check that finds nothing leaves no trace.
+ * Added entries are found by `entry.importId === run.id`.
+ */
+export interface ImportRun {
+  id: string;
+  /** Connector id, or "photo-library" for the photo scan. */
+  source: Source;
+  filename: string;
+  /** "manual" for user-started imports, "startup" for silent checks of connected sources. */
+  trigger: "manual" | "startup";
+  startedAt: string;
+  /** Absent while running or if the run was interrupted. */
+  finishedAt?: string;
+  status: "running" | "done" | "undone";
+  added: number;
+  updated: number;
+  skipped: ImportSkipCounts;
+  /** Parse errors reported by the connector. */
+  errors: string[];
+  /** Prior versions of entries this run replaced, so undo can restore them. */
+  replaced: { store: StoreName; before: Entry }[];
+}
+
 /** Transit place cache (airports and stations) used for coordinate and timezone lookup. */
 export interface GazetteerEntry {
   id: string;
@@ -442,6 +490,8 @@ export interface JournalData {
   placeEntries: PlaceEntry[];
   /** WP10: Minimal markers kept after the bin is emptied, so re-scan still skips dismissed photos */
   placeBinMarkers: PlaceBinMarker[];
+  /** Auto-import: one record per import that added or updated entries (see ImportRun) */
+  importRuns: ImportRun[];
 }
 
 export const STORES = [
@@ -449,6 +499,8 @@ export const STORES = [
   "series", "notes", "staging", "people", "gazetteer",
   // WP10
   "localityPlaces", "placeEntries", "placeBinMarkers",
+  // Auto-import (DB v9)
+  "importRuns",
 ] as const;
 export type StoreName = (typeof STORES)[number];
 

@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { clearAll, replaceAll, useJournal } from "@/lib/journal/db";
-import { STORES, type JournalData } from "@/lib/journal/types";
+import { STORES } from "@/lib/journal/types";
+import { toBackupData, fromBackupData } from "@/lib/journal/backup";
 import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@/lib/journal/artworkEnrichment";
 import { getPosterFetchEnabledPref, setPosterFetchEnabledPref, getBookCoverFetchEnabledPref, setBookCoverFetchEnabledPref } from "@/lib/posterPrefs";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ function Backup() {
     setFetchBookCoversEnabled(value);
     setBookCoverFetchEnabledPref(value);
   };
-  const data: JournalData = { trips: s.trips, legs: s.legs, stays: s.stays, events: s.events, films: s.films, episodes: s.episodes, books: s.books, series: s.series, notes: s.notes, staging: s.staging, people: s.people, gazetteer: s.gazetteer, localityPlaces: s.localityPlaces ?? [], placeEntries: s.placeEntries ?? [], placeBinMarkers: s.placeBinMarkers ?? [] };
+  const data = toBackupData(s);
   const size = new Blob([JSON.stringify(data)]).size;
 
   const exportJSON = () => {
@@ -62,12 +63,8 @@ function Backup() {
 
   const restore = async (file: File) => {
     try {
-      const parsed = JSON.parse(await file.text());
-      // Support old format (version: 1) and new format (schemaVersion: 1)
-      if (parsed.schemaVersion !== 1 && parsed.version !== 1) throw new Error("Unsupported backup version");
-      const d = parsed.data as Record<string, unknown>;
-      if (!STORES.some((k) => Array.isArray(d[k]))) throw new Error("Not a Chronicle backup");
-      const clean = Object.fromEntries(STORES.map((k) => [k, Array.isArray(d[k]) ? d[k] : []])) as unknown as JournalData;
+      // Accepts the old format (version: 1) and the new one (schemaVersion: 1)
+      const clean = fromBackupData(JSON.parse(await file.text()));
       await replaceAll(clean);
       toast.success("Journal restored from backup");
     } catch (e) {
