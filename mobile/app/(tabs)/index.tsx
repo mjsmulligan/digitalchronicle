@@ -13,8 +13,9 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useJournal, allEntries } from "@chronicle/journal/db";
+import { useJournal, allEntries, hideMany, markReviewed, storeFor } from "@chronicle/journal/db";
 import { type Entry, type JEvent, type Leg, type Person, entryTitle } from "@chronicle/journal/types";
+import { useDialog, Dialog } from "../../src/components/Dialog";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon } from "../../src/components/KindIcon";
 import { DayGroup, type DayGroupData } from "../../src/components/DayGroup";
@@ -302,6 +303,31 @@ export default function ChronicleScreen() {
   const router = useRouter();
   const { colors, fonts } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
+  const dialog = useDialog();
+
+  // ── long-press: Keep / Hide quick actions for unreviewed entries ──────────
+  const handleEntryLongPress = useCallback((entry: Entry) => {
+    if (!entry.unreviewed) return;
+    dialog.show({
+      title: entryTitle(entry),
+      message: entry.unreviewed === "new"
+        ? "Mark as reviewed, or hide this entry."
+        : "This entry was updated by a later import. Mark as reviewed, or hide it.",
+      actions: [
+        {
+          label: "Keep",
+          style: "default" as const,
+          onPress: () => void markReviewed(storeFor(entry), [entry.id]).catch(() => {}),
+        },
+        {
+          label: "Hide",
+          style: "destructive" as const,
+          onPress: () => void hideMany(storeFor(entry), [entry.id]).catch(() => {}),
+        },
+      ],
+      lockBackdrop: false,
+    });
+  }, [dialog]);
 
   // ── filter / search state ──────────────────────────────────────────────────
   const [filter, setFilter]     = useState<F>("all");
@@ -561,6 +587,7 @@ export default function ChronicleScreen() {
   );
 
   return (
+    <>
     <View style={styles.screenContainer}>
       {/* Active-filter pill — fixed between nav bar and list.
           Only visible when a filter or search is on; tapping scrolls to reveal
@@ -597,6 +624,7 @@ export default function ChronicleScreen() {
               colors={colors}
               fonts={fonts}
               onEntryPress={(entry) => router.push(`/entry/${entry.id}`)}
+              onEntryLongPress={handleEntryLongPress}
             />
           );
         }}
@@ -617,5 +645,7 @@ export default function ChronicleScreen() {
         removeClippedSubviews
       />
     </View>
+    <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
+    </>
   );
 }

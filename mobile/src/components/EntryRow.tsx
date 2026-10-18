@@ -114,6 +114,26 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       flexShrink: 0,
     },
     body: { flex: 1, minWidth: 0 },
+    titleRow: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      gap: spacingScale.xs,
+    },
+    unreviewedDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.accent,
+      flexShrink: 0,
+    },
+    titleText: {
+      ...textScale.feedTitle,
+      fontFamily: fonts.serifMedium,
+      color: colors.textPrimary,
+      fontWeight: "500",
+      flex: 1,
+    },
+    /** Keep the old "title" name so nothing else breaks — same style. */
     title: {
       ...textScale.feedTitle,
       fontFamily: fonts.serifMedium,
@@ -126,6 +146,13 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       color: colors.textTertiary,
       marginTop: 2,
     },
+    importNote: {
+      ...textScale.sm,
+      fontFamily: fonts.sans,
+      color: colors.textMuted,
+      marginTop: 2,
+      fontStyle: "italic" as const,
+    },
     label: {
       fontSize: 10,
       fontFamily: fonts.mono,
@@ -134,6 +161,17 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
       textTransform: "uppercase" as const,
       color: colors.textTertiary,
       marginTop: 3,           // align with first line of title
+      flexShrink: 0,
+      alignSelf: "flex-start",
+    },
+    labelNew: {
+      fontSize: 10,
+      fontFamily: fonts.mono,
+      fontWeight: "700",
+      letterSpacing: 0.8,
+      textTransform: "uppercase" as const,
+      color: colors.accent,
+      marginTop: 3,
       flexShrink: 0,
       alignSelf: "flex-start",
     },
@@ -169,6 +207,9 @@ export function EntryRow({ entry, colors, fonts, onPress, onLongPress }: EntryRo
   const subtitle = entryMeta(v);
   const label = entryLabel(v);
   const subkind = resolveSubkind(entry);
+  const unreviewed = entry.unreviewed;
+  const importNote = entry.importNotes?.[0];
+
   // For legs, prefer an operator-specific mark (e.g. "DB", "FS") over the
   // connector source mark (e.g. "viaduct"). Fall back to KindIcon if neither.
   const markId =
@@ -183,6 +224,9 @@ export function EntryRow({ entry, colors, fonts, onPress, onLongPress }: EntryRo
       ? (entry as PlaceEntry).photoEvidence.filter((r) => !r.missing && r.uri)
       : [];
 
+  const unreviewedLabel = unreviewed === "new" ? "NEW" : unreviewed === "updated" ? "UPDATED" : null;
+  const a11yLabel = unreviewedLabel ? `${title}, ${unreviewedLabel.toLowerCase()}` : title;
+
   return (
     <View>
       <Pressable
@@ -190,7 +234,7 @@ export function EntryRow({ entry, colors, fonts, onPress, onLongPress }: EntryRo
         onPress={onPress}
         onLongPress={onLongPress}
         accessibilityRole="button"
-        accessibilityLabel={title}
+        accessibilityLabel={a11yLabel}
       >
         {/* Leading: brand mark, or KindIcon fallback */}
         <View style={styles.markWrap}>
@@ -207,19 +251,29 @@ export function EntryRow({ entry, colors, fonts, onPress, onLongPress }: EntryRo
           )}
         </View>
 
-        {/* Body: title + optional subtitle + optional stars */}
+        {/* Body: dot + title + optional subtitle + optional stars + optional import note */}
         <View style={styles.body}>
-          <Text style={styles.title} numberOfLines={2}>{title}</Text>
+          <View style={styles.titleRow}>
+            {unreviewed && <View style={styles.unreviewedDot} />}
+            <Text style={styles.titleText} numberOfLines={2}>{title}</Text>
+          </View>
           {subtitle.length > 0 && (
             <Text style={styles.subtitle} numberOfLines={1}>{subtitle}</Text>
+          )}
+          {importNote && (
+            <Text style={styles.importNote} numberOfLines={1}>{importNote}</Text>
           )}
           {v.rating !== undefined && (
             <StarRating rating={v.rating} color={colors.star} size={11} />
           )}
         </View>
 
-        {/* Trailing: mono kind label */}
-        <Text style={styles.label}>{label}</Text>
+        {/* Trailing: NEW/UPDATED when unreviewed, otherwise kind label */}
+        {unreviewedLabel ? (
+          <Text style={styles.labelNew}>{unreviewedLabel}</Text>
+        ) : (
+          <Text style={styles.label}>{label}</Text>
+        )}
       </Pressable>
 
       {/* Photo strip — shown only for place-entry rows with evidence */}
