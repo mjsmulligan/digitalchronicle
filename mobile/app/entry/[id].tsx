@@ -15,7 +15,7 @@ import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
 import { mergeEntries } from "@chronicle/journal/merge";
@@ -571,7 +571,7 @@ export default function EntryDetailScreen() {
             tier: 1 as Tier,
             source: "manual" as const,
           };
-          await putMany(storeFor(entry), [updated]);
+          await saveUserEdit(updated as Entry);
           await hideMany(storeFor(other), [other.id]);
         } catch (err) {
           dialog.alert("Merge failed", String(err));
@@ -606,7 +606,7 @@ export default function EntryDetailScreen() {
         ...entry,
         participants: ids.length > 0 ? ids : undefined,
       };
-      await putMany(storeFor(entry), [updated]);
+      await saveUserEdit(updated as Entry);
     } catch (err) {
       dialog.alert("Could not save", String(err));
     }
