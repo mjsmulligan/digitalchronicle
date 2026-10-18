@@ -45,7 +45,6 @@ import { readDeviceContacts } from "../src/lib/deviceContacts";
 import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, spacing, radius, type ThemeColors, type ThemeFonts } from "../src/components/ThemeProvider";
-import { PlaceStagingCard } from "../src/components/PlaceStagingCard";
 import { ContactsReviewPanel, type ReviewContact, buildReviewContacts } from "../src/components/ContactsReviewPanel";
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { PhotoSourceEntry } from "../src/components/PhotoSourceEntry";
@@ -60,7 +59,6 @@ import {
   getGoodreadsUserId,
   setGoodreadsUserId,
 } from "../src/lib/goodreadsPrefs";
-import { useStagingHub } from "../src/lib/exif/useStagingHub";
 import {
   getSourceState,
   setSourceAutoCheck,
@@ -932,7 +930,6 @@ export default function SourcesScreen() {
   const { top } = useSafeAreaInsets();
   const { colors, fonts } = useTheme();
   const journal = useJournal();
-  const hub = useStagingHub();
   const dialog = useDialog();
 
   const [activeSource, setActiveSource] = useState<ActiveSource>(null);
@@ -1436,21 +1433,6 @@ export default function SourcesScreen() {
         <SectionLabel label="On device" colors={colors} />
 
         <PhotoSourceEntry />
-
-        {/* Place suggestions — shown until WP12c replaces this with the Places screen */}
-        {hub.hierarchy.some((cg) => cg.pendingCount > 0) && (
-          <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
-            <PlaceStagingCard
-              hub={hub}
-              router={router}
-              onConfirm={(title, msg, cta, fn) =>
-                dialog.confirm(title, msg, cta, fn)
-              }
-              colors={colors}
-              fonts={fonts}
-            />
-          </View>
-        )}
 
         <CalendarSourceCard
           active={activeSource === "calendar"}

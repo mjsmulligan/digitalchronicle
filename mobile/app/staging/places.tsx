@@ -1,105 +1,127 @@
 /**
- * Staging Hub — Places
+ * Places screen (WP12c)
  *
- * Mirrors the file-import BatchReview pattern:
- *   - Single list (no Suggestions / Ignored tabs)
- *   - All pending places shown with Switches (start ON = pre-accepted)
- *   - "Select all" / "Deselect all" quick links
- *   - Prominent "Accept X places to journal" commit button
- *   - On commit: ON → accepted, OFF → dismissed
+ * Shows all place entries that need review (unreviewed !== undefined && !hidden),
+ * grouped by country -> region -> place. Actions are immediate: no staging, no
+ * commit step.
  *
- * Hierarchy: country (chevron + switch) → region (chevron + switch) → place (switch)
+ * Hierarchy controls:
+ *   - Country header: "Keep all" / "Hide all" for all entries in that country
+ *   - Region sub-header: "Keep all" / "Hide all" for that region
+ *   - Place row: tap to open the detail screen; badge shows N to review
+ *
+ * emptyBin, resetDecisions, and the commit bar are retired (WP12c).
  */
 
 import React, { useCallback, useMemo, useState } from "react";
 import {
-  FlatList,
   Pressable,
   SectionList,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing, radius } from "../../src/components/ThemeProvider";
-import { useDialog, Dialog } from "../../src/components/Dialog";
 import { useStagingHub } from "../../src/lib/exif/useStagingHub";
 import type { PlaceGroup, RegionGroup, CountryGroup } from "../../src/lib/exif/useStagingHub";
 
-// ─── Date helpers ─────────────────────────────────────────────────────────────
+// ─── Inline action button pair ────────────────────────────────────────────────
 
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-function fmtDay(iso: string): string {
-  const d = new Date(iso + "T12:00:00");
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+function ActionButtons({
+  onKeep,
+  onHide,
+  colors,
+  fonts,
+}: {
+  onKeep: () => void;
+  onHide: () => void;
+  colors: any;
+  fonts: any;
+}) {
+  return (
+    <View style={{ flexDirection: "row", gap: 6 }}>
+      <Pressable
+        style={({ pressed }) => [
+          btnBase,
+          { backgroundColor: colors.surfaceAccent, opacity: pressed ? 0.7 : 1 },
+        ]}
+        onPress={onKeep}
+        hitSlop={6}
+      >
+        <Text style={[btnText, { color: colors.accent, fontFamily: fonts.sansMedium ?? fonts.sans }]}>
+          Keep
+        </Text>
+      </Pressable>
+      <Pressable
+        style={({ pressed }) => [
+          btnBase,
+          { backgroundColor: colors.surfaceMuted, opacity: pressed ? 0.7 : 1 },
+        ]}
+        onPress={onHide}
+        hitSlop={6}
+      >
+        <Text style={[btnText, { color: colors.textMuted, fontFamily: fonts.sansMedium ?? fonts.sans }]}>
+          Hide
+        </Text>
+      </Pressable>
+    </View>
+  );
 }
 
-function pluralDays(n: number): string {
-  return n === 1 ? "1 day" : `${n} days`;
-}
-
-// ─── Selection helpers ────────────────────────────────────────────────────────
-
-function regionPlaceIds(rg: RegionGroup): string[] {
-  return rg.places.filter((pg) => pg.pending.length > 0).map((pg) => pg.place.id);
-}
-
-function countryPlaceIds(cg: CountryGroup): string[] {
-  return cg.regions.flatMap(regionPlaceIds);
-}
+const btnBase: object = {
+  paddingHorizontal: 10,
+  paddingVertical: 5,
+  borderRadius: 6,
+};
+const btnText: object = {
+  fontSize: 12,
+  fontWeight: "600",
+};
 
 // ─── Place row ────────────────────────────────────────────────────────────────
 
 function PlaceRow({
   pg,
-  isOn,
-  onToggle,
   onPress,
+  onKeep,
+  onHide,
   colors,
   fonts,
   s,
 }: {
   pg: PlaceGroup;
-  isOn: boolean;
-  onToggle: (id: string, next: boolean) => void;
   onPress: () => void;
+  onKeep: () => void;
+  onHide: () => void;
   colors: any;
   fonts: any;
   s: any;
 }) {
-  if (pg.pending.length === 0) return null;
-
-  const days = pg.pending.map((e) => e.localDay).sort();
-  const dateLabel =
-    days.length === 1
-      ? fmtDay(days[0])
-      : `${fmtDay(days[0])} – ${fmtDay(days[days.length - 1])}`;
+  if (pg.unreviewedCount === 0) return null;
 
   return (
-    <View style={s.placeRow}>
-      <Pressable
-        style={({ pressed }) => [s.placeInfoPress, pressed && s.pressed]}
-        onPress={onPress}
-      >
+    <Pressable
+      style={({ pressed }) => [s.placeRow, pressed && s.pressed]}
+      onPress={onPress}
+    >
+      <View style={s.placeInfo}>
         <Text style={s.placeName}>{pg.place.locality}</Text>
         <Text style={s.placeMeta}>
-          {pluralDays(pg.pending.length)} · {dateLabel}
+          {pg.unreviewedCount} to review
         </Text>
-        {pg.pending.length > 1 && (
-          <Text style={[s.detailHint, { color: colors.accent }]}>Tap for per-day review</Text>
-        )}
-      </Pressable>
-      <Switch
-        value={isOn}
-        onValueChange={(next) => onToggle(pg.place.id, next)}
-        trackColor={{ true: colors.accent, false: colors.border }}
-        thumbColor={isOn ? colors.surface : colors.textMuted}
-        style={s.rowSwitch}
-      />
-    </View>
+      </View>
+      <View style={s.placeRight}>
+        <ActionButtons onKeep={onKeep} onHide={onHide} colors={colors} fonts={fonts} />
+        <Ionicons
+          name="chevron-forward"
+          size={13}
+          color={colors.textMuted}
+          style={{ marginLeft: 4 }}
+        />
+      </View>
+    </Pressable>
   );
 }
 
@@ -107,30 +129,28 @@ function PlaceRow({
 
 function RegionBlock({
   rg,
-  deselected,
-  onTogglePlace,
-  onToggleRegion,
   onPlacePress,
+  onKeepPlace,
+  onHidePlace,
+  onKeepRegion,
+  onHideRegion,
   colors,
   fonts,
   s,
 }: {
   rg: RegionGroup;
-  deselected: Set<string>;
-  onTogglePlace: (id: string, next: boolean) => void;
-  onToggleRegion: (ids: string[], next: boolean) => void;
   onPlacePress: (placeId: string) => void;
+  onKeepPlace: (placeId: string) => void;
+  onHidePlace: (placeId: string) => void;
+  onKeepRegion: (regionName: string) => void;
+  onHideRegion: (regionName: string) => void;
   colors: any;
   fonts: any;
   s: any;
 }) {
   const [expanded, setExpanded] = useState(true);
 
-  if (rg.pendingCount === 0) return null;
-
-  const ids = regionPlaceIds(rg);
-  // Region switch: ON if any place in region is selected
-  const regionOn = ids.some((id) => !deselected.has(id));
+  if (rg.unreviewedCount === 0) return null;
 
   return (
     <View style={s.regionBlock}>
@@ -139,21 +159,25 @@ function RegionBlock({
         <View style={s.regionLeft}>
           <Ionicons
             name={expanded ? "chevron-down" : "chevron-forward"}
-            size={14}
+            size={13}
             color={colors.textMuted}
             style={{ marginRight: 6 }}
           />
           <Text style={s.regionName}>{rg.region}</Text>
-          <Text style={s.regionCount}>{rg.pendingCount}</Text>
+          <View style={[s.badge, { backgroundColor: colors.surfaceAccent }]}>
+            <Text style={[s.badgeText, { color: colors.accent }]}>{rg.unreviewedCount}</Text>
+          </View>
         </View>
-        {/* Stop propagation so Switch doesn't toggle expand/collapse */}
-        <Pressable onPress={(e) => e.stopPropagation()}>
-          <Switch
-            value={regionOn}
-            onValueChange={(next) => onToggleRegion(ids, next)}
-            trackColor={{ true: colors.accent, false: colors.border }}
-            thumbColor={regionOn ? colors.surface : colors.textMuted}
-            style={s.rowSwitch}
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <ActionButtons
+            onKeep={() => onKeepRegion(rg.region)}
+            onHide={() => onHideRegion(rg.region)}
+            colors={colors}
+            fonts={fonts}
           />
         </Pressable>
       </Pressable>
@@ -164,62 +188,14 @@ function RegionBlock({
           <PlaceRow
             key={pg.place.id}
             pg={pg}
-            isOn={!deselected.has(pg.place.id)}
-            onToggle={onTogglePlace}
             onPress={() => onPlacePress(pg.place.id)}
+            onKeep={() => onKeepPlace(pg.place.id)}
+            onHide={() => onHidePlace(pg.place.id)}
             colors={colors}
             fonts={fonts}
             s={s}
           />
         ))}
-    </View>
-  );
-}
-
-// ─── Commit bar ───────────────────────────────────────────────────────────────
-
-function CommitBar({
-  selectedCount,
-  totalCount,
-  onCommit,
-  onSelectAll,
-  onDeselectAll,
-  colors,
-  fonts,
-  s,
-}: {
-  selectedCount: number;
-  totalCount: number;
-  onCommit: () => void;
-  onSelectAll: () => void;
-  onDeselectAll: () => void;
-  colors: any;
-  fonts: any;
-  s: any;
-}) {
-  return (
-    <View style={[s.commitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      {/* Quick links */}
-      <View style={s.quickLinks}>
-        <Pressable onPress={onSelectAll}>
-          <Text style={[s.quickLink, { color: colors.accent }]}>
-            Select all ({totalCount})
-          </Text>
-        </Pressable>
-        <Pressable onPress={onDeselectAll}>
-          <Text style={[s.quickLink, { color: colors.accent }]}>Deselect all</Text>
-        </Pressable>
-      </View>
-      {/* Commit button */}
-      <Pressable
-        style={[s.commitBtn, { backgroundColor: colors.accentBold }, !selectedCount && s.commitBtnDisabled]}
-        disabled={!selectedCount}
-        onPress={onCommit}
-      >
-        <Text style={[s.commitBtnText, { fontFamily: fonts.sansMedium ?? fonts.sans }]}>
-          Accept {selectedCount} {selectedCount === 1 ? "place" : "places"} to journal
-        </Text>
-      </Pressable>
     </View>
   );
 }
@@ -230,107 +206,50 @@ export default function StagingPlacesScreen() {
   const router = useRouter();
   const { colors, fonts } = useTheme();
   const s = useMemo(() => styles(colors, fonts), [colors, fonts]);
-  const dialog = useDialog();
   const hub = useStagingHub();
   const [expandedCountries, setExpandedCountries] = useState<Set<string>>(new Set());
 
-  // All pending place IDs across the hierarchy
-  const allPendingIds = useMemo(
-    () => new Set(hub.hierarchy.flatMap(countryPlaceIds)),
-    [hub.hierarchy],
-  );
-
-  // deselected: place IDs explicitly turned OFF by the user
-  // (new places from re-scan auto-start ON since they're not in this set)
-  const [deselected, setDeselected] = useState<Set<string>>(new Set());
-
-  // Count of pending places currently switched ON
-  const selectedCount = useMemo(
-    () => [...allPendingIds].filter((id) => !deselected.has(id)).length,
-    [allPendingIds, deselected],
-  );
-
-  // ── Toggle helpers ────────────────────────────────────────────────────────
-
-  const togglePlace = useCallback((id: string, next: boolean) => {
-    setDeselected((prev) => {
-      const s = new Set(prev);
-      if (next) s.delete(id);
-      else s.add(id);
-      return s;
-    });
-  }, []);
-
-  const toggleGroup = useCallback((ids: string[], next: boolean) => {
-    setDeselected((prev) => {
-      const s = new Set(prev);
-      for (const id of ids) {
-        if (next) s.delete(id);
-        else s.add(id);
-      }
-      return s;
-    });
-  }, []);
-
   const toggleCountryExpand = useCallback((country: string) => {
     setExpandedCountries((prev) => {
-      const s = new Set(prev);
-      if (s.has(country)) s.delete(country);
-      else s.add(country);
-      return s;
+      const next = new Set(prev);
+      if (next.has(country)) next.delete(country);
+      else next.add(country);
+      return next;
     });
   }, []);
 
-  const selectAll = useCallback(() => setDeselected(new Set()), []);
-  const deselectAll = useCallback(
-    () => setDeselected(new Set(allPendingIds)),
-    [allPendingIds],
-  );
-
-  // ── Commit ────────────────────────────────────────────────────────────────
-
-  const handleCommit = useCallback(async () => {
-    const toAccept = [...allPendingIds].filter((id) => !deselected.has(id));
-    const toIgnore = [...allPendingIds].filter((id) => deselected.has(id));
-    await Promise.all([
-      ...toAccept.map((id) => hub.acceptPlace(id)),
-      ...toIgnore.map((id) => hub.dismissPlace(id)),
-    ]);
-    setDeselected(new Set());
-  }, [allPendingIds, deselected, hub]);
-
-  // ── Section data ──────────────────────────────────────────────────────────
-
+  // SectionList sections: one section per country, items are regions
   const sections = useMemo(
     () =>
       hub.hierarchy
-        .filter((cg) => cg.pendingCount > 0)
+        .filter((cg) => cg.unreviewedCount > 0)
         .map((cg) => ({
           country: cg.country,
-          pendingCount: cg.pendingCount,
-          ids: countryPlaceIds(cg),
-          data: cg.regions.filter((rg) => rg.pendingCount > 0),
+          unreviewedCount: cg.unreviewedCount,
+          data: cg.regions.filter((rg) => rg.unreviewedCount > 0),
         })),
     [hub.hierarchy],
   );
+
+  const isEmpty = hub.totalUnreviewed === 0;
 
   return (
     <>
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: "Staging Hub",
+          headerTitle: "Places",
           headerStyle: { backgroundColor: colors.surface },
           headerTitleStyle: { fontFamily: fonts.serifSemiBold, color: colors.textBright },
           headerTintColor: colors.accent,
         }}
       />
 
-      {allPendingIds.size === 0 ? (
+      {isEmpty ? (
         <View style={s.empty}>
-          <Text style={s.emptyText}>No pending suggestions</Text>
+          <Text style={s.emptyText}>All caught up</Text>
           <Text style={s.emptySubtext}>
-            Run a photo scan to find places from your library.
+            No place suggestions to review. New ones appear here after a photo scan.
           </Text>
         </View>
       ) : (
@@ -339,21 +258,8 @@ export default function StagingPlacesScreen() {
           contentContainerStyle={{ paddingBottom: spacing["3xl"] }}
           sections={sections}
           keyExtractor={(rg) => `${rg.country ?? "?"}:${rg.region}`}
-          ListHeaderComponent={
-            <CommitBar
-              selectedCount={selectedCount}
-              totalCount={allPendingIds.size}
-              onCommit={handleCommit}
-              onSelectAll={selectAll}
-              onDeselectAll={deselectAll}
-              colors={colors}
-              fonts={fonts}
-              s={s}
-            />
-          }
           renderSectionHeader={({ section }) => {
             const expanded = !expandedCountries.has(section.country);
-            const countryOn = section.ids.some((id) => !deselected.has(id));
             return (
               <Pressable
                 style={s.countryHeader}
@@ -367,15 +273,16 @@ export default function StagingPlacesScreen() {
                     style={{ marginRight: 6 }}
                   />
                   <Text style={s.countryName}>{section.country}</Text>
-                  <Text style={s.countryCount}>{section.pendingCount} pending</Text>
+                  <Text style={s.countryCount}>
+                    {section.unreviewedCount} to review
+                  </Text>
                 </View>
                 <Pressable onPress={(e) => e.stopPropagation()}>
-                  <Switch
-                    value={countryOn}
-                    onValueChange={(next) => toggleGroup(section.ids, next)}
-                    trackColor={{ true: colors.accent, false: colors.border }}
-                    thumbColor={countryOn ? colors.surface : colors.textMuted}
-                    style={s.rowSwitch}
+                  <ActionButtons
+                    onKeep={() => hub.keepCountry(section.country)}
+                    onHide={() => hub.hideCountry(section.country)}
+                    colors={colors}
+                    fonts={fonts}
                   />
                 </Pressable>
               </Pressable>
@@ -388,10 +295,11 @@ export default function StagingPlacesScreen() {
               <RegionBlock
                 key={rg.region}
                 rg={rg}
-                deselected={deselected}
-                onTogglePlace={togglePlace}
-                onToggleRegion={toggleGroup}
                 onPlacePress={(id) => router.push(`/staging/place/${id}` as any)}
+                onKeepPlace={(id) => hub.keepPlace(id)}
+                onHidePlace={(id) => hub.hidePlace(id)}
+                onKeepRegion={(name) => hub.keepRegion(name)}
+                onHideRegion={(name) => hub.hideRegion(name)}
                 colors={colors}
                 fonts={fonts}
                 s={s}
@@ -400,8 +308,6 @@ export default function StagingPlacesScreen() {
           }}
         />
       )}
-
-      <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>
   );
 }
@@ -413,34 +319,6 @@ function styles(
   fonts: ReturnType<typeof useTheme>["fonts"],
 ) {
   return StyleSheet.create({
-    // Commit bar
-    commitCard: {
-      margin: spacing.lg,
-      borderRadius: radius.xl,
-      borderWidth: 1,
-      padding: spacing.md,
-    },
-    quickLinks: {
-      flexDirection: "row",
-      gap: spacing.base,
-      marginBottom: spacing.sm,
-    },
-    quickLink: {
-      fontSize: 12,
-      fontWeight: "600",
-    },
-    commitBtn: {
-      borderRadius: radius.lg,
-      paddingVertical: 13,
-      alignItems: "center",
-    },
-    commitBtnDisabled: { opacity: 0.4 },
-    commitBtnText: {
-      fontSize: 14,
-      color: "#fff",
-      fontWeight: "700",
-    },
-
     // Country header
     countryHeader: {
       flexDirection: "row",
@@ -489,13 +367,13 @@ function styles(
       color: colors.textSecondary,
       marginRight: spacing.xs,
     },
-    regionCount: {
-      fontSize: 12,
-      color: colors.accent,
-      backgroundColor: colors.surfaceAccent,
+    badge: {
       borderRadius: 8,
       paddingHorizontal: 6,
       paddingVertical: 2,
+    },
+    badgeText: {
+      fontSize: 12,
       fontFamily: fonts.sansMedium ?? fonts.sans,
     },
 
@@ -510,9 +388,13 @@ function styles(
       borderBottomColor: colors.borderFaint,
       backgroundColor: colors.bg,
     },
-    placeInfoPress: {
+    placeInfo: {
       flex: 1,
       paddingRight: spacing.sm,
+    },
+    placeRight: {
+      flexDirection: "row",
+      alignItems: "center",
     },
     pressed: { opacity: 0.7 },
     placeName: {
@@ -524,13 +406,6 @@ function styles(
     placeMeta: {
       fontSize: 12,
       color: colors.textMuted,
-    },
-    detailHint: {
-      fontSize: 11,
-      marginTop: 2,
-    },
-    rowSwitch: {
-      transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }],
     },
 
     // Empty state

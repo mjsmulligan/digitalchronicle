@@ -7,12 +7,11 @@
  * Designed to live on the Sources page. It can move to any screen without
  * changes to the underlying scan logic (useExifScan, buildStagingPlan, etc.).
  *
- * Props:
- *   onReviewSuggestions — called when the user taps the pending count badge;
- *                         the host screen navigates to the Staging Hub.
+ * WP12c: "Manage places" link navigates directly to /staging/places. No prop
+ * needed; the card uses its own useRouter. The link appears once a first scan
+ * has been run (lastScannedAt !== null). The pending count badge is retired.
  *
  * Internals:
- *   - Reads pending count from useJournal (no prop drilling needed).
  *   - Reads/writes the scan marker via scanPrefs (lastScannedAt, scope).
  *   - Runs the scan via useExifScan.
  */
@@ -26,11 +25,11 @@ import {
   Text,
   View,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useJournal } from "@chronicle/journal/db";
 import { useTheme, spacing, radius } from "./ThemeProvider";
 import { useExifScan } from "../lib/exif/useExifScan";
-import { getScanMarker, setScanMarker } from "../lib/exif/scanPrefs";
+import { getScanMarker } from "../lib/exif/scanPrefs";
 import type { ScanScope } from "../../../src/lib/journal/sources/exif/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,7 +48,9 @@ function fmtRelative(iso: string): string {
 function scopeLabel(scope: ScanScope): string {
   if (scope.kind === "all")        return "All time";
   if (scope.kind === "date-range") return `${scope.start} – ${scope.end}`;
-  return `${scope.albumIds.length} album${scope.albumIds.length !== 1 ? "s" : ""}`;
+  if (scope.kind === "albums")     return `${scope.albumIds.length} album${scope.albumIds.length !== 1 ? "s" : ""}`;
+  // "since" is used by startup checks internally; show it as the stored base scope
+  return "Incremental";
 }
 
 const SCOPES: { label: string; value: ScanScope }[] = [
@@ -66,21 +67,24 @@ const SCOPES: { label: string; value: ScanScope }[] = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-interface PhotoSourceEntryProps {
-  /** Navigate to the staging hub to review pending suggestions. */
-  onReviewSuggestions?: () => void;
-}
-
-export function PhotoSourceEntry({ onReviewSuggestions }: PhotoSourceEntryProps) {
+export function PhotoSourceEntry() {
+  const router = useRouter();
   const { colors, fonts } = useTheme();
   const s = useMemo(() => styles(colors, fonts), [colors, fonts]);
 
-  const journal     = useJournal();
   const { state: scan, start: startScan, cancel: cancelScan, reset: resetScan } = useExifScan();
 
   const [lastScannedAt, setLastScannedAt] = useState<string | null>(null);
   const [scope, setScope] = useState<ScanScope>({ kind: "all" });
   const [scopePickerOpen, setScopePickerOpen] = useState(false);
+
+  // Declare isActive here so the progress animation useEffect below can reference it.
+  const isActive =
+    scan.phase === "requesting-permissions" ||
+    scan.phase === "scanning"    ||
+    scan.phase === "geocoding"   ||
+    scan.phase === "building"    ||
+    scan.phase === "committing";
 
   // Animated progress bar — indeterminate while scanning, reaches 1.0 on done
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -115,26 +119,16 @@ export function PhotoSourceEntry({ onReviewSuggestions }: PhotoSourceEntryProps)
     });
   }, []);
 
-  // Persist marker after each successful scan
+  // Reload the marker from disk after each successful scan.
+  // useExifScan already writes the marker; we just re-read to pick up the
+  // updated lastScannedAt so the status line refreshes correctly.
   useEffect(() => {
     if (scan.phase === "done") {
-      setScanMarker(scope).then(() => {
-        setLastScannedAt(new Date().toISOString());
+      getScanMarker().then((m) => {
+        if (m) setLastScannedAt(m.lastScannedAt);
       });
     }
-  }, [scan.phase, scope]);
-
-  const pendingCount = useMemo(
-    () => (journal.placeEntries ?? []).filter((e) => e.status === "pending").length,
-    [journal.placeEntries],
-  );
-
-  const isActive =
-    scan.phase === "requesting-permissions" ||
-    scan.phase === "scanning"    ||
-    scan.phase === "geocoding"   ||
-    scan.phase === "building"    ||
-    scan.phase === "committing";
+  }, [scan.phase]);
 
   const handleScan = useCallback(() => {
     resetScan();
@@ -282,12 +276,10 @@ export function PhotoSourceEntry({ onReviewSuggestions }: PhotoSourceEntryProps)
         </View>
       )}
 
-      {/* Review link — shown when there are pending suggestions */}
-      {pendingCount > 0 && onReviewSuggestions && (
-        <Pressable style={s.reviewRow} onPress={onReviewSuggestions}>
-          <Text style={[s.reviewText, { color: colors.accent }]}>
-            Review {pendingCount} suggestion{pendingCount !== 1 ? "s" : ""}
-          </Text>
+      {/* Manage places link: appears once the user has run a scan at least once */}
+      {lastScannedAt !== null && (
+        <Pressable style={s.reviewRow} onPress={() => router.push("/staging/places" as any)}>
+          <Text style={[s.reviewText, { color: colors.accent }]}>Manage places</Text>
           <Ionicons name="chevron-forward" size={14} color={colors.accent} />
         </Pressable>
       )}
