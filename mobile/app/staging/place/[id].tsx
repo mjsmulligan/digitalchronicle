@@ -1,26 +1,26 @@
 /**
- * WP14 — Staging Hub: Locality detail.
+ * Place detail screen (WP12c)
  *
- * Shows all pending PlaceEntries for one Place, ordered by significance hints:
- *   - Unusual days (high photo count relative to the place's norm) shown first.
- *   - Routine days collapsed below in a "Show N routine days" group.
- *   - Single-photo days are never routine.
+ * Shows all unreviewed PlaceEntries for one Place. Actions are immediate:
+ * tapping "Keep" or "Hide" on any entry commits right away. No staging, no
+ * commit step.
  *
- * Each row has a Switch (deferred — no immediate commit) and tapping expands
- * a horizontal photo strip from the entry's photoEvidence refs.
- *
- * Header: "Select all · Deselect all" quick links + "Accept X days" commit btn.
+ * Layout:
+ *   - Header: place subtitle, "X to review" count, "Keep all" / "Hide all" bulk
+ *     buttons for the place, aliases if any.
+ *   - Unusual days first, then a collapsible "N routine days" group.
+ *   - Each entry row: date + photo count, "Keep" / "Hide" inline buttons,
+ *     tap-to-expand horizontal photo strip.
+ *   - Merge button in the navigation header (unchanged from WP14).
  */
 
 import React, { useState, useMemo } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Image,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -45,24 +45,23 @@ function fmtDay(iso: string): string {
 
 // ─── Entry row ────────────────────────────────────────────────────────────────
 //
-// Controlled row — parent owns selected state (deselected set pattern so new
-// entries start ON without needing a useEffect). Tap anywhere on the row body
-// to expand/collapse a horizontal photo strip.
+// Each row has immediate Keep / Hide buttons. Tap the row body to expand or
+// collapse the horizontal photo strip.
 
 function EntryRow({
   entry,
   unusual,
-  selected,
-  onToggle,
   expanded,
   onExpandToggle,
+  onKeep,
+  onHide,
 }: {
   entry: PlaceEntry;
   unusual: boolean;
-  selected: boolean;
-  onToggle: (next: boolean) => void;
   expanded: boolean;
   onExpandToggle: () => void;
+  onKeep: () => void;
+  onHide: () => void;
 }) {
   const { colors, fonts } = useTheme();
   const s = useMemo(() => rowStyles(colors, fonts), [colors, fonts]);
@@ -71,7 +70,7 @@ function EntryRow({
 
   return (
     <View style={[s.row, unusual && s.rowUnusual]}>
-      {/* Main row: tap body to expand photo strip, Switch on the right */}
+      {/* Main row */}
       <View style={s.mainRow}>
         <Pressable style={s.body} onPress={onExpandToggle}>
           <View style={s.titleRow}>
@@ -94,19 +93,26 @@ function EntryRow({
           </View>
         </Pressable>
 
-        {/* Prevent Switch tap from toggling the expand */}
-        <Pressable onPress={(e) => e.stopPropagation()}>
-          <Switch
-            value={selected}
-            onValueChange={onToggle}
-            trackColor={{ true: colors.accent, false: colors.border }}
-            thumbColor={selected ? colors.surface : colors.textMuted}
-            style={{ transform: [{ scaleX: 0.85 }, { scaleY: 0.85 }] }}
-          />
-        </Pressable>
+        {/* Immediate Keep / Hide buttons */}
+        <View style={s.buttons}>
+          <Pressable
+            style={({ pressed }) => [s.btnKeep, { opacity: pressed ? 0.7 : 1 }]}
+            onPress={onKeep}
+            hitSlop={6}
+          >
+            <Text style={[s.btnKeepText, { fontFamily: fonts.sansMedium ?? fonts.sans }]}>Keep</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [s.btnHide, { opacity: pressed ? 0.7 : 1 }]}
+            onPress={onHide}
+            hitSlop={6}
+          >
+            <Text style={[s.btnHideText, { fontFamily: fonts.sansMedium ?? fonts.sans }]}>Hide</Text>
+          </Pressable>
+        </View>
       </View>
 
-      {/* Photo strip — shown when expanded and we have URIs */}
+      {/* Photo strip */}
       {expanded && photos.length > 0 && (
         <ScrollView
           horizontal
@@ -148,7 +154,7 @@ function rowStyles(colors: any, fonts: any) {
       alignItems: "center",
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
-      gap: spacing.md,
+      gap: spacing.sm,
     },
     body: { flex: 1 },
     titleRow: {
@@ -169,6 +175,32 @@ function rowStyles(colors: any, fonts: any) {
     metaText: {
       fontSize: 12,
       color: colors.textMuted,
+    },
+    buttons: {
+      flexDirection: "row",
+      gap: 6,
+    },
+    btnKeep: {
+      backgroundColor: colors.surfaceAccent,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+    },
+    btnKeepText: {
+      fontSize: 12,
+      color: colors.accent,
+      fontWeight: "600",
+    },
+    btnHide: {
+      backgroundColor: colors.surfaceMuted,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 6,
+    },
+    btnHideText: {
+      fontSize: 12,
+      color: colors.textMuted,
+      fontWeight: "600",
     },
     stripScroll: {
       borderTopWidth: StyleSheet.hairlineWidth,
@@ -223,7 +255,7 @@ function MergeModal({
           </Text>
           <TextInput
             style={s.input}
-            placeholder="Search places…"
+            placeholder="Search places..."
             placeholderTextColor={colors.textMuted}
             value={query}
             onChangeText={setQuery}
@@ -320,22 +352,10 @@ export default function PlaceDetailScreen() {
 
   const [showRoutine, setShowRoutine] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
-
-  // Deferred selection: starts empty = all ON. Add id to deselect.
-  const [deselected, setDeselected] = useState<Set<string>>(new Set());
-  // Expanded rows for photo strips
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  // True while batchCommitEntries is in flight — freeze the button label
-  const [committing, setCommitting] = useState(false);
 
   const place = hub.places.find((p) => p.id === id);
-
-  const placeGroup = useMemo(() => {
-    return hub.hierarchy
-      .flatMap((cg) => cg.regions)
-      .flatMap((rg) => rg.places)
-      .find((pg) => pg.place.id === id);
-  }, [hub.hierarchy, id]);
+  const placeGroup = hub.placeGroupsById.get(id);
 
   if (!place || !placeGroup) {
     return (
@@ -346,47 +366,28 @@ export default function PlaceDetailScreen() {
     );
   }
 
-  const { unusual, routine } = placeGroup;
-  const pending = placeGroup.pending;
-
-  const allPendingIds = useMemo(
-    () => new Set(pending.map((e) => e.id)),
-    [pending],
-  );
-
-  const selectedCount = pending.filter((e) => !deselected.has(e.id)).length;
-
-  const toggleEntry = (entryId: string, next: boolean) => {
-    setDeselected((prev) => {
-      const s = new Set(prev);
-      if (next) s.delete(entryId);
-      else      s.add(entryId);
-      return s;
-    });
-  };
+  const { unusual, routine, unreviewed } = placeGroup;
 
   const toggleExpand = (entryId: string) => {
     setExpandedIds((prev) => {
-      const s = new Set(prev);
-      if (s.has(entryId)) s.delete(entryId);
-      else                 s.add(entryId);
-      return s;
+      const next = new Set(prev);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
     });
   };
 
-  const handleSelectAll   = () => setDeselected(new Set());
-  const handleDeselectAll = () => setDeselected(new Set(allPendingIds));
-
-  const handleCommit = () => {
-    const toAccept  = pending.filter((e) => !deselected.has(e.id));
-    const toDismiss = pending.filter((e) =>  deselected.has(e.id));
-    // Snapshot count before committing so the button label doesn't flicker
-    // as pending entries leave the list while the write completes.
-    setCommitting(true);
-    hub.batchCommitEntries(toAccept, toDismiss).then(() => router.back());
+  const handleKeepAll = () => hub.keepPlace(id);
+  const handleHideAll = () => {
+    dialog.confirm(
+      "Hide all entries",
+      `Hide all entries for ${place.locality}? They will no longer appear in your journal.`,
+      "Hide all",
+      () => hub.hidePlace(id),
+    );
   };
 
-  // Merge candidates: all OTHER places
+  // Merge candidates: all other places
   const mergeCandidates = hub.places
     .filter((p) => p.id !== id)
     .map((p) => ({ id: p.id, locality: p.locality, localityKey: p.localityKey }));
@@ -429,41 +430,33 @@ export default function PlaceDetailScreen() {
             <View style={s.header}>
               <Text style={s.subtitle}>{headerSubtitle}</Text>
               <Text style={s.metaLine}>
-                {pending.length} pending · {placeGroup.accepted.length} accepted
+                {unreviewed.length} to review
+                {place.aliasKeys && place.aliasKeys.length > 0
+                  ? ` · also: ${place.aliasKeys.join(", ")}`
+                  : ""}
               </Text>
-              {place.aliasKeys && place.aliasKeys.length > 0 && (
-                <Text style={s.aliasLine}>
-                  Also known as: {place.aliasKeys.join(", ")}
-                </Text>
+
+              {/* Bulk actions */}
+              {unreviewed.length > 0 && (
+                <View style={s.bulkRow}>
+                  <Pressable
+                    style={({ pressed }) => [s.bulkBtn, s.bulkKeep, { opacity: pressed ? 0.7 : 1 }]}
+                    onPress={handleKeepAll}
+                  >
+                    <Text style={[s.bulkBtnText, { color: colors.accent, fontFamily: fonts.sansMedium ?? fonts.sans }]}>
+                      Keep all
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [s.bulkBtn, s.bulkHide, { opacity: pressed ? 0.7 : 1 }]}
+                    onPress={handleHideAll}
+                  >
+                    <Text style={[s.bulkBtnText, { color: colors.textMuted, fontFamily: fonts.sansMedium ?? fonts.sans }]}>
+                      Hide all
+                    </Text>
+                  </Pressable>
+                </View>
               )}
-
-              {/* Quick links — Select all · Deselect all */}
-              <View style={s.quickRow}>
-                <Pressable onPress={handleSelectAll}>
-                  <Text style={s.quickLink}>Select all</Text>
-                </Pressable>
-                <Text style={s.quickSep}>·</Text>
-                <Pressable onPress={handleDeselectAll}>
-                  <Text style={s.quickLink}>Deselect all</Text>
-                </Pressable>
-              </View>
-
-              {/* Commit button — disabled + spinner while write is in flight */}
-              <Pressable
-                style={[
-                  s.commitBtn,
-                  (selectedCount === 0 || committing) && s.commitBtnDisabled,
-                ]}
-                onPress={!committing && selectedCount > 0 ? handleCommit : undefined}
-              >
-                {committing ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={s.commitBtnText}>
-                    Accept {selectedCount} day{selectedCount !== 1 ? "s" : ""} to journal
-                  </Text>
-                )}
-              </Pressable>
             </View>
 
             {/* Unusual section label */}
@@ -501,17 +494,17 @@ export default function PlaceDetailScreen() {
             <EntryRow
               entry={entry}
               unusual={item.type === "unusual"}
-              selected={!deselected.has(entry.id)}
-              onToggle={(next) => toggleEntry(entry.id, next)}
               expanded={expandedIds.has(entry.id)}
               onExpandToggle={() => toggleExpand(entry.id)}
+              onKeep={() => hub.keepEntry(entry)}
+              onHide={() => hub.hideEntry(entry)}
             />
           );
         }}
         ListEmptyComponent={
-          pending.length === 0 ? (
+          unreviewed.length === 0 ? (
             <View style={s.empty}>
-              <Text style={s.emptyText}>No pending days for {place.locality}</Text>
+              <Text style={s.emptyText}>All caught up for {place.locality}</Text>
             </View>
           ) : null
         }
@@ -558,41 +551,24 @@ function screenStyles(colors: any, fonts: any) {
       color: colors.textTertiary,
       marginBottom: spacing.md,
     },
-    aliasLine: {
-      fontSize: 11,
-      color: colors.textMuted,
-      marginBottom: spacing.sm,
-      fontStyle: "italic",
-    },
-    // Quick links: "Select all · Deselect all"
-    quickRow: {
+    bulkRow: {
       flexDirection: "row",
+      gap: spacing.sm,
+    },
+    bulkBtn: {
+      flex: 1,
+      paddingVertical: spacing.sm,
       alignItems: "center",
-      gap: spacing.xs,
-      marginBottom: spacing.sm,
-    },
-    quickLink: {
-      fontSize: 13,
-      color: colors.accent,
-    },
-    quickSep: {
-      fontSize: 13,
-      color: colors.textMuted,
-    },
-    // Single commit button
-    commitBtn: {
-      backgroundColor: colors.accentBold,
       borderRadius: radius.md,
-      paddingVertical: spacing.sm + 2,
-      alignItems: "center",
     },
-    commitBtnDisabled: {
-      opacity: 0.4,
+    bulkKeep: {
+      backgroundColor: colors.surfaceAccent,
     },
-    commitBtnText: {
-      fontSize: 14,
-      color: colors.white,
-      fontFamily: fonts.sansMedium ?? fonts.sans,
+    bulkHide: {
+      backgroundColor: colors.surfaceMuted,
+    },
+    bulkBtnText: {
+      fontSize: 13,
       fontWeight: "600",
     },
     sectionLabel: {

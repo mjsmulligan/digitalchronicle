@@ -1,35 +1,34 @@
 /**
  * WP14 — useStagingHub hook.
  *
- * Reads localityPlaces + placeEntries + placeBinMarkers from the journal store
- * and exposes:
- *   - Hierarchy: grouped by country → region → locality (Place)
- *   - Sorted pending entries per place (significance hints)
- *   - Bin entries (dismissed entries, sorted chronologically)
- *   - Async actions: acceptPlace, dismissPlace, acceptRegion, dismissRegion,
- *     acceptEntry, dismissEntry, restoreEntry, emptyBin, resetDecisions,
- *     mergePlaces
+ * Reads localityPlaces + placeEntries from the journal store and exposes:
+ *   - Hierarchy: grouped by country -> region -> locality (Place), filtered to
+ *     places with unreviewed entries so the Places screen focuses on what needs
+ *     attention (WP12c).
+ *   - placeGroupsById: all place groups (including those with 0 unreviewed) so
+ *     the detail screen can navigate to any place.
+ *   - Async actions: keepEntry, hideEntry, keepPlace, hidePlace, keepRegion,
+ *     hideRegion, keepCountry, hideCountry, mergePlaces.
  *
- * All actions write back to the DB via putMany/removeMany and trigger a
- * re-render via the useJournal subscription.
+ * emptyBin and resetDecisions are retired from the UI (WP12c). Existing
+ * PlaceBinMarker rows keep working: buildStagingPlan still skips photos covered
+ * by a marker. The underlying engine functions remain in stagingService.ts.
+ *
+ * All write actions use hideMany/markReviewed/putMany/removeMany from the DB
+ * module, which trigger a re-render via the useJournal subscription.
  */
 
 import { useMemo } from "react";
-import { useJournal, putMany, removeMany } from "@chronicle/journal/db";
-import type { Place, PlaceEntry, PlaceBinMarker } from "@chronicle/journal/types";
 import {
-  acceptEntry as _accept,
-  dismissEntry as _dismiss,
-  restoreEntry as _restore,
-  acceptPlaceEntries,
-  dismissPlaceEntries,
-  acceptRegionEntries,
-  dismissRegionEntries,
-  acceptCountryEntries,
-  dismissCountryEntries,
+  useJournal,
+  putMany,
+  removeMany,
+  hideMany,
+  markReviewed,
+} from "@chronicle/journal/db";
+import type { Place, PlaceEntry } from "@chronicle/journal/types";
+import {
   mergePlaces as _merge,
-  emptyBin as _emptyBin,
-  resetDecisions as _resetDecisions,
 } from "../../../../src/lib/journal/sources/exif/stagingService";
 import {
   sortEntriesByHints,
@@ -39,24 +38,25 @@ import {
 // ─── Derived hierarchy types ──────────────────────────────────────────────────
 
 export interface PlaceGroup {
-  place:    Place;
-  pending:  PlaceEntry[];   // hint-sorted — unusual first, routine last
-  unusual:  PlaceEntry[];
-  routine:  PlaceEntry[];
-  accepted: PlaceEntry[];
+  place:           Place;
+  /** Unreviewed entries for this place, hint-sorted (unusual first, routine last). */
+  unreviewed:      PlaceEntry[];
+  unusual:         PlaceEntry[];
+  routine:         PlaceEntry[];
+  unreviewedCount: number;
 }
 
 export interface RegionGroup {
-  region:      string;
-  country:     string;
-  places:      PlaceGroup[];
-  pendingCount: number;
+  region:          string;
+  country:         string;
+  places:          PlaceGroup[];
+  unreviewedCount: number;
 }
 
 export interface CountryGroup {
-  country:     string;
-  regions:     RegionGroup[];
-  pendingCount: number;
+  country:         string;
+  regions:         RegionGroup[];
+  unreviewedCount: number;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -64,48 +64,40 @@ export interface CountryGroup {
 export function useStagingHub() {
   const journal = useJournal();
 
-  const places   = journal.localityPlaces  ?? [];
-  const entries  = journal.placeEntries    ?? [];
-  const markers  = journal.placeBinMarkers ?? [];
-  const events   = journal.events          ?? [];
+  const places  = journal.localityPlaces  ?? [];
+  const entries = journal.placeEntries    ?? [];
+  const events  = journal.events          ?? [];
 
-  // ── Derived hierarchy (memo to avoid re-computing on every render) ──────────
-  const { hierarchy, binEntries } = useMemo(() => {
-    // Group entries by placeId
-    const pendingByPlace  = new Map<string, PlaceEntry[]>();
-    const acceptedByPlace = new Map<string, PlaceEntry[]>();
-    const dismissed: PlaceEntry[] = [];
-
+  // ── Derived hierarchy ────────────────────────────────────────────────────
+  const { hierarchy, placeGroupsById } = useMemo(() => {
+    // Collect unreviewed (non-hidden) entries per place
+    const unreviewedByPlace = new Map<string, PlaceEntry[]>();
     for (const e of entries) {
-      if (e.status === "pending") {
-        if (!pendingByPlace.has(e.placeId)) pendingByPlace.set(e.placeId, []);
-        pendingByPlace.get(e.placeId)!.push(e);
-      } else if (e.status === "accepted") {
-        if (!acceptedByPlace.has(e.placeId)) acceptedByPlace.set(e.placeId, []);
-        acceptedByPlace.get(e.placeId)!.push(e);
-      } else {
-        dismissed.push(e);
-      }
+      if (e.hidden || e.unreviewed === undefined) continue;
+      if (!unreviewedByPlace.has(e.placeId)) unreviewedByPlace.set(e.placeId, []);
+      unreviewedByPlace.get(e.placeId)!.push(e);
     }
 
-    // Build PlaceGroup for each place
-    const placeGroups = new Map<string, PlaceGroup>();
+    // Build a PlaceGroup for every place (even those with 0 unreviewed entries
+    // so the detail screen can open any place by ID).
+    const placeGroupsById = new Map<string, PlaceGroup>();
     for (const p of places) {
-      const pendingRaw = pendingByPlace.get(p.id) ?? [];
-      const sorted     = sortEntriesByHints(pendingRaw, entries, events);
+      const unreviewedRaw = unreviewedByPlace.get(p.id) ?? [];
+      const sorted        = sortEntriesByHints(unreviewedRaw, entries, events);
       const { unusual, routine } = partitionByRoutine(sorted, entries);
-      placeGroups.set(p.id, {
-        place:    p,
-        pending:  sorted,
+      placeGroupsById.set(p.id, {
+        place:           p,
+        unreviewed:      sorted,
         unusual,
         routine,
-        accepted: acceptedByPlace.get(p.id) ?? [],
+        unreviewedCount: sorted.length,
       });
     }
 
-    // Group by country → region
+    // Build hierarchy only from places that have at least one unreviewed entry
     const byCountry = new Map<string, Map<string, PlaceGroup[]>>();
-    for (const [, pg] of placeGroups) {
+    for (const [, pg] of placeGroupsById) {
+      if (pg.unreviewedCount === 0) continue;
       const country = pg.place.country ?? "Unknown";
       const region  = pg.place.region  ?? "—";
       if (!byCountry.has(country)) byCountry.set(country, new Map());
@@ -118,93 +110,95 @@ export function useStagingHub() {
     for (const [country, byRegion] of byCountry) {
       const regions: RegionGroup[] = [];
       for (const [region, pgs] of byRegion) {
-        const pendingCount = pgs.reduce((n, pg) => n + pg.pending.length, 0);
-        regions.push({ region, country, places: pgs, pendingCount });
+        const unreviewedCount = pgs.reduce((n, pg) => n + pg.unreviewedCount, 0);
+        regions.push({ region, country, places: pgs, unreviewedCount });
       }
-      // Sort regions: those with pending first, then alphabetically
+      // Most unreviewed first, then alphabetical
       regions.sort((a, b) => {
-        if (b.pendingCount !== a.pendingCount) return b.pendingCount - a.pendingCount;
+        if (b.unreviewedCount !== a.unreviewedCount) return b.unreviewedCount - a.unreviewedCount;
         return a.region.localeCompare(b.region);
       });
-      const pendingCount = regions.reduce((n, r) => n + r.pendingCount, 0);
-      hierarchy.push({ country, regions, pendingCount });
+      const unreviewedCount = regions.reduce((n, r) => n + r.unreviewedCount, 0);
+      hierarchy.push({ country, regions, unreviewedCount });
     }
-    // Sort countries: most pending first
-    hierarchy.sort((a, b) => b.pendingCount - a.pendingCount);
+    hierarchy.sort((a, b) => b.unreviewedCount - a.unreviewedCount);
 
-    // Bin entries sorted reverse-chronologically
-    const binEntries = dismissed.slice().sort((a, b) => b.localDay.localeCompare(a.localDay));
-
-    return { hierarchy, binEntries };
+    return { hierarchy, placeGroupsById };
   }, [places, entries, events]);
 
-  // ── Total pending count ────────────────────────────────────────────────────
-  const totalPending = useMemo(
-    () => entries.filter((e) => e.status === "pending").length,
+  // ── Total unreviewed count ────────────────────────────────────────────────
+  const totalUnreviewed = useMemo(
+    () => entries.filter((e) => !e.hidden && e.unreviewed !== undefined).length,
     [entries],
   );
 
   // ── Actions ────────────────────────────────────────────────────────────────
+  // All actions are immediate: no staging, no commit step.
+  // hideMany clears unreviewed flags. markReviewed clears them without hiding.
 
-  async function acceptSingleEntry(entry: PlaceEntry) {
-    const updated = _accept(entry);
-    await putMany("placeEntries", [updated]);
+  async function keepEntry(entry: PlaceEntry) {
+    if (entry.unreviewed === undefined) return;
+    await markReviewed("placeEntries", [entry.id]);
   }
 
-  async function dismissSingleEntry(entry: PlaceEntry) {
-    const updated = _dismiss(entry);
-    await putMany("placeEntries", [updated]);
+  async function hideEntry(entry: PlaceEntry) {
+    if (entry.hidden) return;
+    await hideMany("placeEntries", [entry.id]);
   }
 
-  async function restoreSingleEntry(entry: PlaceEntry) {
-    const updated = _restore(entry);
-    await putMany("placeEntries", [updated]);
+  async function keepPlace(placeId: string) {
+    const ids = entries
+      .filter((e) => e.placeId === placeId && !e.hidden && e.unreviewed !== undefined)
+      .map((e) => e.id);
+    if (ids.length) await markReviewed("placeEntries", ids);
   }
 
-  async function acceptPlace(placeId: string) {
-    const changed = acceptPlaceEntries(entries, placeId);
-    if (changed.length > 0) await putMany("placeEntries", changed);
+  async function hidePlace(placeId: string) {
+    // Hides all non-hidden entries for this place (reviewed and unreviewed).
+    const ids = entries
+      .filter((e) => e.placeId === placeId && !e.hidden)
+      .map((e) => e.id);
+    if (ids.length) await hideMany("placeEntries", ids);
   }
 
-  async function dismissPlace(placeId: string) {
-    const changed = dismissPlaceEntries(entries, placeId);
-    if (changed.length > 0) await putMany("placeEntries", changed);
+  async function keepRegion(regionName: string) {
+    const regionPlaceIds = new Set(
+      places.filter((p) => p.region === regionName).map((p) => p.id)
+    );
+    const ids = entries
+      .filter((e) => regionPlaceIds.has(e.placeId) && !e.hidden && e.unreviewed !== undefined)
+      .map((e) => e.id);
+    if (ids.length) await markReviewed("placeEntries", ids);
   }
 
-  async function acceptRegion(regionName: string) {
-    const changed = acceptRegionEntries(entries, places, regionName);
-    if (changed.length > 0) await putMany("placeEntries", changed);
+  async function hideRegion(regionName: string) {
+    const regionPlaceIds = new Set(
+      places.filter((p) => p.region === regionName).map((p) => p.id)
+    );
+    const ids = entries
+      .filter((e) => regionPlaceIds.has(e.placeId) && !e.hidden)
+      .map((e) => e.id);
+    if (ids.length) await hideMany("placeEntries", ids);
   }
 
-  async function dismissRegion(regionName: string) {
-    const changed = dismissRegionEntries(entries, places, regionName);
-    if (changed.length > 0) await putMany("placeEntries", changed);
+  async function keepCountry(countryName: string) {
+    const countryPlaceIds = new Set(
+      places.filter((p) => p.country === countryName).map((p) => p.id)
+    );
+    const ids = entries
+      .filter((e) => countryPlaceIds.has(e.placeId) && !e.hidden && e.unreviewed !== undefined)
+      .map((e) => e.id);
+    if (ids.length) await markReviewed("placeEntries", ids);
   }
 
-  async function acceptCountry(countryName: string) {
-    const changed = acceptCountryEntries(entries, places, countryName);
-    if (changed.length > 0) await putMany("placeEntries", changed);
-  }
-
-  async function dismissCountry(countryName: string) {
-    const changed = dismissCountryEntries(entries, places, countryName);
-    if (changed.length > 0) await putMany("placeEntries", changed);
-  }
-
-  /**
-   * Commit mixed accept/dismiss decisions for a set of entries in a single
-   * putMany call — avoids the N concurrent writes that would occur with
-   * Promise.all([...entries.map(acceptSingleEntry)]).
-   */
-  async function batchCommitEntries(
-    toAccept: PlaceEntry[],
-    toDismiss: PlaceEntry[],
-  ): Promise<void> {
-    const updated = [
-      ...toAccept.map(_accept),
-      ...toDismiss.map(_dismiss),
-    ];
-    if (updated.length > 0) await putMany("placeEntries", updated);
+  async function hideCountry(countryName: string) {
+    const countryPlaceIds = new Set(
+      places.filter((p) => p.country === countryName).map((p) => p.id)
+    );
+    const ids = entries
+      .filter((e) => countryPlaceIds.has(e.placeId) && !e.hidden)
+      .map((e) => e.id);
+    if (ids.length) await hideMany("placeEntries", ids);
   }
 
   async function mergePlaces(survivorId: string, absorbedId: string) {
@@ -213,7 +207,7 @@ export function useStagingHub() {
     if (!survivor || !absorbed) return;
 
     const merged = _merge(survivor, absorbed);
-    // Move absorbed's entries to survivor
+    // Move absorbed entries to survivor
     const movedEntries = entries
       .filter((e) => e.placeId === absorbedId)
       .map((e) => ({ ...e, placeId: survivorId }));
@@ -223,39 +217,22 @@ export function useStagingHub() {
     if (movedEntries.length > 0) await putMany("placeEntries", movedEntries);
   }
 
-  async function emptyBin() {
-    const { entriesToDelete, markersToCreate } = _emptyBin(entries);
-    if (markersToCreate.length > 0) await putMany("placeBinMarkers", markersToCreate);
-    if (entriesToDelete.length > 0) await removeMany("placeEntries", entriesToDelete);
-  }
-
-  async function resetDecisions() {
-    const { updatedEntries, markerIdsToDelete } = _resetDecisions(entries, markers);
-    if (updatedEntries.length > 0)  await putMany("placeEntries", updatedEntries);
-    if (markerIdsToDelete.length > 0) await removeMany("placeBinMarkers", markerIdsToDelete);
-  }
-
   return {
     // Data
     hierarchy,
-    binEntries,
-    totalPending,
+    placeGroupsById,
+    totalUnreviewed,
     places,
     entries,
-    markers,
     // Actions
-    acceptSingleEntry,
-    dismissSingleEntry,
-    restoreSingleEntry,
-    batchCommitEntries,
-    acceptPlace,
-    dismissPlace,
-    acceptRegion,
-    dismissRegion,
-    acceptCountry,
-    dismissCountry,
+    keepEntry,
+    hideEntry,
+    keepPlace,
+    hidePlace,
+    keepRegion,
+    hideRegion,
+    keepCountry,
+    hideCountry,
     mergePlaces,
-    emptyBin,
-    resetDecisions,
   };
 }

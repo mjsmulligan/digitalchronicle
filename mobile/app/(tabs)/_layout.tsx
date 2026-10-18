@@ -8,8 +8,8 @@ import { useJournal, allEntries } from "@chronicle/journal/db";
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
 /**
- * Shared top-bar right side: Sources icon (dot when anything is pending —
- * staged import batches OR pending place suggestions) + Settings icon.
+ * Shared top-bar right side: Sources icon (dot when any auto-imported entry
+ * has unreviewed !== undefined) + Settings icon.
  * Rendered on every tab via screenOptions.headerRight.
  */
 function HeaderRight({
