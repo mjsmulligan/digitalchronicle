@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, View } from "react-native";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { FloatingNavBar } from "../../src/components/FloatingNavBar";
-import { useJournal } from "@chronicle/journal/db";
+import { useJournal, allEntries } from "@chronicle/journal/db";
 
 type IoniconName = React.ComponentProps<typeof Ionicons>["name"];
 
@@ -56,10 +56,8 @@ export default function TabLayout() {
   const pathname = usePathname();
   const { colors, fonts } = useTheme();
   const journal = useJournal();
-  // Single dot covers file-import batches AND pending place suggestions
-  const pendingCount =
-    journal.staging.length +
-    (journal.placeEntries ?? []).filter((e) => e.status === "pending").length;
+  // Dot signals auto-imported entries waiting for review
+  const unreviewedCount = allEntries(journal).filter((e) => e.unreviewed !== undefined).length;
 
   // Derive active tab from current path so FloatingNavBar stays in sync
   // without needing the non-existent onIndexChange prop on Tabs.
@@ -99,7 +97,7 @@ export default function TabLayout() {
           },
           tabBarStyle: { display: "none" },
           // Shared top-bar right side on every tab (spec 6.2)
-          headerRight: () => <HeaderRight pendingCount={pendingCount} />,
+          headerRight: () => <HeaderRight pendingCount={unreviewedCount} />,
         }}
       >
       <Tabs.Screen

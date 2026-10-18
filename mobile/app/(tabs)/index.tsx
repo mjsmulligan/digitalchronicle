@@ -13,7 +13,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { FlatList, LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useJournal, allEntries, hideMany, markReviewed, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, hideMany, markReviewed, markAllReviewed, storeFor } from "@chronicle/journal/db";
 import { type Entry, type JEvent, type Leg, type Person, entryTitle } from "@chronicle/journal/types";
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
@@ -23,7 +23,7 @@ import { MonthHeader, type IconCount } from "../../src/components/MonthHeader";
 
 // ── filter types & helpers ────────────────────────────────────────────────────
 
-type F = "all" | "travel" | "film" | "episode" | "book" | "concert" | "social" | "milestone" | "memory";
+type F = "all" | "new" | "travel" | "film" | "episode" | "book" | "concert" | "social" | "milestone" | "memory";
 
 const FILTERS: { id: F; label: string }[] = [
   { id: "all",       label: "Everything" },
@@ -37,9 +37,10 @@ const FILTERS: { id: F; label: string }[] = [
   { id: "memory",    label: "Memories" },
 ];
 
-/** Icon to show for each kind filter button. `null` = render "All" as text. */
+/** Icon to show for each kind filter button. `null` = render as text. */
 const FILTER_ICONS: Record<F, { kind: string; subkind?: string } | null> = {
   all:       null,
+  new:       null,
   travel:    { kind: "leg",     subkind: "air" },
   film:      { kind: "film" },
   episode:   { kind: "episode" },
@@ -53,6 +54,7 @@ const FILTER_ICONS: Record<F, { kind: string; subkind?: string } | null> = {
 /** Short label shown in the active-filter pill. */
 const FILTER_SHORT: Record<F, string> = {
   all:       "Everything",
+  new:       "New",
   travel:    "Travel",
   film:      "Films",
   episode:   "TV",
@@ -66,6 +68,7 @@ const FILTER_SHORT: Record<F, string> = {
 /** Mirror of web `matches()` in src/routes/index.tsx */
 function matchesFilter(e: Entry, f: F): boolean {
   if (f === "all")     return true;
+  if (f === "new")     return e.unreviewed !== undefined;
   if (f === "travel")  return e.kind === "leg" || e.kind === "stay";
   if (f === "film")    return e.kind === "film";
   if (f === "episode") return e.kind === "episode";
@@ -249,6 +252,24 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     },
     personChipTextActive: { color: colors.accentSoft },
 
+    // ── Bulk-keep bar (fixed, shown when New filter is active) ─────────────
+
+    keepAllBar: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      paddingHorizontal: spacingScale.base,
+      paddingVertical: spacingScale.sm2,
+      backgroundColor: colors.surfaceAccentDeep,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    keepAllText: {
+      ...textScale.sm,
+      fontFamily: fonts.mono,
+      color: colors.accentSoft,
+    },
+
     // ── Empty state ────────────────────────────────────────────────────────
 
     empty: {
@@ -304,6 +325,12 @@ export default function ChronicleScreen() {
   const { colors, fonts } = useTheme();
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
   const dialog = useDialog();
+
+  // ── unreviewed count — drives New chip visibility and keep-all bar ────────
+  const unreviewedCount = useMemo(
+    () => allEntries(journal).filter((e) => e.unreviewed !== undefined).length,
+    [journal]
+  );
 
   // ── long-press: Keep / Hide quick actions for unreviewed entries ──────────
   const handleEntryLongPress = useCallback((entry: Entry) => {
@@ -538,6 +565,19 @@ export default function ChronicleScreen() {
           );
         })}
 
+        {/* New chip — only visible when entries are pending review; count capped at 99+ */}
+        {unreviewedCount > 0 && (
+          <Pressable
+            style={styles.kindBtn}
+            onPress={() => setFilter("new")}
+            accessibilityLabel={`New, ${unreviewedCount > 99 ? "99 plus" : unreviewedCount}`}
+          >
+            <Text style={[styles.kindAllText, { color: filter === "new" ? colors.accentSoft : colors.textMuted }]}>
+              {`New ${unreviewedCount > 99 ? "99+" : unreviewedCount}`}
+            </Text>
+          </Pressable>
+        )}
+
         {/* Person toggle — only shown when journal has people */}
         {journal.people.length > 0 && (
           <Pressable
@@ -599,6 +639,36 @@ export default function ChronicleScreen() {
           <Pressable onPress={clearFilter} hitSlop={8}>
             <Ionicons name="close" size={14} color={colors.accentSoft} />
           </Pressable>
+        </Pressable>
+      )}
+
+      {/* Bulk-keep bar — fixed strip when New filter is active */}
+      {filter === "new" && unreviewedCount > 0 && (
+        <Pressable
+          style={styles.keepAllBar}
+          onPress={() => {
+            const n = unreviewedCount;
+            dialog.show({
+              title: "Keep all",
+              message: `Mark all ${n} ${n === 1 ? "entry" : "entries"} as reviewed?`,
+              actions: [
+                {
+                  label: `Keep all ${n > 99 ? "99+" : n}`,
+                  style: "default" as const,
+                  onPress: () => { void markAllReviewed().catch(() => {}); },
+                },
+                {
+                  label: "Cancel",
+                  style: "cancel" as const,
+                  onPress: () => {},
+                },
+              ],
+            });
+          }}
+        >
+          <Text style={styles.keepAllText}>
+            {`Keep all ${unreviewedCount > 99 ? "99+" : unreviewedCount}`}
+          </Text>
         </Pressable>
       )}
 
