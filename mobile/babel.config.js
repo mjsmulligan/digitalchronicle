@@ -12,6 +12,7 @@ module.exports = function (api) {
             "@chronicle/journal/storage": "../src/lib/journal/storage",
             "@chronicle/journal/db": "../src/lib/journal/db",
             "@chronicle/journal/staging": "../src/lib/journal/staging",
+            "@chronicle/journal/import": "../src/lib/journal/import",
             "@chronicle/journal/connectors": "../src/lib/journal/connectors",
             "@chronicle/journal/contacts": "../src/lib/journal/contacts",
             "@chronicle/journal/merge": "../src/lib/journal/merge",
