@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { allEntries, putMany, useJournal } from "@/lib/journal/db";
+import { allEntries, putMany, markReviewed, storeFor, useJournal } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
 import { AddEntryDialog } from "@/components/journal/AddEntryDialog";
 import { PersonFilter } from "@/components/journal/PersonFilter";
@@ -27,7 +27,7 @@ export const Route = createFileRoute("/")({
   component: Chronicle,
 });
 
-const FILTERS = [
+const STATIC_FILTERS = [
   { id: "all", label: "Everything" },
   { id: "travel", label: "Travel" },
   { id: "concert", label: "Concerts" },
@@ -36,10 +36,11 @@ const FILTERS = [
   { id: "memory", label: "Memories" },
   { id: "notes", label: "Reflections" },
 ] as const;
-type F = (typeof FILTERS)[number]["id"];
+type F = (typeof STATIC_FILTERS)[number]["id"] | "new";
 
 function matches(e: Entry, f: F) {
   if (f === "all") return true;
+  if (f === "new") return e.unreviewed !== undefined;
   if (f === "travel") return e.kind === "leg" || e.kind === "stay";
   if (e.kind !== "event") return false;
   if (f === "social") return e.category === "gathering" || e.category === "celebration";
@@ -74,8 +75,14 @@ function Chronicle() {
   const [q, setQ] = useState("");
   const [newDay, setNewDay] = useState("");
   const [personId, setPersonId] = useState<string | null>(null);
+  const [keepingAll, setKeepingAll] = useState(false);
 
   const activePerson = personId ? s.people.find((p) => p.id === personId) ?? null : null;
+
+  const unreviewedCount = useMemo(
+    () => allEntries(s).filter((e) => e.unreviewed !== undefined).length,
+    [s],
+  );
 
   const days = useMemo(() => {
     const map = new Map<string, { entries: Entry[]; note?: Note }>();
@@ -101,6 +108,29 @@ function Chronicle() {
   const tripOf = (d: string) => s.trips.find((t) => d >= t.start && d <= t.end);
   const total = s.legs.length + s.stays.length + s.events.length;
 
+  // Keep all entries currently visible in the New filter
+  const handleKeepAll = async () => {
+    if (keepingAll) return;
+    const toKeep = allEntries(s).filter((e) => e.unreviewed !== undefined);
+    if (toKeep.length === 0) return;
+    // Group by store to batch the markReviewed calls
+    const byStore = new Map<string, string[]>();
+    for (const e of toKeep) {
+      const store = storeFor(e);
+      const ids = byStore.get(store) ?? [];
+      ids.push(e.id);
+      byStore.set(store, ids);
+    }
+    setKeepingAll(true);
+    try {
+      for (const [store, ids] of byStore) {
+        await markReviewed(store as Parameters<typeof markReviewed>[0], ids);
+      }
+    } finally {
+      setKeepingAll(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-3xl">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
@@ -115,13 +145,31 @@ function Chronicle() {
       </header>
       <div className="mb-6 space-y-2">
         <div className="flex flex-wrap gap-1">
-          {FILTERS.map((f) => (
+          {STATIC_FILTERS.map((f) => (
             <button key={f.id} onClick={() => setFilter(f.id)} className={cn("rounded-full border border-border px-3 py-1.5 text-sm", filter === f.id ? "bg-foreground text-background" : "hover:bg-accent")}>{f.label}</button>
           ))}
+          {unreviewedCount > 0 && (
+            <button
+              onClick={() => setFilter(filter === "new" ? "all" : "new")}
+              className={cn("rounded-full border px-3 py-1.5 text-sm", filter === "new" ? "border-primary bg-primary text-primary-foreground" : "border-primary/50 text-primary hover:bg-primary/10")}
+            >
+              New {unreviewedCount > 99 ? "99+" : unreviewedCount}
+            </button>
+          )}
         </div>
         <PersonFilter people={s.people} value={personId} onChange={setPersonId} />
         <Input placeholder="Search…" value={q} onChange={(e) => setQ(e.target.value)} className="h-8 w-full sm:w-40" />
       </div>
+
+      {/* Keep all bar — shown when New filter is active */}
+      {filter === "new" && unreviewedCount > 0 && (
+        <div className="mb-4 flex items-center justify-between rounded-md border border-primary/30 bg-primary/5 px-4 py-2">
+          <span className="text-sm text-foreground/80">{unreviewedCount} {unreviewedCount === 1 ? "entry" : "entries"} to review</span>
+          <Button size="sm" variant="outline" onClick={handleKeepAll} disabled={keepingAll}>
+            {keepingAll ? "Keeping…" : `Keep all ${unreviewedCount}`}
+          </Button>
+        </div>
+      )}
 
       {s.ready && total === 0 && s.notes.length === 0 && (
         <div className="rounded-md border border-dashed border-border p-6 text-center md:p-10">
