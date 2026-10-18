@@ -1,151 +1,191 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SourceIcon } from "@/components/journal/SourceIcon";
 import { useState } from "react";
-import { toast } from "sonner";
-import { Upload, AlertTriangle, Scissors, Merge, Trash2 } from "lucide-react";
-import { useJournal, removeMany } from "@/lib/journal/db";
-import { stageFile, saveBatch, commitBatch } from "@/lib/journal/staging";
+import { Upload, CheckCircle2, AlertTriangle, X } from "lucide-react";
+import { importFile, type ImportResult } from "@/lib/journal/import";
 import { SAMPLE_VIADUCT, SAMPLE_SETLIST, SAMPLE_GENERIC, SAMPLE_LIFE } from "@/lib/journal/samples";
-import { entryTitle, uid, type Source, type StagingBatch, type StageStatus } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { entryIcon, entryColor, entryLabel } from "@/components/journal/EntryCard";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/import")({
   head: () => ({
     meta: [
-      { title: "Import & staging — Journal" },
-      { name: "description", content: "Import Viaduct, setlist.fm and custom CSV/JSON exports, review, then commit to your journal." },
-      { property: "og:title", content: "Import & staging — Journal" },
-      { property: "og:description", content: "Review parsed records, duplicates and suggested trips before they enter your journal." },
+      { title: "Import — Journal" },
+      { name: "description", content: "Import Viaduct, setlist.fm and custom CSV/JSON exports into your journal." },
+      { property: "og:title", content: "Import — Journal" },
+      { property: "og:description", content: "Drop a CSV or JSON export and it goes straight into your journal, flagged for review." },
     ],
   }),
   component: ImportPage,
 });
 
-type Auto = Exclude<Source, "manual"> | "auto";
-const STATUS: Record<StageStatus, { label: string; cls: string }> = {
-  new: { label: "new", cls: "bg-rail/15 text-rail" },
-  supersedes: { label: "replaces lower-tier", cls: "bg-air/15 text-air" },
-  duplicate: { label: "already in journal", cls: "bg-muted text-muted-foreground" },
-  superseded: { label: "journal has higher tier", cls: "bg-muted text-muted-foreground" },
-  "batch-duplicate": { label: "duplicate in file", cls: "bg-destructive/10 text-destructive" },
-  removed: { label: "hidden earlier", cls: "bg-muted text-muted-foreground" },
-};
+// ─── Summary helpers ──────────────────────────────────────────────────────────
 
-function BatchReview({ batch }: { batch: StagingBatch }) {
-  const [b, setB] = useState(batch);
-  const update = (n: StagingBatch) => { setB(n); void saveBatch(n); };
-  const selected = b.records.filter((r) => r.selected).length;
-  const setRecords = (recs: StagingBatch["records"]) => update({ ...b, records: recs });
+interface SummaryItem {
+  filename: string;
+  result: ImportResult;
+}
+
+function buildSummaryLines(result: ImportResult): { primary: string; secondary: string; errorLine: string } {
+  const { added, updated, skipped, errors } = result;
+
+  const countParts: string[] = [];
+  if (added   > 0) countParts.push(`${added} new`);
+  if (updated > 0) countParts.push(`${updated} updated`);
+  const primary = countParts.length > 0 ? countParts.join(", ") + "." : "Nothing new.";
+
+  const skipParts: string[] = [];
+  const alreadyIn = skipped.duplicate + skipped.inFile;
+  if (alreadyIn > 0) skipParts.push(`${alreadyIn} already in your journal`);
+  if (skipped.removed === 1) skipParts.push("1 you hid earlier was skipped");
+  else if (skipped.removed > 1) skipParts.push(`${skipped.removed} you hid earlier were skipped`);
+  const secondary = skipParts.length > 0 ? skipParts.join(", ") + "." : "";
+
+  const errorLine = errors.length > 0
+    ? `${errors.length} ${errors.length === 1 ? "row" : "rows"} could not be read.`
+    : "";
+
+  return { primary, secondary, errorLine };
+}
+
+// ─── Result card ──────────────────────────────────────────────────────────────
+
+function ResultCard({ item, onDismiss }: { item: SummaryItem; onDismiss: () => void }) {
+  const { filename, result } = item;
+  const { primary, secondary, errorLine } = buildSummaryLines(result);
+  const nothing = result.added === 0 && result.updated === 0;
+  const source = result.run?.source;
 
   return (
-    <section className="rounded-md border border-border bg-card">
-      <header className="flex flex-wrap items-center gap-3 border-b border-border p-4">
-        <div className="flex-1">
-          <h2 className="text-xl">{b.filename}</h2>
-          <p className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground"><SourceIcon source={b.source} />{sourceLabel(b.source)} · {b.records.length} parsed · {b.errors.length} errors · {selected} selected</p>
+    <div className="flex items-start gap-3 rounded-md border border-border bg-card p-4">
+      <CheckCircle2 className={cn("mt-0.5 h-5 w-5 shrink-0", nothing ? "text-muted-foreground" : "text-green-600 dark:text-green-500")} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-medium text-sm">{filename}</span>
+          {source && (
+            <span className="flex items-center gap-1 font-mono text-xs text-muted-foreground">
+              <SourceIcon source={source} />
+              {sourceLabel(source)}
+            </span>
+          )}
         </div>
-        <Button variant="ghost" size="sm" onClick={() => removeMany("staging", [b.id])}><Trash2 className="h-4 w-4" /> Discard</Button>
-        <Button size="sm" disabled={!selected} onClick={async () => {
-          const r = await commitBatch(b);
-          toast.success(`Added ${r.count} entries to your journal`);
-        }}>Commit {selected} to journal</Button>
-      </header>
-
-      {b.errors.length > 0 && (
-        <div className="border-b border-border bg-destructive/5 p-3 text-sm text-destructive">
-          {b.errors.slice(0, 5).map((e, i) => <div key={i}>{e}</div>)}
-          {b.errors.length > 5 && <div>…and {b.errors.length - 5} more</div>}
-        </div>
-      )}
-
-      <div>
-        <div className="p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Records</h3>
-            <div className="flex gap-2 text-xs">
-              <button className="underline" onClick={() => setRecords(b.records.map((r) => ({ ...r, selected: r.status === "new" || r.status === "supersedes" })))}>select importable</button>
-              <button className="underline" onClick={() => setRecords(b.records.map((r) => ({ ...r, selected: false })))}>none</button>
-            </div>
-          </div>
-          <ul className="divide-y divide-border">
-            {b.records.map((r, i) => {
-              const Icon = entryIcon(r.entry);
-              // Only new and replacing records can be committed; everything else is shown but locked.
-              const disabled = r.status !== "new" && r.status !== "supersedes";
-              return (
-                <li key={r.entry.id} className={cn("flex gap-3 py-2", disabled && "opacity-60")}>
-                  <Checkbox checked={r.selected} disabled={disabled} onCheckedChange={(v) => {
-                    const recs = [...b.records]; recs[i] = { ...r, selected: !!v }; setRecords(recs);
-                  }} />
-                  <Icon className={cn("mt-0.5 h-4 w-4", entryColor(r.entry))} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="font-mono text-xs text-muted-foreground">{r.entry.start.replace("T", " ")}</span>
-                      <span className="font-medium">{entryTitle(r.entry)}</span>
-                      <span className="text-xs text-muted-foreground">{entryLabel(r.entry)}</span>
-                      <span className={cn("rounded px-1.5 text-[10px]", STATUS[r.status].cls)}>{STATUS[r.status].label}</span>
-                    </div>
-                    {r.warnings.map((w) => (
-                      <p key={w} className="flex items-center gap-1 text-xs text-road"><AlertTriangle className="h-3 w-3" />{w}</p>
-                    ))}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-
+        <p className="mt-1 text-sm text-foreground">{primary}</p>
+        {secondary  && <p className="text-xs text-muted-foreground">{secondary}</p>}
+        {errorLine  && (
+          <p className="flex items-center gap-1 text-xs text-destructive">
+            <AlertTriangle className="h-3 w-3" />{errorLine}
+          </p>
+        )}
+        {result.errors.length > 0 && (
+          <details className="mt-1">
+            <summary className="cursor-pointer text-xs text-muted-foreground underline">Show errors</summary>
+            <ul className="mt-1 space-y-0.5 text-xs text-destructive">
+              {result.errors.slice(0, 10).map((e, i) => <li key={i}>{e}</li>)}
+              {result.errors.length > 10 && <li>...and {result.errors.length - 10} more</li>}
+            </ul>
+          </details>
+        )}
       </div>
-    </section>
+      <button className="shrink-0 text-muted-foreground hover:text-foreground" onClick={onDismiss} aria-label="Dismiss">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
   );
 }
 
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 function ImportPage() {
-  const s = useJournal();
-  const [src, setSrc] = useState<Auto>("auto");
+  const [src, setSrc] = useState("auto");
   const [drag, setDrag] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [summaries, setSummaries] = useState<SummaryItem[]>([]);
+
+  const addSummary = (item: SummaryItem) =>
+    setSummaries((prev) => [item, ...prev]);
+
+  const dismissSummary = (idx: number) =>
+    setSummaries((prev) => prev.filter((_, i) => i !== idx));
 
   const handle = async (files: FileList | File[]) => {
+    setImporting(true);
     for (const f of Array.from(files)) {
       try {
-        const b = await stageFile(f.name, await f.text(), src === "auto" ? undefined : src);
-        toast(`Staged ${b.records.length} records from ${f.name} (${sourceLabel(b.source)})`);
+        const result = await importFile(
+          f.name,
+          await f.text(),
+          src !== "auto" ? { forced: src } : {},
+        );
+        addSummary({ filename: f.name, result });
       } catch (err) {
-        toast.error(`Could not import ${f.name}: ${err instanceof Error ? err.message : String(err)}`);
+        addSummary({
+          filename: f.name,
+          result: {
+            added: 0,
+            updated: 0,
+            skipped: { duplicate: 0, inFile: 0, removed: 0 },
+            errors: [err instanceof Error ? err.message : String(err)],
+          },
+        });
       }
     }
+    setImporting(false);
   };
+
   const samples = async () => {
-    await stageFile("viaduct-journeys.csv", SAMPLE_VIADUCT, "viaduct");
-    await stageFile("setlistfm-attended.json", SAMPLE_SETLIST, "setlistfm");
-    await stageFile("stays-cleaned.csv", SAMPLE_GENERIC, "generic");
-    await stageFile("life-events.csv", SAMPLE_LIFE, "generic");
-    toast.success("Sample exports staged — review them below");
+    setImporting(true);
+    const pairs: [string, string, string][] = [
+      ["viaduct-journeys.csv",    SAMPLE_VIADUCT,  "viaduct"],
+      ["setlistfm-attended.json", SAMPLE_SETLIST,  "setlistfm"],
+      ["stays-cleaned.csv",       SAMPLE_GENERIC,  "generic"],
+      ["life-events.csv",         SAMPLE_LIFE,     "generic"],
+    ];
+    for (const [filename, text, forced] of pairs) {
+      try {
+        const result = await importFile(filename, text, { forced });
+        addSummary({ filename, result });
+      } catch (err) {
+        addSummary({
+          filename,
+          result: {
+            added: 0,
+            updated: 0,
+            skipped: { duplicate: 0, inFile: 0, removed: 0 },
+            errors: [err instanceof Error ? err.message : String(err)],
+          },
+        });
+      }
+    }
+    setImporting(false);
   };
 
   return (
     <div className="mx-auto max-w-6xl">
-      <h1 className="text-4xl font-semibold">Import & staging</h1>
+      <h1 className="text-4xl font-semibold">Import</h1>
       <p className="mb-6 max-w-2xl text-muted-foreground">
-        Files are read inside your browser. Nothing enters your journal until you commit. Precedence: your manual edits &gt; primary records (trains, setlists) &gt; secondary records (bookings, calendars).
+        Files are read inside your browser. Records go straight into your journal, flagged for review in the feed. Precedence: your edits &gt; primary records (trains, setlists) &gt; secondary records (bookings, calendars).
       </p>
 
+      {/* Drop zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={(e) => { e.preventDefault(); setDrag(false); void handle(e.dataTransfer.files); }}
-        className={cn("rounded-md border-2 border-dashed p-8 text-center", drag ? "border-primary bg-primary/5" : "border-border")}
+        className={cn(
+          "rounded-md border-2 border-dashed p-8 text-center",
+          drag ? "border-primary bg-primary/5" : "border-border",
+        )}
       >
         <Upload className="mx-auto h-6 w-6 text-muted-foreground" />
-        <p className="mt-2">Drop CSV or JSON exports here</p>
+        <p className="mt-2">{importing ? "Importing..." : "Drop CSV or JSON exports here"}</p>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-          <select value={src} onChange={(e) => setSrc(e.target.value as Auto)} className="h-9 w-full max-w-xs rounded-md border border-input bg-background px-2 text-sm">
+          <select
+            value={src}
+            onChange={(e) => setSrc(e.target.value)}
+            disabled={importing}
+            className="h-9 w-full max-w-xs rounded-md border border-input bg-background px-2 text-sm"
+          >
             <option value="auto">Detect format</option>
             <option value="letterboxd">Letterboxd diary/reviews CSV</option>
             <option value="netflix">Netflix viewing history CSV</option>
@@ -155,18 +195,44 @@ function ImportPage() {
             <option value="setlistfm">setlist.fm JSON/CSV</option>
             <option value="generic">Generic / cleaned CSV or JSON</option>
           </select>
-          <Button asChild variant="outline"><label className="cursor-pointer">Choose files<input type="file" multiple accept=".csv,.json,.txt" className="hidden" onChange={(e) => e.target.files && handle(e.target.files)} /></label></Button>
-          <Button variant="secondary" onClick={samples}>Load sample data</Button>
+          <Button asChild variant="outline" disabled={importing}>
+            <label className="cursor-pointer">
+              Choose files
+              <input
+                type="file"
+                multiple
+                accept=".csv,.json,.txt"
+                className="hidden"
+                onChange={(e) => e.target.files && void handle(e.target.files)}
+              />
+            </label>
+          </Button>
+          <Button variant="secondary" onClick={samples} disabled={importing}>
+            Load sample data
+          </Button>
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
-          Generic files need a <code className="font-mono">type</code> column: flight, train, road, stay, concert, gathering, birthday, wedding, milestone, memory… plus start, title, venue, city, people, notes, tier.
+          Generic files need a <code className="font-mono">type</code> column: flight, train, road, stay, concert, gathering, birthday, wedding, milestone, memory... plus start, title, venue, city, people, notes, tier.
         </p>
       </div>
 
-      <div className="mt-8 space-y-6">
-        {s.staging.length > 0 && <h2 className="flex items-center gap-2 text-2xl">Staging queue <Badge variant="secondary">{s.staging.length}</Badge></h2>}
-        {[...s.staging].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((b) => <BatchReview key={b.id} batch={b} />)}
-      </div>
+      {/* Inline results */}
+      {summaries.length > 0 && (
+        <div className="mt-8 space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">Results</h2>
+            <button
+              className="text-xs text-muted-foreground underline"
+              onClick={() => setSummaries([])}
+            >
+              Clear all
+            </button>
+          </div>
+          {summaries.map((item, i) => (
+            <ResultCard key={i} item={item} onDismiss={() => dismissSummary(i)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
