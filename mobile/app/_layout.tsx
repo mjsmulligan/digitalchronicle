@@ -14,7 +14,7 @@
  *   screen can read the file with expo-file-system and stage it.
  */
 import { useEffect, useRef } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, InteractionManager } from "react-native";
 import { Stack, SplashScreen, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
@@ -48,6 +48,8 @@ import { TheAudioDbProvider, DeezerArtistProvider, CompositeArtistImageProvider,
 import { setFetchPostersEnabled, setFetchBookCoversEnabled, enrichAll } from "@chronicle/journal/artworkEnrichment";
 import { getPosterFetchEnabled, getBookCoverFetchEnabled } from "../src/lib/posterPrefs";
 import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
+import { runConnectedSources, setDefaultStorage } from "../src/lib/connectedSources";
+import { makeSyncPrefsStorage } from "../src/lib/syncPrefsStorage";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -193,6 +195,21 @@ function RootLayoutInner() {
       router.replace("/(tabs)");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [journal.ready]);
+
+  // Trigger the silent connected-sources check once per launch.
+  // setDefaultStorage fires immediately on journal ready so other screens can
+  // call getSourceState etc. The actual check runs after interactions settle
+  // (never before the splash hides and the first frame renders).
+  useEffect(() => {
+    if (!journal.ready) return;
+    setDefaultStorage(makeSyncPrefsStorage());
+    const task = InteractionManager.runAfterInteractions(() => {
+      runConnectedSources().catch((e) =>
+        console.warn("[Chronicle] connected sources check failed:", e)
+      );
+    });
+    return () => task.cancel();
   }, [journal.ready]);
 
   // Listen for share intents while app is already running
