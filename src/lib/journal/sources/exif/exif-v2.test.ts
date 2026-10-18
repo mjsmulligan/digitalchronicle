@@ -259,112 +259,201 @@ describe("Check 3: Re-scan creates zero duplicates; dismissed entries not re-off
   });
 });
 
+// ─── WP12a: auto-import model checks ─────────────────────────────────────────
+
+describe("WP12a: photo entries join auto-import", () => {
+  /**
+   * buildStagingPlan now creates entries with status "accepted" and
+   * unreviewed: "new", optionally carrying an importId. Re-scanning the same
+   * photos is a no-op (no new entries, no run row should be written). Evidence
+   * extension does not change the unreviewed flag. Hidden entries are not
+   * resurrected on re-scan (matches importFile rule for hidden entries).
+   */
+  it("new entry has status accepted, unreviewed new, and importId when provided", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const plan = buildStagingPlan(built, [], [], [], "run-123");
+
+    expect(plan.newEntries.length).toBeGreaterThan(0);
+    for (const e of plan.newEntries) {
+      expect(e.status).toBe("accepted");
+      expect(e.unreviewed).toBe("new");
+      expect(e.importId).toBe("run-123");
+    }
+  });
+
+  it("new entry has no importId when none is passed", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const plan = buildStagingPlan(built, [], [], []);
+
+    expect(plan.newEntries.length).toBeGreaterThan(0);
+    for (const e of plan.newEntries) {
+      expect(e.importId).toBeUndefined();
+    }
+  });
+
+  it("re-scan of the same photos produces no new entries (no-op, no run row needed)", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const built = buildPlaceEntries(located, unlocated, []);
+
+    const plan1 = buildStagingPlan(built, [], [], [], "run-1");
+    expect(plan1.newEntries.length).toBeGreaterThan(0);
+
+    // Second plan: same photos, existing entries in store
+    const plan2 = buildStagingPlan(built, plan1.newPlaces, plan1.newEntries, [], "run-2");
+    // No new entries means no ImportRun should be written (caller checks .newEntries.length)
+    expect(plan2.newEntries).toHaveLength(0);
+    expect(plan2.newPlaces).toHaveLength(0);
+    expect(plan2.updatedEntries).toHaveLength(0);
+  });
+
+  it("evidence extension does not change the unreviewed flag", async () => {
+    // First scan: one photo on 2025-07-05
+    const onePhoto = [FIXTURE_LONDON_WEEKEND[0]];
+    const { located: l1, unlocated: u1 } = await resolveFixtureV2(onePhoto);
+    const built1 = buildPlaceEntries(l1, u1, []);
+    const plan1 = buildStagingPlan(built1, [], [], [], "run-1");
+    const entry = plan1.newEntries[0];
+    expect(entry.unreviewed).toBe("new");
+
+    // Simulate user reviewing the entry (clear the unreviewed flag)
+    const reviewed = { ...entry, unreviewed: undefined };
+
+    // Second scan: new photo on the same day
+    const { located: l2, unlocated: u2 } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND.slice(0, 2));
+    const built2 = buildPlaceEntries(l2, u2, []);
+    const plan2 = buildStagingPlan(built2, plan1.newPlaces, [reviewed], [], "run-2");
+
+    // Evidence extension should not set unreviewed on the updated entry
+    expect(plan2.updatedEntries).toHaveLength(1);
+    expect(plan2.updatedEntries[0].unreviewed).toBeUndefined();
+    expect(plan2.updatedEntries[0].photoCount).toBeGreaterThan(entry.photoCount);
+  });
+
+  it("hidden entry is not re-offered on re-scan", async () => {
+    const { located, unlocated } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND_PLUS_DAY_TRIP);
+    const built = buildPlaceEntries(located, unlocated, []);
+    const plan1 = buildStagingPlan(built, [], [], [], "run-1");
+
+    // Simulate user hiding all entries
+    const hiddenEntries = plan1.newEntries.map((e) => ({ ...e, hidden: true as const }));
+
+    // Re-scan: hidden entries must not be resurrected
+    const plan2 = buildStagingPlan(built, plan1.newPlaces, hiddenEntries, [], "run-2");
+    expect(plan2.newEntries).toHaveLength(0);
+    expect(plan2.updatedEntries).toHaveLength(0);
+  });
+});
+
 // ─── Acceptance check 4 ───────────────────────────────────────────────────────
 
-describe("Check 4: New day in accepted place appears pending; new photos on accepted day add evidence", () => {
+describe("Check 4: New day in accepted place appears accepted; new photos on accepted day add evidence", () => {
   /**
-   * A new calendar day for an already-accepted Place creates a new pending
-   * PlaceEntry. New photos on a day where an entry already exists are added as
-   * evidence to that entry without creating a new staging item.
+   * A new calendar day for an already-accepted Place creates a new accepted
+   * PlaceEntry (WP12a: entries no longer start as pending). New photos on a
+   * day where an entry already exists are added as evidence to that entry
+   * without creating a new entry, and without changing the unreviewed flag.
    *
-   * Depends on: WP13 (staging service).
+   * Depends on: WP13 (staging service), WP12a (auto-import model).
    */
-  it("new day for an accepted place arrives as a pending PlaceEntry", async () => {
+  it("new day for an accepted place arrives as an accepted PlaceEntry", async () => {
     // First scan: weekend only (05 + 06)
     const { located: l1, unlocated: u1 } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND);
     const built1 = buildPlaceEntries(l1, u1, []);
     const plan1 = buildStagingPlan(built1, [], [], []);
-    // Accept the weekend entries
-    const acceptedEntries = plan1.newEntries.map(acceptEntry);
+    // Entries are already accepted — no explicit accept step needed
+    expect(plan1.newEntries.every((e) => e.status === "accepted")).toBe(true);
 
     // Second scan: day trip on 2025-07-19 is new
     const { located: l2, unlocated: u2 } = await resolveFixtureV2(FIXTURE_LONDON_DAY_TRIP);
     const built2 = buildPlaceEntries(l2, u2, []);
-    const plan2 = buildStagingPlan(built2, plan1.newPlaces, acceptedEntries, []);
+    const plan2 = buildStagingPlan(built2, plan1.newPlaces, plan1.newEntries, []);
 
-    // New day → new pending entry (even though the Place is already accepted)
+    // New day → new accepted entry with unreviewed: "new" (same Place as the weekend)
     expect(plan2.newEntries).toHaveLength(1);
     expect(plan2.newEntries[0].localDay).toBe("2025-07-19");
-    expect(plan2.newEntries[0].status).toBe("pending");
+    expect(plan2.newEntries[0].status).toBe("accepted");
+    expect(plan2.newEntries[0].unreviewed).toBe("new");
     expect(plan2.newEntries[0].placeId).toBe(plan1.newPlaces[0].id); // same Place
   });
 
-  it("new photos on an accepted day add evidence without creating a new staging item", async () => {
+  it("new photos on an accepted day add evidence without creating a new entry", async () => {
     // First scan: one photo on 2025-07-05
     const onePhoto = [FIXTURE_LONDON_WEEKEND[0]]; // lon-wknd-1
     const { located: l1, unlocated: u1 } = await resolveFixtureV2(onePhoto);
     const built1 = buildPlaceEntries(l1, u1, []);
     const plan1 = buildStagingPlan(built1, [], [], []);
-    const accepted = plan1.newEntries.map(acceptEntry);
-    expect(accepted[0].photoCount).toBe(1);
+    expect(plan1.newEntries[0].photoCount).toBe(1);
 
     // Second scan: two more photos on the same day
     const { located: l2, unlocated: u2 } = await resolveFixtureV2(FIXTURE_LONDON_WEEKEND.slice(0, 2));
     const built2 = buildPlaceEntries(l2, u2, []);
-    const plan2 = buildStagingPlan(built2, plan1.newPlaces, accepted, []);
+    const plan2 = buildStagingPlan(built2, plan1.newPlaces, plan1.newEntries, []);
 
-    // No new staging item — existing accepted entry gets updated evidence
+    // No new entry — existing accepted entry gets updated evidence
     expect(plan2.newEntries).toHaveLength(0);
     expect(plan2.updatedEntries).toHaveLength(1);
     // Photo count increases
     expect(plan2.updatedEntries[0].photoCount).toBe(2);
+    // Evidence extension does not change the unreviewed flag (spec §4.4)
+    expect(plan2.updatedEntries[0].unreviewed).toBe(plan1.newEntries[0].unreviewed);
   });
 });
 
 // ─── Acceptance check 5 ───────────────────────────────────────────────────────
 
-describe("Check 5: Accepting a region accepts its localities; partial accept is fine", () => {
+describe("Check 5: New entries arrive as accepted; batch dismiss/accept operates on explicit status", () => {
   /**
-   * Batch-accepting a region Place accepts all pending PlaceEntries under its
-   * locality children. Accepting two of five Cinque Terre villages leaves the
-   * other three pending.
+   * WP12a: all entries from buildStagingPlan arrive with status "accepted".
+   * The batch accept/dismiss functions (acceptRegionEntries, acceptPlaceEntries,
+   * dismissPlaceEntries) still work on entries with explicit "pending" or
+   * "dismissed" status (legacy data or manual demotions). They are no-ops on
+   * already-accepted entries.
    *
-   * Depends on: WP13 (staging service), WP11 (hierarchy).
+   * Depends on: WP13 (staging service), WP12a (auto-import model).
    */
-  it("accepting the Liguria region accepts all pending entries under its village localities", async () => {
+  it("all new entries from a scan arrive with status accepted", async () => {
     const { located, unlocated } = await resolveFixtureV2(FIXTURE_CINQUE_TERRE);
     const built = buildPlaceEntries(located, unlocated, []);
     const plan = buildStagingPlan(built, [], [], []);
 
-    // All entries should be pending initially
-    expect(plan.newEntries.every((e) => e.status === "pending")).toBe(true);
-    // 5 villages × up to 2 days each = 9 photos → multiple entries
-    const allEntries = plan.newEntries;
-    const allPlaces  = plan.newPlaces;
+    // WP12a: entries are accepted from the start, not pending
+    expect(plan.newEntries.length).toBeGreaterThan(0);
+    expect(plan.newEntries.every((e) => e.status === "accepted")).toBe(true);
+    expect(plan.newEntries.every((e) => e.unreviewed === "new")).toBe(true);
 
-    // Batch-accept by Liguria region
-    const changed = acceptRegionEntries(allEntries, allPlaces, "Liguria");
-    expect(changed.length).toBe(allEntries.length); // all CT entries are in Liguria
-    expect(changed.every((e) => e.status === "accepted")).toBe(true);
+    // acceptRegionEntries is a no-op when all entries are already accepted
+    const changed = acceptRegionEntries(plan.newEntries, plan.newPlaces, "Liguria");
+    expect(changed).toHaveLength(0); // nothing pending to accept
   });
 
-  it("accepting two of five Cinque Terre villages leaves the other three pending", async () => {
+  it("dismissPlaceEntries and acceptPlaceEntries operate on explicitly pending/dismissed entries", async () => {
     const { located, unlocated } = await resolveFixtureV2(FIXTURE_CINQUE_TERRE);
     const built = buildPlaceEntries(located, unlocated, []);
     const { newEntries, newPlaces } = buildStagingPlan(built, [], [], []);
 
-    // Find Vernazza and Monterosso places and accept their entries only
-    const vernazzaPlace    = newPlaces.find((p) => p.localityKey === "it:vernazza");
-    const monterossoPlace  = newPlaces.find((p) => p.localityKey === "it:monterosso");
+    // Find Vernazza and Monterosso places
+    const vernazzaPlace   = newPlaces.find((p) => p.localityKey === "it:vernazza");
+    const monterossoPlace = newPlaces.find((p) => p.localityKey === "it:monterosso");
     expect(vernazzaPlace).toBeDefined();
     expect(monterossoPlace).toBeDefined();
 
-    const acceptedV = acceptPlaceEntries(newEntries, vernazzaPlace!.id);
-    const acceptedM = acceptPlaceEntries(newEntries, monterossoPlace!.id);
+    // Manually dismiss Vernazza and Monterosso entries (simulating a batch hide from Places screen)
+    const dismissedV = dismissPlaceEntries(newEntries, vernazzaPlace!.id);
+    const dismissedM = dismissPlaceEntries(newEntries, monterossoPlace!.id);
+    // dismissPlaceEntries filters for "pending" — accepted entries are unchanged
+    // (batch dismiss of accepted entries is WP12c territory)
+    expect(dismissedV).toHaveLength(0); // no pending entries to dismiss
+    expect(dismissedM).toHaveLength(0);
 
-    const otherEntries = newEntries.filter(
-      (e) => e.placeId !== vernazzaPlace!.id && e.placeId !== monterossoPlace!.id,
-    );
-    // Three remaining villages still pending
-    const otherKeys = new Set(
-      newPlaces
-        .filter((p) => p.localityKey !== "it:vernazza" && p.localityKey !== "it:monterosso")
-        .map((p) => p.id),
-    );
-    const stillPending = otherEntries.filter((e) => otherKeys.has(e.placeId));
-    expect(stillPending.length).toBeGreaterThan(0);
-    expect(stillPending.every((e) => e.status === "pending")).toBe(true);
-    expect(acceptedV.length + acceptedM.length).toBeGreaterThan(0);
+    // Manually set two entries to pending (simulating legacy data) to verify the functions work
+    const twoMadePending = newEntries
+      .filter((e) => e.placeId === vernazzaPlace!.id)
+      .map((e) => ({ ...e, status: "pending" as const }));
+    const acceptedBack = acceptPlaceEntries(twoMadePending, vernazzaPlace!.id);
+    expect(acceptedBack.length).toBeGreaterThan(0);
+    expect(acceptedBack.every((e) => e.status === "accepted")).toBe(true);
   });
 });
 
@@ -409,9 +498,10 @@ describe("Check 6: Dismissing all pending days for a place does not hide a later
     // No existing entries (they were deleted when bin was emptied), markers present
     const plan2 = buildStagingPlan(built2, plan1.newPlaces, [], markersToCreate);
 
-    // New day trip is a brand-new pending entry
+    // New day trip is a brand-new accepted entry
     expect(plan2.newEntries).toHaveLength(1);
-    expect(plan2.newEntries[0].status).toBe("pending");
+    expect(plan2.newEntries[0].status).toBe("accepted");
+    expect(plan2.newEntries[0].unreviewed).toBe("new");
     expect(plan2.newEntries[0].localDay).toBe("2025-07-19");
     // It links to the same Place (key-match finds existing place)
     expect(plan2.newEntries[0].placeId).toBe(plan1.newPlaces[0].id);

@@ -8,6 +8,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { putMany, getState } from "@chronicle/journal/db";
+import { uid, type ImportRun } from "@chronicle/journal/types";
 import { resolveLocalDay } from "../../../../src/lib/journal/sources/exif/timeResolution";
 import { InMemoryLocalityCache, ResolvingLocalityResolver } from "../../../../src/lib/journal/sources/exif/localityResolver";
 import { buildPlaceEntries } from "../../../../src/lib/journal/sources/exif/entryBuilder";
@@ -132,11 +133,16 @@ export function useExifScan() {
       const builtEntries = buildPlaceEntries(located, unlocated, legs);
 
       // ── Step 6: staging plan (dedup, bin match, evidence update) ──────────
+      // Pre-generate an importId so new entries can carry it before the run is written.
+      const importId = uid();
+      const startedAt = new Date().toISOString();
+
       const plan = buildStagingPlan(
         builtEntries,
         journal.localityPlaces  ?? [],
         journal.placeEntries    ?? [],
         journal.placeBinMarkers ?? [],
+        importId,
       );
 
       // ── Step 7: commit ─────────────────────────────────────────────────────
@@ -144,6 +150,26 @@ export function useExifScan() {
       if (plan.newPlaces.length      > 0) await putMany("localityPlaces", plan.newPlaces);
       if (plan.newEntries.length     > 0) await putMany("placeEntries",   plan.newEntries);
       if (plan.updatedEntries.length > 0) await putMany("placeEntries",   plan.updatedEntries);
+
+      // Write an ImportRun only when at least one new entry was created.
+      // Evidence-only updates and no-change rescans leave no run record.
+      if (plan.newEntries.length > 0) {
+        const run: ImportRun = {
+          id: importId,
+          source: "photo-library",
+          filename: "Photo library scan",
+          trigger: "manual",
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          status: "done",
+          added: plan.newEntries.length,
+          updated: 0,
+          skipped: { duplicate: 0, inFile: 0, removed: 0 },
+          errors: [],
+          replaced: [],
+        };
+        await putMany("importRuns", [run]);
+      }
 
       setState((s) => ({
         ...s,
