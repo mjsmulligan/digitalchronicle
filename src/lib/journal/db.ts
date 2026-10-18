@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type StagingBatch, type Trip } from "./types";
+import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type StagingBatch, type Trip, type PlaceEntry } from "./types";
 import { KIND_REGISTRY } from "./kinds";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
@@ -370,6 +370,41 @@ async function migrateEvaluationFields(data: Partial<State>): Promise<void> {
 }
 
 /**
+ * WP12a: migrates legacy photo PlaceEntries to the auto-import model.
+ *
+ * Before WP12a, buildStagingPlan created entries with status "pending" (awaiting
+ * user confirmation in the Staging Hub) or "dismissed" (rejected by the user).
+ * After WP12a, new entries arrive as "accepted" and are flagged for review in
+ * the feed (unreviewed: "new"), matching every other auto-imported source.
+ *
+ * Mapping (per spec §8 / D13):
+ *   pending   -> accepted + unreviewed: "new"  (scan results the user has not yet reviewed)
+ *   dismissed -> accepted + hidden: true       (user rejected them; stay hidden)
+ *
+ * No-op on subsequent boots: once all entries are "accepted" the filter finds nothing.
+ * Exported for testing.
+ */
+export async function migratePhotoPlaceEntries(data: Partial<State>): Promise<void> {
+  const entries = (data.placeEntries ?? []) as PlaceEntry[];
+  const toMigrate = entries.filter(
+    (e) => e.status === "pending" || e.status === "dismissed",
+  );
+  if (!toMigrate.length) return;
+
+  const migrated: PlaceEntry[] = toMigrate.map((e): PlaceEntry => {
+    if (e.status === "dismissed") {
+      return { ...e, status: "accepted", hidden: true };
+    }
+    // pending -> accepted + unreviewed: "new"
+    return { ...e, status: "accepted", unreviewed: "new" };
+  });
+
+  await adapter.putMany("placeEntries", migrated);
+  const byId = new Map(migrated.map((e) => [e.id, e]));
+  data.placeEntries = entries.map((e) => byId.get(e.id) ?? e);
+}
+
+/**
  * Closes import runs that were interrupted (app killed mid-import), which are
  * still "running" at boot. The counts are recomputed from the entries that carry
  * the run's id: every one of them was written by the run, and the ones it
@@ -411,6 +446,7 @@ export function initJournal(): Promise<void> {
     await migrateEventKeys(data);
     await migrateReviewReflection(data);
     await migrateEvaluationFields(data);
+    await migratePhotoPlaceEntries(data);
     await closeInterruptedRuns(data);
     emit({ ...data, ready: true });
   })().catch((error: unknown) => {

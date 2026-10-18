@@ -1,26 +1,31 @@
 /**
- * WP13 — Staging service (pure).
+ * WP13 / WP12a — Staging service (pure).
  *
  * Spec reference: docs/specs/Source spec_ Photo library (EXIF).md, §4, §9, draft 7.
+ * Auto-import spec: docs/specs/auto-import.md, §4.4.
  *
  * Responsibilities:
  *   1. buildStagingPlan  — given BuiltPlaceEntry[] + current journal stores, produce
- *                          the minimal set of writes needed: new Places, new pending
- *                          PlaceEntries, and evidence additions to accepted entries.
- *   2. Status actions    — acceptEntry, dismissEntry, restoreEntry (→ pending).
+ *                          the minimal set of writes needed: new Places, new accepted
+ *                          PlaceEntries (flagged unreviewed), and evidence additions
+ *                          to existing entries.
+ *   2. Status actions    — acceptEntry, dismissEntry, restoreEntry (retained for
+ *                          batch ops; new entries no longer start as pending).
  *   3. Batch actions     — accept/dismiss all pending for a Place or region.
  *   4. mergePlaces       — absorb one Place's key into another as an alias.
  *   5. emptyBin          — produce PlaceBinMarkers from dismissed entries, delete entries.
  *   6. resetDecisions    — return dismissed entries to pending, delete all markers.
  *
- * Deduplication rules (spec §9):
+ * Deduplication rules (spec §9, updated for auto-import):
  *   - If a PlaceEntry with the same dedupeKey exists and is dismissed → skip.
  *   - If a PlaceEntry with the same dedupeKey exists and is pending   → skip.
+ *   - If a PlaceEntry with the same dedupeKey exists and is hidden    → skip
+ *     (user hid it; re-scan must not resurrect it, same rule as importFile).
  *   - If a PlaceEntry with the same dedupeKey exists and is accepted
- *     AND new photos are present → add evidence (no new staging item).
+ *     AND new photos are present → add evidence (no new staging item, no flag change).
  *   - If all photos for a day are covered by a PlaceBinMarker         → skip
  *     (dismissed by photo IDs, even if the geocoder named the place differently).
- *   - Otherwise → create a new pending PlaceEntry (and a Place if needed).
+ *   - Otherwise → create a new accepted PlaceEntry with unreviewed: "new" (and a Place if needed).
  *
  * No network calls, no device APIs, no React Native imports in this file.
  */
@@ -42,14 +47,15 @@ export interface StagingPlan {
   /** New Place containers to create in the localityPlaces store. */
   newPlaces: Place[];
   /**
-   * New pending PlaceEntries to create in the placeEntries store.
-   * All have status "pending".
+   * New PlaceEntries to create in the placeEntries store.
+   * All have status "accepted" and unreviewed: "new" (WP12a).
    */
   newEntries: PlaceEntry[];
   /**
    * Existing PlaceEntries with additional photo evidence.
    * These are accepted entries where new photos appeared for the same day.
    * Write these back to the placeEntries store (putMany overwrites by id).
+   * Evidence extension does not change the unreviewed flag.
    */
   updatedEntries: PlaceEntry[];
 }
@@ -61,6 +67,8 @@ export interface StagingPlan {
  * @param existingPlaces   Current Place containers in the journal (localityPlaces).
  * @param existingEntries  Current PlaceEntries in the journal (placeEntries).
  * @param existingMarkers  PlaceBinMarkers from emptied-bin operations (placeBinMarkers).
+ * @param importId         Id of the ImportRun that triggered this scan (optional).
+ *                         When provided, new entries carry importId and unreviewed: "new".
  * @returns                StagingPlan — apply its three arrays to the DB.
  */
 export function buildStagingPlan(
@@ -68,6 +76,7 @@ export function buildStagingPlan(
   existingPlaces: Place[],
   existingEntries: PlaceEntry[],
   existingMarkers: PlaceBinMarker[],
+  importId?: string,
 ): StagingPlan {
   // ── Index existing data ────────────────────────────────────────────────────
 
@@ -110,8 +119,8 @@ export function buildStagingPlan(
     // ── Rule 2: matching existing PlaceEntry by dedupeKey ─────────────────
     const existing = entryByDedupeKey.get(dedupeKey);
     if (existing) {
-      if (existing.status === "dismissed" || existing.status === "pending") {
-        continue; // dismissed: leave it; pending: already in staging
+      if (existing.status === "dismissed" || existing.status === "pending" || existing.hidden) {
+        continue; // dismissed/pending: leave it; hidden: user hid it, never resurrect
       }
       // status === "accepted" — check for new evidence
       const existingPhotoIds = new Set(existing.photoEvidence.map((r) => r.mediaId));
@@ -178,7 +187,9 @@ export function buildStagingPlan(
       photoEvidence: evidenceRefs,
       photoCount: totalPhotos,
       singlePhoto: totalPhotos === 1,
-      status: "pending",
+      status: "accepted",
+      unreviewed: "new",
+      ...(importId !== undefined && { importId }),
       dedupeKey,
       createdAt: new Date().toISOString(),
     });
