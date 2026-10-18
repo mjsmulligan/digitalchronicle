@@ -27,6 +27,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -58,6 +59,13 @@ import {
   setGoodreadsUserId,
 } from "../src/lib/goodreadsPrefs";
 import { useStagingHub } from "../src/lib/exif/useStagingHub";
+import {
+  getSourceState,
+  setSourceAutoCheck,
+  runSourceNow,
+  setDefaultStorage,
+} from "../src/lib/connectedSources";
+import { makeSyncPrefsStorage } from "../src/lib/syncPrefsStorage";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -284,23 +292,37 @@ function CalendarSourceCard({
   active,
   disabled,
   onSync,
+  autoCheck,
+  onAutoCheckChange,
+  lastCheckedAt,
+  lastError,
   colors,
   fonts,
 }: {
   active: boolean;
   disabled: boolean;
   onSync: (pastDays: number) => void;
+  autoCheck: boolean;
+  onAutoCheckChange: (v: boolean) => void;
+  lastCheckedAt: string | null;
+  lastError: string | null;
   colors: ThemeColors;
   fonts: ThemeFonts;
 }) {
   const [scope, setScope] = useState<CalScope>("last-year");
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  const statusText = active
+    ? "Syncing…"
+    : lastCheckedAt
+    ? `Last checked ${new Date(lastCheckedAt).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`
+    : "Imports one-off events from your calendar";
+
   return (
     <SourceCard
       icon="calendar-outline"
       title="Device calendar"
-      statusText={active ? "Syncing…" : "Imports one-off events from your calendar"}
+      statusText={statusText}
       active={active}
       progressPct={0}
       colors={colors}
@@ -310,7 +332,7 @@ function CalendarSourceCard({
           <ActivityIndicator size="small" color={colors.accent} />
         ) : (
           <SrcButton
-            label="Sync"
+            label="Check now"
             onPress={() => onSync(CAL_SCOPE_DAYS[scope])}
             disabled={disabled}
             colors={colors}
@@ -372,6 +394,38 @@ function CalendarSourceCard({
             </Pressable>
           ))}
         </View>
+      )}
+
+      {/* Auto-check switch */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginTop: spacing.sm,
+          paddingTop: spacing.sm,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.borderFaint,
+        }}
+      >
+        <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
+          Check automatically on startup
+        </Text>
+        <Switch
+          value={autoCheck}
+          onValueChange={onAutoCheckChange}
+          trackColor={{ false: colors.border, true: colors.accent }}
+          thumbColor={colors.surface}
+        />
+      </View>
+
+      {/* Last error */}
+      {lastError != null && (
+        <Text
+          style={{ fontSize: 11, color: colors.error, marginTop: spacing.xs }}
+          numberOfLines={2}
+        >
+          {lastError}
+        </Text>
       )}
     </SourceCard>
   );
@@ -453,6 +507,10 @@ function GoodreadsSourceCard({
   onCancelEdit,
   onSaveId,
   onForget,
+  autoCheck,
+  onAutoCheckChange,
+  lastCheckedAt,
+  lastError,
   colors,
   fonts,
 }: {
@@ -467,20 +525,26 @@ function GoodreadsSourceCard({
   onCancelEdit: () => void;
   onSaveId: () => void;
   onForget: () => void;
+  autoCheck: boolean;
+  onAutoCheckChange: (v: boolean) => void;
+  lastCheckedAt: string | null;
+  lastError: string | null;
   colors: ThemeColors;
   fonts: ThemeFonts;
 }) {
+  const statusText = active
+    ? "Syncing…"
+    : grId
+    ? lastCheckedAt
+      ? `Connected · last checked ${new Date(lastCheckedAt).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`
+      : `Connected — ${grId}`
+    : "Sync your read-shelf via public RSS";
+
   return (
     <SourceCard
       icon="book-outline"
       title="Goodreads"
-      statusText={
-        active
-          ? "Syncing…"
-          : grId
-          ? `Connected — ${grId}`
-          : "Sync your read-shelf via public RSS"
-      }
+      statusText={statusText}
       active={active}
       progressPct={0}
       colors={colors}
@@ -490,7 +554,7 @@ function GoodreadsSourceCard({
           <ActivityIndicator size="small" color={colors.accent} />
         ) : grId && !grEditing ? (
           <SrcButton
-            label="Sync"
+            label="Check now"
             onPress={onSync}
             disabled={disabled}
             colors={colors}
@@ -524,6 +588,41 @@ function GoodreadsSourceCard({
           </Pressable>
         </View>
       )}
+
+      {/* Auto-check switch (only when connected) */}
+      {grId && !grEditing && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: spacing.sm,
+            paddingTop: spacing.sm,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: colors.borderFaint,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
+            Check automatically on startup
+          </Text>
+          <Switch
+            value={autoCheck}
+            onValueChange={onAutoCheckChange}
+            trackColor={{ false: colors.border, true: colors.accent }}
+            thumbColor={colors.surface}
+          />
+        </View>
+      )}
+
+      {/* Last error */}
+      {grId && !grEditing && lastError != null && (
+        <Text
+          style={{ fontSize: 11, color: colors.error, marginTop: spacing.xs }}
+          numberOfLines={2}
+        >
+          {lastError}
+        </Text>
+      )}
+
       {grEditing && (
         <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
           <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>
@@ -734,9 +833,34 @@ export default function SourcesScreen() {
   const [grEditing, setGrEditing] = useState(false);
   useEffect(() => {
     void getGoodreadsUserId().then(setGrId);
+    // Ensure default storage is set (may already be set by _layout boot hook)
+    setDefaultStorage(syncStorage);
+    void getSourceState("icalendar", syncStorage).then((s) => {
+      setCalAutoCheckState(s.autoCheck);
+      setCalLastChecked(s.lastCheckedAt);
+      setCalLastError(s.lastError);
+    });
+    void getSourceState("goodreads", syncStorage).then((s) => {
+      setGrAutoCheckState(s.autoCheck);
+      setGrLastChecked(s.lastCheckedAt);
+      setGrLastError(s.lastError);
+    });
   }, []);
 
   const anyActive = activeSource !== null;
+
+  // ── Connected-source auto-check state ──────────────────────────────────────
+
+  // One storage instance for this screen session
+  const syncStorage = useMemo(() => makeSyncPrefsStorage(), []);
+
+  const [calAutoCheck, setCalAutoCheckState] = useState(true);
+  const [calLastChecked, setCalLastChecked] = useState<string | null>(null);
+  const [calLastError, setCalLastError] = useState<string | null>(null);
+
+  const [grAutoCheck, setGrAutoCheckState] = useState(true);
+  const [grLastChecked, setGrLastChecked] = useState<string | null>(null);
+  const [grLastError, setGrLastError] = useState<string | null>(null);
 
   // ── Recent imports ──────────────────────────────────────────────────────────
 
@@ -778,6 +902,16 @@ export default function SourcesScreen() {
       async () => { await undoRun(run.id); }
     );
   }, [unreviewedByRun, dialog]);
+
+  const handleCalAutoCheckChange = useCallback(async (v: boolean) => {
+    setCalAutoCheckState(v);
+    await setSourceAutoCheck("icalendar", v, syncStorage);
+  }, [syncStorage]);
+
+  const handleGrAutoCheckChange = useCallback(async (v: boolean) => {
+    setGrAutoCheckState(v);
+    await setSourceAutoCheck("goodreads", v, syncStorage);
+  }, [syncStorage]);
 
   // ── Import summary ──────────────────────────────────────────────────────────
 
@@ -1114,6 +1248,10 @@ export default function SourcesScreen() {
           active={activeSource === "calendar"}
           disabled={anyActive}
           onSync={importFromCalendar}
+          autoCheck={calAutoCheck}
+          onAutoCheckChange={handleCalAutoCheckChange}
+          lastCheckedAt={calLastChecked}
+          lastError={calLastError}
           colors={colors}
           fonts={fonts}
         />
@@ -1169,6 +1307,10 @@ export default function SourcesScreen() {
           onCancelEdit={() => setGrEditing(false)}
           onSaveId={saveGoodreadsId}
           onForget={forgetGoodreads}
+          autoCheck={grAutoCheck}
+          onAutoCheckChange={handleGrAutoCheckChange}
+          lastCheckedAt={grLastChecked}
+          lastError={grLastError}
           colors={colors}
           fonts={fonts}
         />

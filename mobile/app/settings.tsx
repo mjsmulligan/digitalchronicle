@@ -12,6 +12,7 @@ import { clearAll, allEntries, allHiddenEntries, markAllReviewed, useJournal } f
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
 import { useHomePrefs } from "../src/lib/useHomePrefs";
 import { getPosterFetchEnabled, setPosterFetchEnabled, getBookCoverFetchEnabled, setBookCoverFetchEnabled } from "../src/lib/posterPrefs";
+import { getMasterAutoCheck, setMasterAutoCheck } from "../src/lib/connectedSources";
 import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@chronicle/journal/artworkEnrichment";
 import { artworkStorage } from "@chronicle/journal/artwork";
 
@@ -32,9 +33,12 @@ export default function SettingsScreen() {
   const [fetchPosters, setFetchPostersState] = useState(true);
   // Book covers toggle — loaded from persistent prefs
   const [fetchBookCovers, setFetchBookCoversState] = useState(true);
+  // Connected sources master auto-check switch
+  const [autoCheckEnabled, setAutoCheckEnabled] = useState(true);
   useEffect(() => {
     getPosterFetchEnabled().then(setFetchPostersState);
     getBookCoverFetchEnabled().then(setFetchBookCoversState);
+    getMasterAutoCheck().then(setAutoCheckEnabled).catch(() => {});
   }, []);
 
   const handleFetchPostersToggle = async (value: boolean) => {
@@ -47,6 +51,11 @@ export default function SettingsScreen() {
     setFetchBookCoversState(value);
     setFetchBookCoversEnabled(value);
     await setBookCoverFetchEnabled(value);
+  };
+
+  const handleAutoCheckToggle = async (value: boolean) => {
+    setAutoCheckEnabled(value);
+    await setMasterAutoCheck(value);
   };
 
   const styles = useMemo(() => StyleSheet.create({
@@ -389,8 +398,18 @@ export default function SettingsScreen() {
       {/* Moved to Sources page (WP15). Settings keeps only a navigation link. */}
       <Text style={styles.sectionTitle}>Sources</Text>
 
-      {/* New entries count + bulk mark-read action */}
+      {/* Connected sources master switch + new entries count + bulk mark-read */}
       <View style={[styles.card, { marginBottom: spacing.sm }]}>
+        <View style={styles.statRow}>
+          <Text style={styles.statLabel}>Check on startup</Text>
+          <Switch
+            value={autoCheckEnabled}
+            onValueChange={handleAutoCheckToggle}
+            trackColor={{ false: colors.border, true: colors.accent }}
+            thumbColor={colors.surface}
+          />
+        </View>
+        <View style={styles.divider} />
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>New entries</Text>
           <Text style={[styles.statValue, { color: unreviewedCount > 0 ? colors.accent : colors.textMuted }]}>
