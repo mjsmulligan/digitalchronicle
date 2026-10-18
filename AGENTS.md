@@ -10,7 +10,7 @@
 <!-- LOVABLE:END -->
 
 - Journal data lives only in browser IndexedDB (src/lib/journal/db.ts); no cloud sync — privacy requirement.
-- Imports go through staging batches; precedence tier 1 manual > 2 primary > 3 secondary.
+- Imports go through `importFile` in `src/lib/journal/import.ts`; precedence tier 1 manual > 2 primary > 3 secondary.
 
 ## ⚠️ Connector architecture — do not remove or simplify
 
@@ -22,7 +22,7 @@
 
 `src/lib/journal/parsers.ts` is **legacy/dead**. Do not import from it and do not restore its use. If you need to call `legKey`, `stayKey`, `eventKey`, or `detectConnector`, import from `src/lib/journal/connectors/keys.ts` and `src/lib/journal/connectors/registry.ts` respectively.
 
-`src/lib/journal/staging.ts` must import from `./connectors/registry`, never from `./parsers`.
+`src/lib/journal/staging.ts` has been deleted (WP15). Do not recreate it.
 
 ## ⚠️ Evaluation fields — universal, never calendar-level
 

@@ -76,7 +76,7 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
   const trigger = opts.trigger ?? "manual";
   const startedAt = new Date().toISOString();
 
-  // 1. Same preamble as stageFile.
+  // 1. Detect unsupported formats and resolve connector.
   await loadStations();
   const header = text.replace(/^﻿/, "").split(/\r?\n/, 1)[0].toLowerCase();
   for (const fmt of UNSUPPORTED_FORMATS) {

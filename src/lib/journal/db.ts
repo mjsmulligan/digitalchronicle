@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type StagingBatch, type Trip, type PlaceEntry } from "./types";
+import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type Trip, type PlaceEntry } from "./types";
 import { KIND_REGISTRY } from "./kinds";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
@@ -10,7 +10,8 @@ import type { StorageAdapter, Row } from "./storage";
 const DB_NAME = "waypoint-journal";
 // v8: DM4, removed placeEvents store, renamed places→gazetteer
 // v9: auto-import, added the importRuns store (the new Base fields are optional, so no backfill)
-const DB_VERSION = 9;
+// v10: removed the staging store (WP15)
+const DB_VERSION = 10;
 
 /** The slice of IDBDatabase that the upgrade needs. Lets tests run it without a browser. */
 export interface UpgradableDB {
@@ -32,6 +33,10 @@ export function applyUpgrade(db: UpgradableDB, oldVersion: number): void {
   if (oldVersion < 8) {
     if (db.objectStoreNames.contains("placeEvents")) db.deleteObjectStore("placeEvents");
     if (db.objectStoreNames.contains("places")) db.deleteObjectStore("places");
+  }
+  // v10: drop the staging store (WP15)
+  if (oldVersion < 10) {
+    if (db.objectStoreNames.contains("staging")) db.deleteObjectStore("staging");
   }
 }
 
@@ -151,10 +156,7 @@ function hasPlace(e: Entry): boolean {
 }
 
 function hasJournalPlaces(data: Partial<JournalData>): boolean {
-  return (
-    [...(data.legs ?? []), ...(data.stays ?? []), ...(data.events ?? [])].some(hasPlace) ||
-    (data.staging ?? []).some((batch) => batch.records.some((record) => hasPlace(record.entry)))
-  );
+  return [...(data.legs ?? []), ...(data.stays ?? []), ...(data.events ?? [])].some(hasPlace);
 }
 
 // ─── Public API (unchanged signatures) ───────────────────────────────────────
@@ -480,7 +482,6 @@ export function setCommitProgress(progress: CommitProgress | null): void {
 export async function putMany(store: StoreName, items: (DbRow & Record<string, any>)[] | any[]) {
   if (!items.length) return;
   if ((store === "legs" || store === "stays" || store === "events") && (items as Entry[]).some(hasPlace)) await loadStations();
-  if (store === "staging" && (items as StagingBatch[]).some((batch) => batch.records.some((record) => hasPlace(record.entry)))) await loadStations();
   await adapter.putMany(store, items);
   const map = new Map((state[store] as DbRow[]).map((r) => [r.id, r]));
   items.forEach((i) => map.set(i.id, i));

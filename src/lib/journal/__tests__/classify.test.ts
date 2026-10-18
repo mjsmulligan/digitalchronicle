@@ -2,13 +2,13 @@
  * WP2 of docs/specs/auto-import.md: classify against hidden entries.
  *
  * Part 1 tests classify() and buildDedupeIndex() directly.
- * Part 2 runs the real stageFile / commitBatch / hideMany pipeline against an
+ * Part 2 runs the real importFile / hideMany pipeline against an
  * in-memory storage adapter, to prove that re-importing never brings back an
  * entry the user hid.
  */
 import { describe, test, expect, beforeEach } from "vitest";
 import { classify, buildDedupeIndex } from "../classify";
-import { stageFile, commitBatch } from "../staging";
+import { importFile } from "../import";
 import {
   setAdapter, initJournal, getState, allEntries, allHiddenEntries,
   hideMany, unhideMany, putMany, storeFor,
@@ -105,7 +105,7 @@ describe("buildDedupeIndex", () => {
 
 // ─── Part 2: the real pipeline ───────────────────────────────────────────────
 
-/** Minimal in-memory StorageAdapter so stageFile, commitBatch and hideMany can run in node. */
+/** Minimal in-memory StorageAdapter so importFile and hideMany can run in node. */
 class MemoryAdapter implements StorageAdapter {
   private data = new Map<string, Map<string, Row>>();
   private table(store: string) {
@@ -130,21 +130,18 @@ class MemoryAdapter implements StorageAdapter {
   }
 }
 
-const statuses = (b: { records: { status: string }[] }) => b.records.map((r) => r.status).sort();
-
 async function freshJournal() {
   setAdapter(new MemoryAdapter());
   await initJournal();
 }
 
-describe("re-import after hiding (stageFile + commitBatch)", () => {
+describe("re-import after hiding (importFile)", () => {
   beforeEach(freshJournal);
 
-  test("a hidden entry is classified removed and never comes back", async () => {
+  test("a hidden entry is never brought back by re-import", async () => {
     // First import: four new rail legs.
-    const first = await stageFile("sample.csv", viaductCsv, "viaduct");
-    expect(statuses(first)).toEqual(["new", "new", "new", "new"]);
-    expect((await commitBatch(first)).count).toBe(4);
+    const first = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(first.added).toBe(4);
     expect(allEntries(getState())).toHaveLength(4);
 
     // The user hides one.
@@ -153,51 +150,36 @@ describe("re-import after hiding (stageFile + commitBatch)", () => {
     expect(allEntries(getState())).toHaveLength(3);
     expect(allHiddenEntries(getState())).toHaveLength(1);
 
-    // Re-import the same file: the hidden one is recognised, the rest are duplicates.
-    const second = await stageFile("sample.csv", viaductCsv, "viaduct");
-    expect(statuses(second)).toEqual(["duplicate", "duplicate", "duplicate", "removed"]);
-    const removed = second.records.find((r) => r.status === "removed")!;
-    expect(removed.matchId).toBe(target.id);
-    expect(removed.entry.dedupeKey).toBe(target.dedupeKey);
-    expect(second.records.every((r) => !r.selected)).toBe(true);
+    // Re-import the same file: hidden entry is skipped as removed, rest are duplicates.
+    const second = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(second.added).toBe(0);
+    expect(second.skipped.removed).toBe(1);
+    expect(second.skipped.duplicate).toBe(3);
 
-    // Committing writes nothing: no resurrected entry, no second copy.
-    expect((await commitBatch(second)).count).toBe(0);
+    // Hidden entry stays hidden; visible count unchanged.
     expect(allEntries(getState())).toHaveLength(3);
-    expect(getState().legs).toHaveLength(4);
-    expect(allHiddenEntries(getState()).map((e) => e.id)).toEqual([target.id]);
-  });
-
-  test("a removed record cannot be committed even if it is forced selected", async () => {
-    const first = await stageFile("sample.csv", viaductCsv, "viaduct");
-    await commitBatch(first);
-    const target = allEntries(getState())[0];
-    await hideMany(storeFor(target), [target.id]);
-
-    const second = await stageFile("sample.csv", viaductCsv, "viaduct");
-    second.records.forEach((r) => { r.selected = true; });
-    expect((await commitBatch(second)).count).toBe(0);
-    expect(getState().legs).toHaveLength(4);
-    expect(allEntries(getState())).toHaveLength(3);
+    expect(allHiddenEntries(getState()).map((e) => e.id)).toContain(target.id);
   });
 
   test("unhiding returns the entry to normal duplicate handling", async () => {
-    const first = await stageFile("sample.csv", viaductCsv, "viaduct");
-    await commitBatch(first);
+    const first = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(first.added).toBe(4);
     const target = allEntries(getState())[0];
     await hideMany(storeFor(target), [target.id]);
     await unhideMany(storeFor(target), [target.id]);
 
-    const again = await stageFile("sample.csv", viaductCsv, "viaduct");
-    expect(statuses(again)).toEqual(["duplicate", "duplicate", "duplicate", "duplicate"]);
+    const again = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(again.added).toBe(0);
+    expect(again.skipped.duplicate).toBe(4);
+    expect(again.skipped.removed).toBe(0);
   });
 
   test("without hiding, a re-import is all duplicates (unchanged behaviour)", async () => {
-    const first = await stageFile("sample.csv", viaductCsv, "viaduct");
-    await commitBatch(first);
-    const again = await stageFile("sample.csv", viaductCsv, "viaduct");
-    expect(statuses(again)).toEqual(["duplicate", "duplicate", "duplicate", "duplicate"]);
-    expect((await commitBatch(again)).count).toBe(0);
+    const first = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(first.added).toBe(4);
+    const again = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(again.added).toBe(0);
+    expect(again.skipped.duplicate).toBe(4);
   });
 });
 
@@ -213,17 +195,20 @@ describe("fuzzy flight rule ignores hidden legs", () => {
   const sameDayLeg = (over: Partial<Leg> = {}) =>
     leg({ id: "existing", mode: "air", from: "DUB", to: "LHR", start: "2026-10-15T09:00", dedupeKey: "leg|2026-10-15|DUB|LHR", ...over });
 
-  test("a visible leg on the same date still makes a ??? flight a possible duplicate", async () => {
+  test("a visible leg on the same date flags the imported flight as a possible duplicate", async () => {
     await putMany("legs", [sameDayLeg()]);
-    const batch = await stageFile("calendar.ics", flightToParis, "icalendar");
-    expect(batch.records).toHaveLength(1);
-    expect(batch.records[0].status).toBe("duplicate");
-    expect(batch.records[0].warnings.join(" ")).toContain("possible duplicate");
+    const result = await importFile("calendar.ics", flightToParis, { forced: "icalendar" });
+    // The flight is added (not blocked) but flagged with a note.
+    expect(result.added).toBe(1);
+    const entry = allEntries(getState()).find((e) => e.kind === "leg" && e.id !== "existing");
+    expect(entry?.importNotes).toContain("Possible duplicate of an existing flight on this date");
   });
 
-  test("a hidden leg on the same date does not", async () => {
+  test("a hidden leg on the same date does not flag the imported flight", async () => {
     await putMany("legs", [sameDayLeg({ hidden: true })]);
-    const batch = await stageFile("calendar.ics", flightToParis, "icalendar");
-    expect(batch.records[0].status).toBe("new");
+    const result = await importFile("calendar.ics", flightToParis, { forced: "icalendar" });
+    expect(result.added).toBe(1);
+    const entry = allEntries(getState()).find((e) => e.kind === "leg");
+    expect(entry?.importNotes ?? []).not.toContain("Possible duplicate of an existing flight on this date");
   });
 });
