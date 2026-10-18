@@ -20,7 +20,7 @@ import {
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useDialog, Dialog } from "../../src/components/Dialog";
-import { useJournal, allEntries, putMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
 import {
   uid,
   view,
@@ -262,11 +262,8 @@ export default function TripConfirmScreen() {
           if (!byStore.has(s)) byStore.set(s, []);
           byStore.get(s)!.push(e);
         }
-        for (const [store, items] of byStore) {
-          await putMany(
-            store as Parameters<typeof putMany>[0],
-            items.map((e) => ({ ...e, tripId: trip.id }))
-          );
+        for (const items of byStore.values()) {
+          await saveUserEdit(items.map((e) => ({ ...e, tripId: trip.id })));
         }
       }
 

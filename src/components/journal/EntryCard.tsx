@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { putMany, removeMany, hideMany, storeFor, useJournal } from "@/lib/journal/db";
+import { putMany, removeMany, hideMany, saveUserEdit, storeFor, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person, type AnyOverrides, type Book } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { operatorMarkId } from "@/lib/journal/connectors/icons";
@@ -321,13 +321,13 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
       // Only write unlocked evaluation fields back; locked fields stay as-is from source
       const reflectionVal = reflectionLocked ? entry.reflection : (reflection || undefined);
       const ratingVal = ratingLocked ? entry.rating : rating;
-      await putMany(storeFor(entry), [{
+      await saveUserEdit({
         ...entry, ...extra,
         reflection: reflectionVal,
         rating: ratingVal,
         overrides: Object.keys(clean).length ? (clean as AnyOverrides) : undefined,
         participants,
-      }]);
+      } as Entry);
       toast.success("Entry saved");
     } catch (err) {
       toast.error(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
@@ -345,7 +345,7 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
   };
 
   const setTrip = async (tripId: string) => {
-    await putMany(storeFor(entry), [{ ...entry, tripId: tripId || undefined }]);
+    await saveUserEdit({ ...entry, tripId: tripId || undefined });
   };
 
   const meta =
