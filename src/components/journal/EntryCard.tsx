@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { putMany, removeMany, hideMany, saveUserEdit, storeFor, useJournal } from "@/lib/journal/db";
+import { putMany, removeMany, hideMany, markReviewed, saveUserEdit, storeFor, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, entryTitle, view, uid, type Entry, type Leg, type EventCategory, type Person, type AnyOverrides, type Book } from "@/lib/journal/types";
 import { sourceLabel } from "@/lib/journal/connectors/registry";
 import { operatorMarkId } from "@/lib/journal/connectors/icons";
@@ -344,6 +344,14 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
     }
   };
 
+  const handleKeep = async () => {
+    try {
+      await markReviewed(storeFor(entry), [entry.id]);
+    } catch (err) {
+      toast.error(`Could not keep: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
   const setTrip = async (tripId: string) => {
     await saveUserEdit({ ...entry, tripId: tripId || undefined });
   };
@@ -364,11 +372,14 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
                   : [v.category === "concert" ? v.venue : v.venue, v.city, (v as Extract<typeof v, { people?: string[] }>).people?.join(", ")].filter(Boolean).join(" · ");
 
   return (
-    <div className="rounded-md border border-border bg-card">
+    <div className={cn("rounded-md border bg-card", entry.unreviewed ? "border-primary/40" : "border-border")}>
       <button onClick={() => setOpen(!open)} className="flex w-full items-start gap-3 p-3 text-left">
         <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", entryColor(v))} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
+            {entry.unreviewed && (
+              <span className="mt-1 inline-block h-1.5 w-1.5 shrink-0 self-center rounded-full bg-primary" aria-hidden="true" />
+            )}
             <span className="font-medium">{entryTitle(entry)}</span>
             {v.kind === "leg" && (time(v.start) || time(v.end)) && (
               <span className="font-mono text-xs text-muted-foreground">{time(v.start)}–{time(v.end)}</span>
@@ -378,13 +389,35 @@ export function EntryCard({ entry, compact }: { entry: Entry; compact?: boolean 
             {trip && <Badge variant="secondary" className="h-4 px-1 text-[10px]">{trip.title}</Badge>}
           </div>
           {!compact && meta && <p className="truncate text-sm text-muted-foreground">{meta}</p>}
+          {!open && entry.importNotes?.[0] && <p className="truncate text-xs italic text-muted-foreground">{entry.importNotes[0]}</p>}
           {!open && (entry.review ?? entry.reflection) && <p className="mt-1 line-clamp-1 font-serif text-sm italic text-foreground/80">&ldquo;{entry.review ?? entry.reflection}&rdquo;</p>}
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{entryLabel(v)}</span>
+        {entry.unreviewed ? (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-primary" aria-label={entry.unreviewed === "new" ? "new entry" : "updated entry"}>
+            {entry.unreviewed === "new" ? "New" : "Updated"}
+          </span>
+        ) : (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">{entryLabel(v)}</span>
+        )}
         <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", open && "rotate-180")} />
       </button>
       {open && (
         <div className="space-y-3 border-t border-border p-3">
+          {/* Review bar — shown when entry is flagged as new or updated */}
+          {entry.unreviewed && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+              <span className="text-foreground/80">
+                {entry.unreviewed === "new" ? "New" : "Updated"} from{" "}
+                <span className="font-medium">{sourceLabel(entry.source)}</span>
+                {entry.start && <span className="text-muted-foreground"> · {entry.start.slice(0, 10)}</span>}
+              </span>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleKeep}>Keep</Button>
+                <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={handleDelete}>Hide</Button>
+              </div>
+            </div>
+          )}
+
           {/* Poster / cover — film, episode (TMDB) and book (Open Library) */}
           {posterUrl && (
             <div className="flex justify-center pb-1">
