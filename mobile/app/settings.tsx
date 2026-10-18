@@ -8,7 +8,7 @@ import { useDialog, Dialog } from "../src/components/Dialog";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import { clearAll, allHiddenEntries, useJournal } from "@chronicle/journal/db";
+import { clearAll, allEntries, allHiddenEntries, markAllReviewed, useJournal } from "@chronicle/journal/db";
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
 import { useHomePrefs } from "../src/lib/useHomePrefs";
 import { getPosterFetchEnabled, setPosterFetchEnabled, getBookCoverFetchEnabled, setBookCoverFetchEnabled } from "../src/lib/posterPrefs";
@@ -218,6 +218,17 @@ export default function SettingsScreen() {
     journal.books.length;
 
   const hiddenCount = allHiddenEntries(journal).length;
+  const unreviewedCount = allEntries(journal).filter((e) => e.unreviewed !== undefined).length;
+
+  const handleMarkAllRead = () => {
+    const n = unreviewedCount;
+    dialog.confirm(
+      "Mark all as read",
+      `Mark ${n.toLocaleString()} ${n === 1 ? "entry" : "entries"} as read?`,
+      "Mark all as read",
+      async () => { await markAllReviewed(); }
+    );
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -377,6 +388,26 @@ export default function SettingsScreen() {
       {/* ── Photo library ───────────────────────────────────────────────── */}
       {/* Moved to Sources page (WP15). Settings keeps only a navigation link. */}
       <Text style={styles.sectionTitle}>Sources</Text>
+
+      {/* New entries count + bulk mark-read action */}
+      <View style={[styles.card, { marginBottom: spacing.sm }]}>
+        <View style={styles.statRow}>
+          <Text style={styles.statLabel}>New entries</Text>
+          <Text style={[styles.statValue, { color: unreviewedCount > 0 ? colors.accent : colors.textMuted }]}>
+            {unreviewedCount.toLocaleString()}
+          </Text>
+        </View>
+        <View style={styles.divider} />
+        <Pressable
+          style={[styles.statRow, unreviewedCount === 0 && { opacity: 0.4 }]}
+          onPress={handleMarkAllRead}
+          disabled={unreviewedCount === 0}
+        >
+          <Text style={[styles.statLabel, { color: unreviewedCount > 0 ? colors.accent : colors.textMuted }]}>
+            Mark all as read
+          </Text>
+        </Pressable>
+      </View>
 
       <Pressable
         style={[styles.card, { flexDirection: "row", alignItems: "center", marginBottom: spacing.xl }]}
