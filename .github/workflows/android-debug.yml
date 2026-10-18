@@ -1,49 +1,64 @@
-- name: Setup Node.js
-  uses: actions/setup-node@v4
-  with:
-    node-version: '18'
-    cache: 'npm'
+name: Android debug APK
 
-- name: Install mobile dependencies
-  working-directory: mobile
-  run: npm ci
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android-debug.yml"
 
-- name: Setup Java (Temurin 11)
-  uses: actions/setup-java@v4
-  with:
-    distribution: 'temurin'
-    java-version: '11'
+concurrency:
+  group: android-debug-${{ github.ref }}
+  cancel-in-progress: true
 
-- name: Install Android command-line tools and SDK packages
-  run: |
-    mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
-    cd $ANDROID_SDK_ROOT
-    curl -sSL https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -o cmdline-tools.zip
-    unzip -q cmdline-tools.zip -d cmdline-tools
-    mkdir -p $ANDROID_SDK_ROOT/cmdline-tools/latest
-    mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools/* $ANDROID_SDK_ROOT/cmdline-tools/latest/ || true
-    export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
-    yes | sdkmanager --sdk_root=${ANDROID_SDK_ROOT} --licenses
-    sdkmanager --sdk_root=${ANDROID_SDK_ROOT} "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
 
-- name: Prebuild Android native project (Expo)
-  working-directory: mobile
-  run: |
-    npx expo prebuild --platform android --no-install
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-- name: Make gradlew executable
-  run: chmod +x mobile/android/gradlew
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
 
-- name: Build debug APK
-  run: |
-    cd mobile/android
-    ./gradlew assembleDebug --no-daemon
-  env:
-    ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
-    ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci
 
-- name: Upload debug APK artifact
-  uses: actions/upload-artifact@v4
-  with:
-    name: app-debug-apk
-    path: mobile/android/app/build/outputs/**/*.apk
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The ubuntu runner image already ships the Android SDK. Accept its
+      # licences so Gradle can download whichever platform and build-tools
+      # versions the generated project asks for.
+      - name: Accept Android SDK licences
+        run: yes | sdkmanager --licenses > /dev/null || true
+
+      - name: Prebuild Android native project (Expo)
+        working-directory: mobile
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
