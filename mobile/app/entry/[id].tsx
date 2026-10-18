@@ -15,7 +15,7 @@ import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
 import { mergeEntries } from "@chronicle/journal/merge";
@@ -481,6 +481,29 @@ export default function EntryDetailScreen() {
     headerActions: { flexDirection: "row" as const, alignItems: "center" as const, gap: 2, marginRight: 4 },
     headerBtn:     { padding: 8 },
 
+    // review bar
+    reviewBar: {
+      flexDirection: "row" as const,
+      alignItems: "center" as const,
+      backgroundColor: colors.accentSubtle,
+      borderRadius: radius.xl,
+      borderWidth: 1,
+      borderColor: colors.accentSoft,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      gap: spacing.sm,
+    },
+    reviewBarLabel: { ...text.sm, color: colors.accent, flex: 1 },
+    reviewBarBtn: {
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.accentBold,
+    },
+    reviewBarBtnDestructive: { backgroundColor: "transparent" as const, borderWidth: 1, borderColor: colors.border },
+    reviewBarBtnText: { ...text.sm, fontWeight: "600" as const, color: colors.white },
+    reviewBarBtnTextDestructive: { color: colors.textSecondary },
+
     // hero layout
     heroOuter:     { flex: 1, backgroundColor: colors.bg },
     heroImageWrap: { position: "absolute" as const, top: 0, left: 0, right: 0 },
@@ -545,6 +568,12 @@ export default function EntryDetailScreen() {
     return (journal.localityPlaces ?? []).find((p) => p.id === (entry as PlaceEntry).placeId);
   }, [entry, journal.localityPlaces]);
 
+  // Import run for the review bar (shows source and import date)
+  const importRun = useMemo(() => {
+    if (!entry?.importId) return undefined;
+    return (journal.importRuns ?? []).find((r) => r.id === entry.importId);
+  }, [entry?.importId, journal.importRuns]);
+
   // Same-day entries for the merge picker (WP-E3)
   const sameDayEntries = useMemo<Entry[]>(() => {
     if (!entry) return [];
@@ -586,7 +615,7 @@ export default function EntryDetailScreen() {
     if (!entry) return;
     dialog.confirm(
       "Hide entry",
-      `"${entryTitle(entry)}" will be hidden from your journal. You can restore it from Settings → Hidden Entries.`,
+      `"${entryTitle(entry)}" will be hidden from your journal. You can restore it from Settings > Hidden Entries.`,
       "Hide",
       async () => {
         try {
@@ -597,6 +626,15 @@ export default function EntryDetailScreen() {
         }
       },
     );
+  };
+
+  const handleKeep = async () => {
+    if (!entry) return;
+    try {
+      await markReviewed(storeFor(entry), [entry.id]);
+    } catch (err) {
+      dialog.alert("Could not mark as reviewed", String(err));
+    }
   };
 
   const handleParticipantsConfirm = async (ids: string[]) => {
@@ -657,6 +695,32 @@ export default function EntryDetailScreen() {
   // ── shared content (cards) ────────────────────────────────────────────────
   const contentCards = (
     <>
+      {/* Review bar — shown when the entry is flagged as new or updated */}
+      {entry.unreviewed && (
+        <View style={styles.reviewBar}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.reviewBarLabel}>
+              {entry.unreviewed === "new" ? "New" : "Updated"} from {sourceLabel(entry.source)}
+              {importRun ? `, ${fmt(importRun.startedAt)}` : ""}
+            </Text>
+          </View>
+          <Pressable
+            style={styles.reviewBarBtn}
+            onPress={handleKeep}
+            accessibilityLabel="Mark as reviewed"
+          >
+            <Text style={styles.reviewBarBtnText}>Keep</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.reviewBarBtn, styles.reviewBarBtnDestructive]}
+            onPress={handleHide}
+            accessibilityLabel="Hide entry"
+          >
+            <Text style={[styles.reviewBarBtnText, styles.reviewBarBtnTextDestructive]}>Hide</Text>
+          </Pressable>
+        </View>
+      )}
+
       <View style={styles.card}>
         {entry.kind === "leg"         && <LegDetail         e={entry as Leg}        styles={styles} iconColors={iconColors} />}
         {entry.kind === "stay"        && <StayDetail        e={entry as Stay}       styles={styles} iconColors={iconColors} />}

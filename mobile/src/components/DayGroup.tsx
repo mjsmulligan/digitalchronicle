@@ -156,6 +156,8 @@ export interface DayGroupProps {
   colors: ThemeColors;
   fonts: ThemeFonts;
   onEntryPress: (entry: Entry) => void;
+  /** Called when the user long-presses an entry row (used for quick Keep/Hide). */
+  onEntryLongPress?: (entry: Entry) => void;
   /**
    * Whether to show any legacy day-level note text (read-only).
    * Default `true` — Chronicle shows it. Culture, Trips, People pass `false`.
@@ -167,7 +169,7 @@ export interface DayGroupProps {
  * Renders one day in the journal feed.
  * Designed to be the renderItem of a FlatList where each item is one day.
  */
-export function DayGroup({ group, colors, fonts, onEntryPress, showReflection = true }: DayGroupProps) {
+export function DayGroup({ group, colors, fonts, onEntryPress, onEntryLongPress, showReflection = true }: DayGroupProps) {
   const styles = useMemo(() => createStyles(colors, fonts), [colors, fonts]);
   const rowItems = useMemo(() => buildRowItems(group.items), [group.items]);
 
@@ -193,6 +195,7 @@ export function DayGroup({ group, colors, fonts, onEntryPress, showReflection = 
                 colors={colors}
                 fonts={fonts}
                 onPress={() => onEntryPress(item.entry)}
+                onLongPress={onEntryLongPress ? () => onEntryLongPress(item.entry) : undefined}
               />
             ) : (
               <EpisodeGroupRow
