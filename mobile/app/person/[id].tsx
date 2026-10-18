@@ -150,6 +150,8 @@ export default function PersonDetailScreen() {
                     ...e,
                     participants: remaining.length > 0 ? remaining : undefined,
                   };
+                  // Side effect of deleting a person, not an edit of the entry, so review
+                  // flags are left alone (plain putMany, not saveUserEdit).
                   return putMany(storeFor(e), [updated]);
                 }),
               );

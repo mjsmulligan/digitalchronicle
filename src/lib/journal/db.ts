@@ -457,16 +457,138 @@ export async function removeMany(store: StoreName, ids: string[]) {
   emit({ [store]: (state[store] as DbRow[]).filter((r) => !set.has(r.id)) } as Partial<State>);
 }
 
-/** Soft-delete: marks entries as hidden without removing them from the DB. */
+/**
+ * Soft-delete: marks entries as hidden without removing them from the DB.
+ * Hiding is a user action, so it also clears `unreviewed` and `importNotes` (spec 4.1).
+ */
 export async function hideMany(store: StoreName, ids: string[]) {
   if (!ids.length) return;
   const set = new Set(ids);
-  const toHide = (state[store] as (DbRow & { hidden?: true })[])
-    .filter((r) => set.has(r.id))
-    .map((r) => ({ ...r, hidden: true as const }));
+  const hide = <T extends object>(r: T) => ({ ...stripReviewFlags(r), hidden: true as const });
+  const toHide = (state[store] as DbRow[]).filter((r) => set.has(r.id)).map(hide);
   if (!toHide.length) return;
   await adapter.putMany(store, toHide);
-  emit({ [store]: (state[store] as (DbRow & { hidden?: true })[]).map((r) => set.has(r.id) ? { ...r, hidden: true as const } : r) } as Partial<State>);
+  emit({ [store]: (state[store] as DbRow[]).map((r) => (set.has(r.id) ? hide(r) : r)) } as Partial<State>);
+}
+
+// ─── Review helpers (auto-import, spec 5.4 and 5.6) ───────────────────────────
+
+const ENTRY_STORES = ["legs", "stays", "events", "films", "episodes", "books", "placeEntries"] as const satisfies readonly StoreName[];
+const REVIEW_CHUNK = 100;
+
+/** Removes the keys that mark an entry as awaiting review. `importId` stays: it is provenance. */
+function stripReviewFlags<T extends object>(e: T): T {
+  const { unreviewed: _u, importNotes: _n, ...rest } = e as T & { unreviewed?: unknown; importNotes?: unknown };
+  return rest as T;
+}
+
+const hasReviewFlags = (e: Entry) => e.unreviewed !== undefined || e.importNotes !== undefined;
+
+/**
+ * The single write path for a user-authored change to an entry: a field edit, a
+ * reflection, a rating, participants, a trip attach or detach, a merge. It clears
+ * `unreviewed` and `importNotes`, because the user has now looked at the entry.
+ * Imports and connectors never call this. (Hiding clears the flags inside
+ * hideMany, which is the hide path.)
+ */
+export async function saveUserEdit(entry: Entry | Entry[]): Promise<void> {
+  const list = Array.isArray(entry) ? entry : [entry];
+  const byStore = new Map<StoreName, Entry[]>();
+  for (const e of list) {
+    const store = storeFor(e);
+    const bucket = byStore.get(store);
+    if (bucket) bucket.push(stripReviewFlags(e));
+    else byStore.set(store, [stripReviewFlags(e)]);
+  }
+  for (const [store, items] of byStore) await putMany(store, items);
+}
+
+const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/** Clears the review flags on every entry (in `stores`) that matches, in chunks. Returns the count. */
+async function clearFlagsWhere(match: (e: Entry) => boolean, stores: readonly StoreName[] = ENTRY_STORES): Promise<number> {
+  let count = 0;
+  for (const store of stores) {
+    const hits = (state[store] as Entry[]).filter((e) => hasReviewFlags(e) && match(e));
+    for (let i = 0; i < hits.length; i += REVIEW_CHUNK) {
+      await putMany(store, hits.slice(i, i + REVIEW_CHUNK).map(stripReviewFlags));
+      if (i + REVIEW_CHUNK < hits.length) await yieldToUi();
+    }
+    count += hits.length;
+  }
+  return count;
+}
+
+/** The user kept these entries: clear their flags, change nothing else. */
+export async function markReviewed(store: StoreName, ids: string[]): Promise<void> {
+  const set = new Set(ids);
+  await clearFlagsWhere((e) => set.has(e.id), [store]);
+}
+
+/** Keep all from one import. Returns how many entries were cleared. */
+export async function markRunReviewed(runId: string): Promise<number> {
+  return clearFlagsWhere((e) => e.importId === runId);
+}
+
+/** Settings: mark all new as read. Returns how many entries were cleared. */
+export async function markAllReviewed(): Promise<number> {
+  return clearFlagsWhere(() => true);
+}
+
+/**
+ * Has the user changed this replaced entry since the import? Compared with the
+ * snapshot taken before the import: a supersede keeps `overrides`, `reflection`,
+ * `participants`, `tripId` and (unless the source locks it) `rating`, so any
+ * difference there is the user's. A cleared flag alone (a plain "Keep") is not an edit.
+ */
+function editedSinceImport(current: Entry, before: Entry): boolean {
+  if (current.hidden) return true; // hiding is a user action
+  if (current.unreviewed !== undefined) return false; // still unseen, so untouched
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  if (!same(current.overrides, before.overrides)) return true;
+  if (!same(current.reflection, before.reflection)) return true;
+  if (!same(current.participants, before.participants)) return true;
+  if (!same(current.tripId, before.tripId)) return true;
+  if (!current.sourceLocked?.includes("rating") && !same(current.rating, before.rating)) return true;
+  return false;
+}
+
+/**
+ * Undo an import without deleting anything (spec 5.6).
+ *  - Entries it added that are still unseen are hidden (they appear in Hidden Entries).
+ *  - Entries it replaced go back to their prior version, unless the user has edited them since.
+ *  - Anything the user has since reviewed or edited is kept.
+ * The run becomes "undone". Undoing twice is a no-op.
+ */
+export async function undoRun(runId: string): Promise<{ hidden: number; restored: number; kept: number }> {
+  const run = state.importRuns.find((r) => r.id === runId);
+  if (!run || run.status === "undone") return { hidden: 0, restored: 0, kept: 0 };
+
+  const replacedIds = new Set(run.replaced.map((r) => r.before.id));
+  let hidden = 0;
+  let restored = 0;
+  let kept = 0;
+
+  // Entries this run wrote. The ones it replaced are handled from their snapshots.
+  for (const store of ENTRY_STORES) {
+    const mine = (state[store] as Entry[]).filter((e) => e.importId === runId && !replacedIds.has(e.id) && !e.hidden);
+    const unseen = mine.filter((e) => e.unreviewed === "new").map((e) => e.id);
+    for (let i = 0; i < unseen.length; i += REVIEW_CHUNK) {
+      await hideMany(store, unseen.slice(i, i + REVIEW_CHUNK));
+    }
+    hidden += unseen.length;
+    kept += mine.length - unseen.length;
+  }
+
+  for (const { store, before } of run.replaced) {
+    const current = (state[store] as Entry[]).find((e) => e.id === before.id);
+    if (!current || editedSinceImport(current, before)) { kept++; continue; }
+    await putMany(store, [before]);
+    restored++;
+  }
+
+  await putMany("importRuns", [{ ...run, status: "undone" as const }]);
+  return { hidden, restored, kept };
 }
 
 /** Restore soft-deleted entries by removing the hidden flag. */

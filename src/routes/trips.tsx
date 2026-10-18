@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { allEntries, putMany, removeMany, useJournal, storeFor } from "@/lib/journal/db";
+import { allEntries, putMany, removeMany, saveUserEdit, useJournal, storeFor } from "@/lib/journal/db";
 import { EntryCard } from "@/components/journal/EntryCard";
 import { AddTripDialog } from "@/components/journal/AddTripDialog";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,7 @@ function TripCard({ trip }: { trip: Trip }) {
   const legs = members.filter((e) => e.kind === "leg");
 
   const attach = async (list: Entry[]) => {
-    for (const e of list) await putMany(storeFor(e), [{ ...e, tripId: trip.id }]);
+    for (const e of list) await saveUserEdit({ ...e, tripId: trip.id });
   };
 
   const gather = async () => {
@@ -95,6 +95,7 @@ function TripCard({ trip }: { trip: Trip }) {
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={async () => {
+                  // Side effect of dissolving: review flags are left alone.
                   for (const m of members) await putMany(storeFor(m), [{ ...m, tripId: undefined }]);
                   await removeMany("trips", [trip.id]);
                   toast.success("Trip dissolved. Its entries stay in your chronicle.");
@@ -128,7 +129,7 @@ function TripCard({ trip }: { trip: Trip }) {
                 <EntryCard entry={m} />
                 <button
                   className="text-xs text-muted-foreground underline"
-                  onClick={() => putMany(storeFor(m), [{ ...m, tripId: undefined }])}
+                  onClick={() => saveUserEdit({ ...m, tripId: undefined })}
                 >
                   Remove from trip
                 </button>

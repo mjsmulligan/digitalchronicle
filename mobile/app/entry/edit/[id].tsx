@@ -16,7 +16,7 @@ import {
   View,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useJournal, allEntries, putMany, removeMany, hideMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
 import {
   uid,
   view,
@@ -723,7 +723,7 @@ export default function EditEntryScreen() {
           // Also apply non-override fields that belong on the entry directly
           ...(fieldPatch.start !== undefined ? { start: String(fieldPatch.start) } : {}),
         };
-        await putMany(storeFor(entry), [updated]);
+        await saveUserEdit(updated as Entry);
       } else {
         // ── Cross-kind: create new entry, delete old ─────────────────────────
         const base = {
@@ -806,7 +806,7 @@ export default function EditEntryScreen() {
 
         if (newEntry) {
           const targetStore = storeFor(newEntry);
-          await putMany(targetStore, [newEntry]);
+          await saveUserEdit(newEntry);
           await hideMany(storeFor(entry), [entry.id]);
           // Navigate to the new entry's detail
           router.replace({ pathname: "/entry/[id]", params: { id: newEntry.id } });
