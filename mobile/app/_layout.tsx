@@ -52,6 +52,7 @@ import { runConnectedSources, setDefaultStorage, registerSource } from "../src/l
 import { makeSyncPrefsStorage } from "../src/lib/syncPrefsStorage";
 import { makeGoodreadsSource } from "../src/lib/goodreadsSource";
 import { makeCalendarSource } from "../src/lib/calendarSource";
+import { makePhotoSource } from "../src/lib/exif/photoSource";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -208,6 +209,7 @@ function RootLayoutInner() {
     if (!journal.ready) return;
     registerSource(makeGoodreadsSource());
     registerSource(makeCalendarSource());
+    registerSource(makePhotoSource());
     setDefaultStorage(makeSyncPrefsStorage());
     const task = InteractionManager.runAfterInteractions(() => {
       runConnectedSources().catch((e) =>
