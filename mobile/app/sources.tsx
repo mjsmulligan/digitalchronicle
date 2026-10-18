@@ -16,6 +16,7 @@
 import React, {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -33,12 +34,12 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { useJournal, putMany } from "@chronicle/journal/db";
+import { useJournal, putMany, allEntries, markRunReviewed, undoRun } from "@chronicle/journal/db";
 import { importFile, type ImportResult } from "@chronicle/journal/import";
 import {
   uid,
 } from "@chronicle/journal/types";
-import type { Person } from "@chronicle/journal/types";
+import type { Person, ImportRun } from "@chronicle/journal/types";
 import { readDeviceContacts } from "../src/lib/deviceContacts";
 import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -608,6 +609,98 @@ function FileSourceCard({
 
 
 
+// ─── Recent import card ───────────────────────────────────────────────────────
+
+function runSourceIcon(source: string): React.ComponentProps<typeof Ionicons>["name"] {
+  if (source === "photo-library") return "images-outline";
+  if (source === "icalendar")     return "calendar-outline";
+  if (source === "goodreads")     return "book-outline";
+  return "document-outline";
+}
+
+function RecentImportCard({
+  run,
+  unreviewedCount,
+  onKeep,
+  onUndo,
+  colors,
+  fonts,
+}: {
+  run: ImportRun;
+  unreviewedCount: number;
+  onKeep: () => void;
+  onUndo: () => void;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
+}) {
+  const displayName = run.trigger === "startup" ? "automatic" : run.filename;
+  const date = new Date(run.startedAt).toLocaleDateString("en-US", { day: "numeric", month: "short" });
+  const summary = [
+    run.added   > 0 ? `${run.added} new`     : "",
+    run.updated > 0 ? `${run.updated} updated` : "",
+  ].filter(Boolean).join(", ");
+  const undone = run.status === "undone";
+
+  return (
+    <View
+      style={[
+        sc.card,
+        { backgroundColor: colors.surface, borderColor: colors.borderFaint },
+        undone && { opacity: 0.5 },
+      ]}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+        <View style={[sc.iconWrap, { backgroundColor: colors.surfaceAccent }]}>
+          <Ionicons name={runSourceIcon(run.source)} size={16} color={colors.accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{ fontSize: 13, color: colors.textPrimary, fontFamily: fonts.serifMedium }}
+            numberOfLines={1}
+          >
+            {displayName}
+          </Text>
+          <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 1 }}>
+            {summary}{summary ? " · " : ""}{date}
+          </Text>
+        </View>
+        {undone && (
+          <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: fonts.mono }}>
+            UNDONE
+          </Text>
+        )}
+      </View>
+
+      {!undone && (
+        <View
+          style={{
+            flexDirection: "row",
+            gap: spacing.sm,
+            marginTop: spacing.sm,
+            justifyContent: "flex-end",
+          }}
+        >
+          <SrcButton
+            label="Keep all"
+            onPress={onKeep}
+            disabled={unreviewedCount === 0}
+            colors={colors}
+            fonts={fonts}
+            variant="ghost"
+          />
+          <SrcButton
+            label="Undo import"
+            onPress={onUndo}
+            colors={colors}
+            fonts={fonts}
+            variant="ghost"
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function SourcesScreen() {
@@ -644,6 +737,47 @@ export default function SourcesScreen() {
   }, []);
 
   const anyActive = activeSource !== null;
+
+  // ── Recent imports ──────────────────────────────────────────────────────────
+
+  // Map from runId -> count of entries still unreviewed (live, from journal state)
+  const unreviewedByRun = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const e of allEntries(journal)) {
+      if (e.importId && e.unreviewed !== undefined) {
+        map.set(e.importId, (map.get(e.importId) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [journal]);
+
+  // Newest-first; only runs that actually added or updated something
+  const recentRuns = useMemo(
+    () => [...journal.importRuns]
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
+    [journal.importRuns]
+  );
+
+  const handleKeepRun = useCallback((runId: string) => {
+    void markRunReviewed(runId).catch(() => {});
+  }, []);
+
+  const handleUndoRun = useCallback((run: ImportRun) => {
+    const n = unreviewedByRun.get(run.id) ?? 0;
+    const m = run.replaced.length;
+    const parts: string[] = [];
+    if (n > 0) parts.push(`Hide ${n} ${n === 1 ? "entry" : "entries"} you have not reviewed`);
+    if (m > 0) parts.push(`restore ${m} that ${m === 1 ? "was" : "were"} replaced`);
+    const body = parts.length > 0
+      ? `${parts.join(" and ")}? Hidden entries can be restored in Settings.`
+      : "Nothing left to hide or restore for this import.";
+    dialog.confirm(
+      "Undo import",
+      body,
+      "Undo import",
+      async () => { await undoRun(run.id); }
+    );
+  }, [unreviewedByRun, dialog]);
 
   // ── Import summary ──────────────────────────────────────────────────────────
 
@@ -1049,6 +1183,24 @@ export default function SourcesScreen() {
           colors={colors}
           fonts={fonts}
         />
+
+        {/* ── Recent imports ───────────────────────────────────────────── */}
+        {recentRuns.length > 0 && (
+          <>
+            <SectionLabel label="Recent imports" colors={colors} />
+            {recentRuns.map((run) => (
+              <RecentImportCard
+                key={run.id}
+                run={run}
+                unreviewedCount={unreviewedByRun.get(run.id) ?? 0}
+                onKeep={() => handleKeepRun(run.id)}
+                onUndo={() => handleUndoRun(run)}
+                colors={colors}
+                fonts={fonts}
+              />
+            ))}
+          </>
+        )}
 
       </ScrollView>
 
