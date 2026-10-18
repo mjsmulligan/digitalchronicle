@@ -14,7 +14,9 @@ import type { LocalityKey } from "../../types";
 export type ScanScope =
   | { kind: "all" }
   | { kind: "date-range"; start: string; end: string } // YYYY-MM-DD
-  | { kind: "albums"; albumIds: string[] };
+  | { kind: "albums"; albumIds: string[] }
+  /** WP12b: startup check — only photos created after this ISO 8601 timestamp */
+  | { kind: "since"; timestamp: string };
 
 /**
  * A normalised photo record as returned by the media access layer.

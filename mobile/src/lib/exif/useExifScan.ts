@@ -14,6 +14,7 @@ import { InMemoryLocalityCache, ResolvingLocalityResolver } from "../../../../sr
 import { buildPlaceEntries } from "../../../../src/lib/journal/sources/exif/entryBuilder";
 import { buildStagingPlan } from "../../../../src/lib/journal/sources/exif/stagingService";
 import type { ScanScope, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord } from "../../../../src/lib/journal/sources/exif/types";
+import { setScanMarker } from "./scanPrefs";
 
 // ─── Lazy device module loader ────────────────────────────────────────────────
 // expo-media-library requires native code not present in Expo Go.
@@ -158,7 +159,8 @@ export function useExifScan() {
           id: importId,
           source: "photo-library",
           filename: "Photo library scan",
-          trigger: "manual",
+          // "since" scope is only used by the startup check; all other scopes are manual.
+          trigger: scope.kind === "since" ? "startup" : "manual",
           startedAt,
           finishedAt: new Date().toISOString(),
           status: "done",
@@ -169,6 +171,15 @@ export function useExifScan() {
           replaced: [],
         };
         await putMany("importRuns", [run]);
+      }
+
+      // Advance the scan marker now that the scan completed successfully.
+      // The marker stores the scope so future startup checks know which albums
+      // or date range to apply. For "since" scope (startup check called via
+      // photoSource), the marker is advanced by photoSource.ts instead; the
+      // useExifScan path is always a user-initiated scan with a base scope.
+      if (scope.kind !== "since") {
+        await setScanMarker(scope);
       }
 
       setState((s) => ({

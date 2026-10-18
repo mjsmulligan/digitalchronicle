@@ -41,6 +41,37 @@ export type MediaPermissionResult =
   | { status: "unavailable" };
 
 /**
+ * Check media permissions without prompting the user.
+ *
+ * Used by the startup check (WP12b) to silently verify status before running
+ * the scan. Returns the same MediaPermissionResult shape as requestMediaPermissions
+ * so callers can handle both uniformly.
+ *
+ * Never calls requestPermissionsAsync; always uses getPermissionsAsync.
+ */
+export async function getMediaPermissions(): Promise<MediaPermissionResult> {
+  if (!(await MediaLibrary.isAvailableAsync())) return { status: "unavailable" };
+
+  const mediaPerm = await MediaLibrary.getPermissionsAsync(/* writeOnly */ false);
+
+  if (mediaPerm.status === "denied" || mediaPerm.status === "undetermined") {
+    return { status: "denied", canAskAgain: mediaPerm.canAskAgain ?? true };
+  }
+
+  if (mediaPerm.accessPrivileges === "limited") {
+    return { status: "limited" };
+  }
+
+  if (mediaPerm.status !== "granted") {
+    return { status: "denied", canAskAgain: false };
+  }
+
+  // locationGranted is unknown without requesting; treat as false.
+  // The startup check only needs photos after a timestamp, not GPS re-check.
+  return { status: "granted", locationGranted: false };
+}
+
+/**
  * Request all permissions needed by the EXIF source.
  *
  * Media library read is always requested. Location-metadata is requested separately
@@ -273,6 +304,11 @@ export async function* scanPhotos(
     if (scope.kind === "date-range") {
       query.createdAfter = new Date(scope.start).getTime();
       query.createdBefore = new Date(scope.end + "T23:59:59Z").getTime();
+    }
+
+    // Apply since scope filter (WP12b startup check: only photos after the stored timestamp).
+    if (scope.kind === "since") {
+      query.createdAfter = new Date(scope.timestamp).getTime();
     }
 
     // Apply album scope — fetch from one album at a time (MediaLibrary limitation).
