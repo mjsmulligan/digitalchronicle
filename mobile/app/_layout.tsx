@@ -48,8 +48,10 @@ import { TheAudioDbProvider, DeezerArtistProvider, CompositeArtistImageProvider,
 import { setFetchPostersEnabled, setFetchBookCoversEnabled, enrichAll } from "@chronicle/journal/artworkEnrichment";
 import { getPosterFetchEnabled, getBookCoverFetchEnabled } from "../src/lib/posterPrefs";
 import { ThemeProvider, useTheme } from "../src/components/ThemeProvider";
-import { runConnectedSources, setDefaultStorage } from "../src/lib/connectedSources";
+import { runConnectedSources, setDefaultStorage, registerSource } from "../src/lib/connectedSources";
 import { makeSyncPrefsStorage } from "../src/lib/syncPrefsStorage";
+import { makeGoodreadsSource } from "../src/lib/goodreadsSource";
+import { makeCalendarSource } from "../src/lib/calendarSource";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -199,10 +201,13 @@ function RootLayoutInner() {
 
   // Trigger the silent connected-sources check once per launch.
   // setDefaultStorage fires immediately on journal ready so other screens can
-  // call getSourceState etc. The actual check runs after interactions settle
-  // (never before the splash hides and the first frame renders).
+  // call getSourceState etc. Sources are registered idempotently (safe on
+  // hot-reload). The actual check runs after interactions settle (never before
+  // the splash hides and the first frame renders).
   useEffect(() => {
     if (!journal.ready) return;
+    registerSource(makeGoodreadsSource());
+    registerSource(makeCalendarSource());
     setDefaultStorage(makeSyncPrefsStorage());
     const task = InteractionManager.runAfterInteractions(() => {
       runConnectedSources().catch((e) =>
