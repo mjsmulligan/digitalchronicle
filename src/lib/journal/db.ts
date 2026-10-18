@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type StagingBatch, type Trip } from "./types";
+import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type StagingBatch, type Trip } from "./types";
 import { KIND_REGISTRY } from "./kinds";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
@@ -369,6 +369,35 @@ async function migrateEvaluationFields(data: Partial<State>): Promise<void> {
   }
 }
 
+/**
+ * Closes import runs that were interrupted (app killed mid-import), which are
+ * still "running" at boot. The counts are recomputed from the entries that carry
+ * the run's id: every one of them was written by the run, and the ones it
+ * replaced have a snapshot in `replaced`. Idempotent: once closed, a run is
+ * never "running" again, so later boots write nothing.
+ */
+async function closeInterruptedRuns(data: Partial<State>): Promise<void> {
+  const runs = (data.importRuns ?? []) as ImportRun[];
+  const open = runs.filter((r) => r.status === "running");
+  if (!open.length) return;
+  const entryStores = ["legs", "stays", "events", "films", "episodes", "books", "placeEntries"] as const;
+  const written = new Map<string, number>();
+  for (const store of entryStores) {
+    for (const e of (data[store] ?? []) as Entry[]) {
+      if (e.importId) written.set(e.importId, (written.get(e.importId) ?? 0) + 1);
+    }
+  }
+  const now = new Date().toISOString();
+  const closed = open.map((r): ImportRun => {
+    const total = written.get(r.id) ?? 0;
+    const updated = Math.min(r.replaced.length, total);
+    return { ...r, status: "done", added: total - updated, updated, finishedAt: now };
+  });
+  await adapter.putMany("importRuns", closed);
+  const byId = new Map(closed.map((r) => [r.id, r]));
+  data.importRuns = runs.map((r) => byId.get(r.id) ?? r);
+}
+
 let initPromise: Promise<void> | undefined;
 
 export function initJournal(): Promise<void> {
@@ -382,6 +411,7 @@ export function initJournal(): Promise<void> {
     await migrateEventKeys(data);
     await migrateReviewReflection(data);
     await migrateEvaluationFields(data);
+    await closeInterruptedRuns(data);
     emit({ ...data, ready: true });
   })().catch((error: unknown) => {
     initPromise = undefined;
