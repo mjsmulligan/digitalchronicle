@@ -1,7 +1,8 @@
-import type { Entry, StagedRecord } from "./types";
+import type { Entry } from "./types";
 
 /** What classify() decides about one incoming record. */
-export type Classification = Pick<StagedRecord, "status" | "matchId">;
+export type ClassificationStatus = "batch-duplicate" | "new" | "removed" | "supersedes" | "superseded" | "duplicate";
+export type Classification = { status: ClassificationStatus; matchId?: string };
 
 /**
  * Lookup of everything already in the journal, by dedupeKey. Pass visible AND

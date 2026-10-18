@@ -63,6 +63,8 @@ export class SQLiteAdapter implements StorageAdapter {
     for (const store of STORES) {
       await this.db.runAsync(storeTableSql(store));
     }
+    // Schema v10: drop the staging table (WP15)
+    await this.db.runAsync("DROP TABLE IF EXISTS \"staging\"");
   }
 
   // ── StorageAdapter implementation ────────────────────────────────────────

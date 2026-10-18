@@ -1,13 +1,13 @@
 # Import Guide
 
-Your journal lives entirely in your browser — no data is sent anywhere. Everything you import goes through a **staging review** where you can see exactly what will be added before committing it.
+Your journal lives entirely in your browser — no data is sent anywhere. Everything you import is processed immediately and entries are added inline with a review indicator.
 
 ## How importing works
 
 1. Open the import panel and drop or select a file.
-2. The app detects the source automatically and parses it into a preview list.
-3. Each record is checked against existing entries and marked as **New**, **Duplicate**, or **Supersedes** (a better-quality version of something already in your journal).
-4. Review, deselect anything you don't want, then **Commit** to save.
+2. The app detects the source automatically and parses it.
+3. Each record is checked against existing entries — new and updated entries are written to your journal and marked **New** or **Updated** so you can review them on the main feed.
+4. Duplicate and already-hidden entries are skipped automatically.
 
 ### Source tiers
 
@@ -91,7 +91,7 @@ Setlist.fm tracks concerts you've attended. It doesn't offer a native export, bu
 - Setlist (song-by-song, where available in the source data)
 
 **Notes:**
-- Setlist.fm has no official export API or download. The third-party tools vary in quality — check the staging preview carefully before committing.
+- Setlist.fm has no official export API or download. The third-party tools vary in quality. Review new entries in your feed after importing.
 
 ### iCalendar (.ics) (tier 3)
 
@@ -118,8 +118,8 @@ Any calendar application can export an iCal file. This is useful for bulk-import
 - Events without a SUMMARY (title)
 
 **Tips:**
-- Export only the calendars that contain personal life events — avoid importing work calendars unless you want to review and deselect meetings in staging.
-- The staging review is your friend here: calendar exports typically include a lot of noise. Use **Select importable** to highlight only new entries, then deselect anything irrelevant before committing.
+- Export only the calendars that contain personal life events — avoid importing work calendars or use the **New** filter on the main feed to review and hide anything irrelevant after importing.
+- Calendar exports typically include noise. Use the **New** filter on the main feed after import and hide entries you don't want to keep.
 
 ### Manual entry (tier 1)
 
@@ -179,7 +179,7 @@ Netflix provides a raw viewing history export. It has no ratings or metadata bey
 
 ### Manual entry (tier 1)
 
-Films can't yet be added through the quick-add dialog. Use Letterboxd import, or add via staging with a single-row generic CSV.
+Films can't yet be added through the quick-add dialog. Use Letterboxd import, or add via a single-row generic CSV import.
 
 ---
 
@@ -260,7 +260,7 @@ Use **Add entry → Book** in the journal. Fill in title, author, year, series d
 
 **Your reflections are never overwritten.** If you've written a reflection on an entry and a higher-tier import supersedes it, your reflection is preserved on the new record.
 
-**Re-importing is safe.** Importing the same file twice will mark all entries as duplicates in staging — nothing will be added unless you've since deleted entries from your journal.
+**Re-importing is safe.** Importing the same file twice will skip all entries as duplicates — nothing will be added unless you have since hidden entries from your journal.
 
 **Manual corrections always win.** Any field you've edited manually (via the corrections panel on an entry card) is stored as an override and will survive future re-imports of the same source.
 

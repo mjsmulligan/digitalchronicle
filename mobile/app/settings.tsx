@@ -265,7 +265,7 @@ export default function SettingsScreen() {
   const handleReset = () => {
     dialog.confirm(
       "Reset database",
-      `This will permanently delete all ${entryCount.toLocaleString()} entries and ${journal.staging.length} pending import${journal.staging.length === 1 ? "" : "s"}. This cannot be undone.`,
+      `This will permanently delete all ${entryCount.toLocaleString()} entries. This cannot be undone.`,
       "Reset",
       async () => {
         setClearing(true);
@@ -484,11 +484,6 @@ export default function SettingsScreen() {
         <View style={styles.statRow}>
           <Text style={styles.statLabel}>Hidden entries</Text>
           <Text style={styles.statValue}>{hiddenCount.toLocaleString()}</Text>
-        </View>
-        <View style={styles.divider} />
-        <View style={styles.statRow}>
-          <Text style={styles.statLabel}>Pending imports</Text>
-          <Text style={styles.statValue}>{journal.staging.length}</Text>
         </View>
       </View>
 

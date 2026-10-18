@@ -149,7 +149,6 @@ function RootComponent() {
 
     return () => { active = false; };
   }, []);
-  const { staging } = useJournal();
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen md:flex">
@@ -171,9 +170,6 @@ function RootComponent() {
                 activeProps={{ className: "bg-sidebar-accent font-medium text-sidebar-foreground" }}
               >
                 <Icon className="h-4 w-4" /> {label}
-                {to === "/import" && staging.length > 0 && (
-                  <span className="ml-auto rounded-full bg-primary px-1.5 font-mono text-[10px] text-primary-foreground">{staging.length}</span>
-                )}
               </Link>
             ))}
           </nav>
@@ -189,9 +185,6 @@ function RootComponent() {
               aria-label="Import"
             >
               <Inbox className="h-5 w-5" />
-              {staging.length > 0 && (
-                <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary font-mono text-[9px] text-primary-foreground">{staging.length}</span>
-              )}
             </Link>
             <Link
               to="/backup"

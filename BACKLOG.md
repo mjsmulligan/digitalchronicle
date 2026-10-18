@@ -10,7 +10,7 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 - [x] **Shared `rating`, `reflection`, `datePrecision`, `sourceRef` fields** on Base — normalised across all entry types.
 - [x] **Film & Episode types** (`film`, `episode`) with `Series` container, rewatch flag, season/episode parsing.
 - [x] **Book type** (`book`) with clean title, author, series/seriesNumber.
-- [x] **Connector architecture** — registry, tier system, staging hub, dedup by source-agnostic keys.
+- [x] **Connector architecture** — registry, tier system, `importFile` pipeline, dedup by source-agnostic keys.
 - [x] **Letterboxd connector** (tier 2) — `diary.csv` and `reviews.csv`; half-star ratings doubled to 0–10; rewatch flag.
 - [x] **Netflix connector** (tier 3) — `NetflixViewingHistory.csv`; auto-detects Film vs. Episode from title structure.
 - [x] **Goodreads connector** (tier 2) — `goodreads_library_export.csv`; read shelf only; series suffix parsing; date fallback with unknown precision.

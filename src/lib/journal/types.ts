@@ -403,29 +403,6 @@ export interface Trip {
   notes?: string;
 }
 
-/**
- * How an incoming record relates to what is already in the journal (see classify.ts).
- * "removed" means it matches an entry the user hid, so it is skipped and never comes back.
- */
-export type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-duplicate" | "removed";
-
-export interface StagedRecord {
-  entry: Entry;
-  warnings: string[];
-  status: StageStatus;
-  matchId?: string;
-  selected: boolean;
-}
-
-export interface StagingBatch {
-  id: string;
-  source: Source;
-  filename: string;
-  createdAt: string;
-  records: StagedRecord[];
-  errors: string[];
-}
-
 /** Why an incoming record was not written by an import. */
 export interface ImportSkipCounts {
   /** Same or lower precedence than what already exists. */
@@ -484,7 +461,6 @@ export interface JournalData {
   books: Book[];
   series: Series[];
   notes: Note[];
-  staging: StagingBatch[];
   people: Person[];
   /** Transit place cache (airports, stations) used for geo lookup — NOT locality places */
   gazetteer: GazetteerEntry[];
@@ -500,7 +476,7 @@ export interface JournalData {
 
 export const STORES = [
   "trips", "legs", "stays", "events", "films", "episodes", "books",
-  "series", "notes", "staging", "people", "gazetteer",
+  "series", "notes", "people", "gazetteer",
   // WP10
   "localityPlaces", "placeEntries", "placeBinMarkers",
   // Auto-import (DB v9)

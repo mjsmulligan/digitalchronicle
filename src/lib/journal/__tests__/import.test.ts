@@ -10,7 +10,6 @@ vi.mock("../artworkEnrichment", () => ({ enrichAll: vi.fn(async () => {}) }));
 
 import { enrichAll } from "../artworkEnrichment";
 import { importFile, POSSIBLE_DUPLICATE_NOTE } from "../import";
-import { stageFile } from "../staging";
 import {
   setAdapter, initJournal, getState, allEntries, allHiddenEntries, hideMany, putMany, storeFor,
 } from "../db";
@@ -447,13 +446,3 @@ describe("importFile: enrichment", () => {
   });
 });
 
-// ─── stageFile is untouched ──────────────────────────────────────────────────
-
-describe("stageFile still works alongside importFile", () => {
-  test("stages a batch without writing entries or runs", async () => {
-    const batch = await stageFile("sample.csv", viaductCsv, "viaduct");
-    expect(batch.records).toHaveLength(4);
-    expect(legs()).toHaveLength(0);
-    expect(runs()).toHaveLength(0);
-  });
-});
