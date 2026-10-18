@@ -2,7 +2,6 @@
  * Sources — unified hub for all ways data enters Chronicle.
  *
  * Sections:
- *   "Pending review"  — appears when staged import batches are waiting
  *   "On device"       — Photo library (scan), Device calendar
  *   "Online"          — Goodreads read-shelf sync
  *   "File import"     — CSV / ICS / VCF file picker
@@ -10,21 +9,19 @@
  * Design principles:
  *   - All source cards share the same chrome (icon + title + status + action button)
  *   - Progress is shown as a slim animated bar, matching the commit progress card
- *   - Batch review uses a Switch per record (same as the place-staging screens)
+ *   - Imports complete immediately; a summary dialog replaces the old batch review
  *   - A single "Sources" icon in the tab header replaces the old Import icon
  */
 
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
 import {
   ActivityIndicator,
   Animated,
-  FlatList,
   Linking,
   Pressable,
   ScrollView,
@@ -36,18 +33,16 @@ import {
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { useJournal, removeMany, putMany, type CommitProgress } from "@chronicle/journal/db";
-import { stageFile } from "@chronicle/journal/staging";
+import { useJournal, putMany } from "@chronicle/journal/db";
+import { importFile, type ImportResult } from "@chronicle/journal/import";
 import {
   uid,
-  type StagingBatch,
 } from "@chronicle/journal/types";
 import type { Person } from "@chronicle/journal/types";
 import { readDeviceContacts } from "../src/lib/deviceContacts";
 import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, spacing, radius, type ThemeColors, type ThemeFonts } from "../src/components/ThemeProvider";
-import { BatchReview } from "../src/components/BatchReview";
 import { PlaceStagingCard } from "../src/components/PlaceStagingCard";
 import { ContactsReviewPanel, type ReviewContact, buildReviewContacts } from "../src/components/ContactsReviewPanel";
 import { useDialog, Dialog } from "../src/components/Dialog";
@@ -625,8 +620,6 @@ export default function SourcesScreen() {
   const dialog = useDialog();
 
   const [activeSource, setActiveSource] = useState<ActiveSource>(null);
-  const [parseError, setParseError] = useState<string | null>(null);
-  const [freshBatch, setFreshBatch] = useState<StagingBatch | null>(null);
 
   // Contacts state
   const [contactsPhase, setContactsPhase] = useState<ContactsPhase>("idle");
@@ -650,32 +643,66 @@ export default function SourcesScreen() {
     void getGoodreadsUserId().then(setGrId);
   }, []);
 
-  // Combined pending batches: freshly parsed (first) + persisted
-  const pendingBatches: StagingBatch[] = useMemo(
-    () => [
-      ...(freshBatch ? [freshBatch] : []),
-      ...journal.staging.filter((b) => b.id !== freshBatch?.id),
-    ],
-    [freshBatch, journal.staging],
-  );
-
   const anyActive = activeSource !== null;
+
+  // ── Import summary ──────────────────────────────────────────────────────────
+
+  function buildSummaryMessage(result: ImportResult): string {
+    const { added, updated, skipped, errors } = result;
+    const countParts: string[] = [];
+    if (added > 0) countParts.push(`${added} new`);
+    if (updated > 0) countParts.push(`${updated} updated`);
+    const line1 = countParts.length > 0 ? countParts.join(", ") + "." : "";
+
+    const skipParts: string[] = [];
+    const alreadyIn = skipped.duplicate + skipped.inFile;
+    if (alreadyIn > 0) skipParts.push(`${alreadyIn} already in your journal`);
+    if (skipped.removed === 1) skipParts.push("1 you hid earlier was skipped");
+    else if (skipped.removed > 1) skipParts.push(`${skipped.removed} you hid earlier were skipped`);
+    const line2 = skipParts.length > 0 ? skipParts.join(", ") + "." : "";
+
+    const line3 = errors.length > 0
+      ? `${errors.length} ${errors.length === 1 ? "row" : "rows"} could not be read.`
+      : "";
+
+    return [line1, line2, line3].filter(Boolean).join(" ");
+  }
+
+  const showImportSummary = (result: ImportResult) => {
+    const { added, updated } = result;
+    if (added === 0 && updated === 0) {
+      dialog.alert("Nothing new", "Everything in this file is already in your journal.");
+      return;
+    }
+    const message = buildSummaryMessage(result);
+    dialog.show({
+      title: "Import complete",
+      message,
+      actions: [
+        {
+          label: "Review new",
+          style: "default" as const,
+          onPress: () => router.navigate("/(tabs)"),
+        },
+        { label: "Done", style: "cancel" as const },
+      ],
+    });
+  };
 
   // ── Source actions ──────────────────────────────────────────────────────────
 
   const processUri = async (uri: string, filename: string) => {
     setActiveSource("file");
-    setParseError(null);
     await new Promise<void>((r) => setTimeout(r, 50));
     try {
       const response = await fetch(uri);
       if (!response.ok) throw new Error(`Could not read file (HTTP ${response.status})`);
       const text = await response.text();
       await new Promise<void>((r) => setTimeout(r, 0));
-      const batch = await stageFile(filename, text);
-      setFreshBatch(batch);
+      const result = await importFile(filename, text);
+      showImportSummary(result);
     } catch (err) {
-      setParseError(String(err));
+      dialog.alert("Import failed", String(err));
     } finally {
       setActiveSource(null);
     }
@@ -691,7 +718,7 @@ export default function SourcesScreen() {
       const { uri, name } = result.assets[0];
       await processUri(uri, name ?? "imported-file");
     } catch (err) {
-      setParseError(String(err));
+      dialog.alert("Import failed", String(err));
     }
   };
 
@@ -835,7 +862,6 @@ export default function SourcesScreen() {
 
   const importFromCalendar = async (pastDays: number) => {
     setActiveSource("calendar");
-    setParseError(null);
     await new Promise<void>((r) => setTimeout(r, 50));
     try {
       const res = await readDeviceCalendar(pastDays, 0);
@@ -860,10 +886,10 @@ export default function SourcesScreen() {
         dialog.alert("No events found", "No one-off events found in that time range.");
         return;
       }
-      const batch = await stageFile("device-calendar.ics", res.ics, "icalendar");
-      setFreshBatch(batch);
+      const result = await importFile("device-calendar.ics", res.ics, { forced: "icalendar" });
+      showImportSummary(result);
     } catch (err) {
-      setParseError(String(err));
+      dialog.alert("Import failed", String(err));
     } finally {
       setActiveSource(null);
     }
@@ -871,7 +897,6 @@ export default function SourcesScreen() {
 
   const syncGoodreads = async (userId: string) => {
     setActiveSource("goodreads");
-    setParseError(null);
     await new Promise<void>((r) => setTimeout(r, 50));
     try {
       const { csv, count } = await fetchGoodreadsShelfCsv(userId);
@@ -879,10 +904,10 @@ export default function SourcesScreen() {
         dialog.alert("No books found", "Your Goodreads \"read\" shelf is empty or private.");
         return;
       }
-      const batch = await stageFile(`goodreads-${userId}.csv`, csv, "goodreads");
-      setFreshBatch(batch);
+      const result = await importFile(`goodreads-${userId}.csv`, csv, { forced: "goodreads" });
+      showImportSummary(result);
     } catch (err) {
-      setParseError(String(err));
+      dialog.alert("Import failed", String(err));
     } finally {
       setActiveSource(null);
     }
@@ -912,21 +937,6 @@ export default function SourcesScreen() {
     setGrEditing(false);
   };
 
-  const handleCommit = (count: number) => {
-    setFreshBatch(null);
-    dialog.alert(
-      "Import complete",
-      `${count} ${count === 1 ? "entry" : "entries"} added to your journal.`,
-    );
-  };
-
-  const handleDiscard = async (batchId: string) => {
-    await removeMany("staging", [batchId]);
-    if (freshBatch?.id === batchId) {
-      setFreshBatch(null);
-    }
-  };
-
   return (
     <>
       <Stack.Screen
@@ -946,57 +956,25 @@ export default function SourcesScreen() {
         style={{ flex: 1, backgroundColor: colors.bg }}
         contentContainerStyle={{ paddingTop: spacing.md, paddingBottom: spacing["3xl"] }}
       >
-        {/* ── Pending review ──────────────────────────────────────────────── */}
-        {(pendingBatches.length > 0 || hub.hierarchy.some((cg) => cg.pendingCount > 0)) && (
-          <>
-            <SectionLabel label="Pending review" colors={colors} />
-            <View style={{ paddingHorizontal: spacing.lg }}>
-              {parseError && (
-                <View
-                  style={{
-                    backgroundColor: colors.errorBg,
-                    borderRadius: radius.md,
-                    padding: spacing.md,
-                    marginBottom: spacing.md,
-                  }}
-                >
-                  <Text style={{ color: colors.errorLight, fontSize: 13 }}>{parseError}</Text>
-                </View>
-              )}
-              {/* Place suggestions — inline card matching BatchReview */}
-              {hub.hierarchy.some((cg) => cg.pendingCount > 0) && (
-                <PlaceStagingCard
-                  hub={hub}
-                  router={router}
-                  onConfirm={(title, msg, cta, fn) =>
-                    dialog.confirm(title, msg, cta, fn)
-                  }
-                  colors={colors}
-                  fonts={fonts}
-                />
-              )}
-              {/* File import batches */}
-              {pendingBatches.map((batch) => (
-                <BatchReview
-                  key={batch.id}
-                  batch={batch}
-                  commitProgress={journal.commitProgress}
-                  onCommit={handleCommit}
-                  onDiscard={() => handleDiscard(batch.id)}
-                  onError={dialog.alert}
-                  colors={colors}
-                  fonts={fonts}
-                />
-              ))}
-            </View>
-          </>
-        )}
-
         {/* ── On device ───────────────────────────────────────────────────── */}
         <SectionLabel label="On device" colors={colors} />
 
-        {/* PhotoSourceEntry — review link removed: suggestions are inline above */}
         <PhotoSourceEntry />
+
+        {/* Place suggestions — shown until WP12c replaces this with the Places screen */}
+        {hub.hierarchy.some((cg) => cg.pendingCount > 0) && (
+          <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.sm }}>
+            <PlaceStagingCard
+              hub={hub}
+              router={router}
+              onConfirm={(title, msg, cta, fn) =>
+                dialog.confirm(title, msg, cta, fn)
+              }
+              colors={colors}
+              fonts={fonts}
+            />
+          </View>
+        )}
 
         <CalendarSourceCard
           active={activeSource === "calendar"}
@@ -1072,20 +1050,6 @@ export default function SourcesScreen() {
           fonts={fonts}
         />
 
-        {/* Error shown when no pending batches (won't appear in pending section) */}
-        {parseError && pendingBatches.length === 0 && (
-          <View
-            style={{
-              marginHorizontal: spacing.lg,
-              marginTop: spacing.sm,
-              backgroundColor: colors.errorBg,
-              borderRadius: radius.md,
-              padding: spacing.md,
-            }}
-          >
-            <Text style={{ color: colors.errorLight, fontSize: 13 }}>{parseError}</Text>
-          </View>
-        )}
       </ScrollView>
 
       <Dialog {...dialog.props} onDismiss={dialog.dismiss} />

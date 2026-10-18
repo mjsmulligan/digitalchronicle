@@ -39,7 +39,7 @@ interface DialogAction {
   onPress?: () => void | Promise<void>;
 }
 
-interface DialogConfig {
+export interface DialogConfig {
   title: string;
   message: string;
   actions: DialogAction[];
@@ -100,7 +100,12 @@ export function useDialog() {
     []
   );
 
-  return { alert, confirm, dismiss, props: state };
+  /** Arbitrary multi-button dialog — use when alert/confirm don't fit. */
+  const show = useCallback((config: DialogConfig) => {
+    setState({ visible: true, ...config });
+  }, []);
+
+  return { alert, confirm, show, dismiss, props: state };
 }
 
 // ── component ─────────────────────────────────────────────────────────────────
