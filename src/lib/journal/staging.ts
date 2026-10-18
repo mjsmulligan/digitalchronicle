@@ -1,4 +1,5 @@
-import { allEntries, getState, putMany, removeMany, setCommitProgress, storeFor } from "./db";
+import { allEntries, allHiddenEntries, getState, putMany, removeMany, setCommitProgress, storeFor } from "./db";
+import { buildDedupeIndex, classify } from "./classify";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { loadStations } from "./geo";
 import { mergeEvaluation, sourceLocks } from "./evaluation";
@@ -6,17 +7,6 @@ import { KIND_REGISTRY } from "./kinds";
 import {
   uid, type Entry, type Leg, type StagedRecord, type StagingBatch,
 } from "./types";
-
-/** Precedence: lower tier number wins (1 manual > 2 primary transit > 3 secondary). */
-function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>): Pick<StagedRecord, "status" | "matchId"> {
-  if (seen.has(entry.dedupeKey)) return { status: "batch-duplicate" };
-  seen.add(entry.dedupeKey);
-  const m = existing.get(entry.dedupeKey);
-  if (!m) return { status: "new" };
-  if (entry.tier < m.tier) return { status: "supersedes", matchId: m.id };
-  if (entry.tier > m.tier) return { status: "superseded", matchId: m.id };
-  return { status: "duplicate", matchId: m.id };
-}
 
 export function placeLabel(e: Entry): string {
   return KIND_REGISTRY[e.kind].placeLabel(e);
@@ -44,13 +34,16 @@ export async function stageFile(filename: string, text: string, forced?: string)
   } catch (err) {
     res = { entries: [], errors: [`Could not parse file: ${(err as Error).message}`] };
   }
-  const existing = new Map(allEntries(getState()).map((e) => [e.dedupeKey, e]));
+  // Hidden entries are part of the lookup, so a record the user removed is
+  // classified "removed" instead of being resurrected by a re-import.
+  const journal = getState();
+  const existing = buildDedupeIndex([...allEntries(journal), ...allHiddenEntries(journal)]);
   const seen = new Set<string>();
 
   // Secondary index: date → existing legs, for fuzzy flight dedup (see below).
   const legsByDate = new Map<string, Entry[]>();
   for (const e of existing.values()) {
-    if (e.kind === "leg") {
+    if (e.kind === "leg" && !e.hidden) {
       const day = e.start.slice(0, 10);
       const bucket = legsByDate.get(day);
       if (bucket) bucket.push(e);

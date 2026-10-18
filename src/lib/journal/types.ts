@@ -403,7 +403,11 @@ export interface Trip {
   notes?: string;
 }
 
-export type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-duplicate";
+/**
+ * How an incoming record relates to what is already in the journal (see classify.ts).
+ * "removed" means it matches an entry the user hid, so it is skipped and never comes back.
+ */
+export type StageStatus = "new" | "duplicate" | "supersedes" | "superseded" | "batch-duplicate" | "removed";
 
 export interface StagedRecord {
   entry: Entry;

@@ -34,6 +34,7 @@ const STATUS: Record<StageStatus, { label: string; cls: string }> = {
   duplicate: { label: "already in journal", cls: "bg-muted text-muted-foreground" },
   superseded: { label: "journal has higher tier", cls: "bg-muted text-muted-foreground" },
   "batch-duplicate": { label: "duplicate in file", cls: "bg-destructive/10 text-destructive" },
+  removed: { label: "hidden earlier", cls: "bg-muted text-muted-foreground" },
 };
 
 function BatchReview({ batch }: { batch: StagingBatch }) {
@@ -75,7 +76,8 @@ function BatchReview({ batch }: { batch: StagingBatch }) {
           <ul className="divide-y divide-border">
             {b.records.map((r, i) => {
               const Icon = entryIcon(r.entry);
-              const disabled = r.status === "duplicate" || r.status === "superseded" || r.status === "batch-duplicate";
+              // Only new and replacing records can be committed; everything else is shown but locked.
+              const disabled = r.status !== "new" && r.status !== "supersedes";
               return (
                 <li key={r.entry.id} className={cn("flex gap-3 py-2", disabled && "opacity-60")}>
                   <Checkbox checked={r.selected} disabled={disabled} onCheckedChange={(v) => {

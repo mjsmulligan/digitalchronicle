@@ -35,6 +35,7 @@ const STATUS_COLOR: Record<StageStatus, string> = {
   duplicate: "#475569",
   superseded: "#475569",
   "batch-duplicate": "#ef4444",
+  removed: "#475569",
 };
 
 const STATUS_LABEL: Record<StageStatus, string> = {
@@ -43,6 +44,7 @@ const STATUS_LABEL: Record<StageStatus, string> = {
   duplicate: "duplicate",
   superseded: "lower tier",
   "batch-duplicate": "dupe in file",
+  removed: "hidden earlier",
 };
 
 function entrySubkind(e: StagedRecord["entry"]): string | undefined {
