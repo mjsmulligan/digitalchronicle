@@ -7,7 +7,7 @@ import React, { useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useJournal, allEntries, putMany, removeMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, putMany, removeMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip, type Leg } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
@@ -383,7 +383,7 @@ export default function TripDetailScreen() {
       "Remove",
       async () => {
         try {
-          await putMany(storeFor(entry), [{ ...entry, tripId: undefined }]);
+          await saveUserEdit({ ...entry, tripId: undefined });
         } catch (err) {
           dialog.alert("Failed to remove entry", String(err));
         }
@@ -407,6 +407,8 @@ export default function TripDetailScreen() {
             byStore.get(s)!.push(e);
           }
           for (const [store, items] of byStore) {
+            // Dissolving unlinks entries as a side effect; the user has not looked at them, so
+            // their review flags are left alone (plain putMany, not saveUserEdit).
             await putMany(store, items.map((e) => ({ ...e, tripId: undefined })));
           }
           await removeMany("trips", [trip.id]);
@@ -421,7 +423,7 @@ export default function TripDetailScreen() {
   const addEntry = async (entry: Entry) => {
     setAddingId(entry.id);
     try {
-      await putMany(storeFor(entry), [{ ...entry, tripId: trip.id }]);
+      await saveUserEdit({ ...entry, tripId: trip.id });
     } catch (err) {
       dialog.alert("Failed to add entry", String(err));
     } finally {
@@ -434,7 +436,7 @@ export default function TripDetailScreen() {
     setAddingAll(true);
     try {
       for (const e of suggestions) {
-        await putMany(storeFor(e), [{ ...e, tripId: trip.id }]);
+        await saveUserEdit({ ...e, tripId: trip.id });
       }
     } catch (err) {
       dialog.alert("Failed to add entries", String(err));
