@@ -90,10 +90,17 @@ export function rssToGoodreadsCsv(xml: string): string {
   return rowsToCsv(rssItems(xml));
 }
 
-/** Fetch every page of the read shelf (stops when a page adds nothing new). */
+/**
+ * Fetch every page of the read shelf.
+ *
+ * knownIds: Goodreads book IDs already in the journal. When supplied,
+ * paging stops as soon as a page contains no books outside this set and
+ * the returned CSV contains only books not in the set. Use for startup
+ * checks to avoid re-sending the full shelf to importFile.
+ */
 export async function fetchGoodreadsShelfCsv(
   userId: string,
-  opts: { maxPages?: number; fetchFn?: typeof fetch } = {},
+  opts: { maxPages?: number; fetchFn?: typeof fetch; knownIds?: Set<string> } = {},
 ): Promise<{ csv: string; count: number }> {
   const f = opts.fetchFn ?? fetch;
   const seen = new Map<string, RssItemRow>();
@@ -101,15 +108,24 @@ export async function fetchGoodreadsShelfCsv(
     const res = await f(goodreadsRssUrl(userId, page));
     if (!res.ok) {
       if (page === 1) throw new Error(
-        res.status === 404 ? "Goodreads profile not found — check the ID." :
+        res.status === 404 ? "Goodreads profile not found. Check the ID." :
         `Goodreads returned HTTP ${res.status}. Is the profile public?`);
       break;
     }
     const rows = rssItems(await res.text());
-    let added = 0;
-    for (const r of rows) if (!seen.has(r.bookId)) { seen.set(r.bookId, r); added++; }
-    if (!added) break;
+    // addedNew: rows not in the current fetch AND not already in the journal
+    let addedNew = 0;
+    for (const r of rows) {
+      if (!seen.has(r.bookId)) {
+        seen.set(r.bookId, r);
+        if (!opts.knownIds?.has(r.bookId)) addedNew++;
+      }
+    }
+    if (!addedNew) break; // no new-to-journal books on this page; stop paging
   }
-  const all = [...seen.values()];
-  return { csv: rowsToCsv(all), count: all.length };
+  // When knownIds is supplied, export only books the journal doesn't have yet
+  const toExport = opts.knownIds
+    ? [...seen.values()].filter((r) => !opts.knownIds!.has(r.bookId))
+    : [...seen.values()];
+  return { csv: rowsToCsv(toExport), count: toExport.length };
 }

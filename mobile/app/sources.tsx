@@ -50,6 +50,8 @@ import { ContactsReviewPanel, type ReviewContact, buildReviewContacts } from "..
 import { useDialog, Dialog } from "../src/components/Dialog";
 import { PhotoSourceEntry } from "../src/components/PhotoSourceEntry";
 import { readDeviceCalendar } from "../src/lib/deviceCalendar";
+import * as Calendar from "expo-calendar/legacy";
+import { getCalendarPrefs, setCalendarPrefs } from "../src/lib/calendarPrefs";
 import {
   fetchGoodreadsShelfCsv,
   parseGoodreadsUserId,
@@ -288,10 +290,28 @@ const CAL_SCOPE_LABELS: Record<CalScope, string> = {
   "all-time":  "All time",
 };
 
+export type CalendarListItem = {
+  id: string;
+  title: string;
+  color: string;
+  defaultExcluded: boolean;
+};
+
+type CalConnecting = "idle" | "loading" | "picking";
+
 function CalendarSourceCard({
   active,
   disabled,
+  connected,
+  connecting,
+  calendarList,
+  calSelectedIds,
   onSync,
+  onStartConnect,
+  onToggleCalendar,
+  onConnectDone,
+  onConnectCancel,
+  onDisconnect,
   autoCheck,
   onAutoCheckChange,
   lastCheckedAt,
@@ -301,7 +321,16 @@ function CalendarSourceCard({
 }: {
   active: boolean;
   disabled: boolean;
+  connected: boolean;
+  connecting: CalConnecting;
+  calendarList: CalendarListItem[];
+  calSelectedIds: Set<string>;
   onSync: (pastDays: number) => void;
+  onStartConnect: () => void;
+  onToggleCalendar: (id: string) => void;
+  onConnectDone: () => void;
+  onConnectCancel: () => void;
+  onDisconnect: () => void;
   autoCheck: boolean;
   onAutoCheckChange: (v: boolean) => void;
   lastCheckedAt: string | null;
@@ -310,13 +339,37 @@ function CalendarSourceCard({
   fonts: ThemeFonts;
 }) {
   const [scope, setScope] = useState<CalScope>("last-year");
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [scopePickerOpen, setScopePickerOpen] = useState(false);
 
   const statusText = active
     ? "Syncing…"
-    : lastCheckedAt
-    ? `Last checked ${new Date(lastCheckedAt).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`
+    : connected && lastCheckedAt
+    ? `Connected - last checked ${new Date(lastCheckedAt).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`
+    : connected
+    ? "Connected - not checked yet"
     : "Imports one-off events from your calendar";
+
+  const action = active ? (
+    <ActivityIndicator size="small" color={colors.accent} />
+  ) : connecting === "loading" ? (
+    <ActivityIndicator size="small" color={colors.accent} />
+  ) : connected ? (
+    <SrcButton
+      label="Check now"
+      onPress={() => onSync(CAL_SCOPE_DAYS[scope])}
+      disabled={disabled}
+      colors={colors}
+      fonts={fonts}
+    />
+  ) : connecting === "picking" ? null : (
+    <SrcButton
+      label="Connect"
+      onPress={onStartConnect}
+      disabled={disabled}
+      colors={colors}
+      fonts={fonts}
+    />
+  );
 
   return (
     <SourceCard
@@ -327,99 +380,170 @@ function CalendarSourceCard({
       progressPct={0}
       colors={colors}
       fonts={fonts}
-      action={
-        active ? (
-          <ActivityIndicator size="small" color={colors.accent} />
-        ) : (
-          <SrcButton
-            label="Check now"
-            onPress={() => onSync(CAL_SCOPE_DAYS[scope])}
-            disabled={disabled}
-            colors={colors}
-            fonts={fonts}
-          />
-        )
-      }
+      action={action}
     >
-      {/* Scope row */}
-      <Pressable
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.xs,
-          paddingVertical: spacing.xs,
-          marginTop: spacing.sm,
-        }}
-        onPress={() => setPickerOpen((v) => !v)}
-      >
-        <Ionicons name="options-outline" size={14} color={colors.textMuted} />
-        <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
-          {CAL_SCOPE_LABELS[scope]}
-        </Text>
-        <Ionicons
-          name={pickerOpen ? "chevron-up" : "chevron-down"}
-          size={13}
-          color={colors.textMuted}
-        />
-      </Pressable>
-
-      {/* Scope picker */}
-      {pickerOpen && (
-        <View
-          style={{
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: colors.borderFaint,
-            marginBottom: spacing.sm,
-            paddingTop: spacing.sm,
-            gap: spacing.xs,
-          }}
-        >
-          {(["last-year", "all-time"] as CalScope[]).map((s) => (
-            <Pressable
-              key={s}
-              style={[
-                { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md },
-                scope === s && { backgroundColor: colors.accentSubtle },
-              ]}
-              onPress={() => { setScope(s); setPickerOpen(false); }}
-            >
-              <Text
-                style={[
-                  { fontSize: 13, color: colors.textSecondary },
-                  scope === s && { color: colors.accent },
-                ]}
+      {/* Calendar picker (shown while connecting) */}
+      {connecting === "picking" && (
+        <View style={{ marginTop: spacing.md }}>
+          <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: spacing.sm }}>
+            Choose which calendars to import. Recurring events are always excluded.
+          </Text>
+          {calendarList.map((cal) => {
+            const selected = calSelectedIds.has(cal.id);
+            return (
+              <Pressable
+                key={cal.id}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingVertical: spacing.sm,
+                  gap: spacing.md,
+                }}
+                onPress={() => onToggleCalendar(cal.id)}
               >
-                {CAL_SCOPE_LABELS[s]}
+                {/* Color dot */}
+                <View
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: cal.color || colors.accent,
+                  }}
+                />
+                <Text style={{ flex: 1, fontSize: 13, color: colors.textPrimary }}>
+                  {cal.title}
+                </Text>
+                {/* Checkbox */}
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 4,
+                    borderWidth: 1.5,
+                    borderColor: selected ? colors.accent : colors.border,
+                    backgroundColor: selected ? colors.accent : "transparent",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {selected && (
+                    <Ionicons name="checkmark" size={13} color={colors.white} />
+                  )}
+                </View>
+              </Pressable>
+            );
+          })}
+          <View style={{ flexDirection: "row", gap: spacing.md, justifyContent: "flex-end", marginTop: spacing.sm }}>
+            <Pressable onPress={onConnectCancel}>
+              <Text style={{ fontSize: 13, color: colors.textMuted }}>Cancel</Text>
+            </Pressable>
+            <Pressable onPress={onConnectDone} disabled={calSelectedIds.size === 0}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: calSelectedIds.size > 0 ? colors.accent : colors.textMuted,
+                  fontWeight: "600",
+                }}
+              >
+                Done
               </Text>
             </Pressable>
-          ))}
+          </View>
         </View>
       )}
 
-      {/* Auto-check switch */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          marginTop: spacing.sm,
-          paddingTop: spacing.sm,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: colors.borderFaint,
-        }}
-      >
-        <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
-          Check automatically on startup
-        </Text>
-        <Switch
-          value={autoCheck}
-          onValueChange={onAutoCheckChange}
-          trackColor={{ false: colors.border, true: colors.accent }}
-          thumbColor={colors.surface}
-        />
-      </View>
+      {/* Connected management row */}
+      {connected && connecting === "idle" && (
+        <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm }}>
+          <Pressable onPress={onDisconnect}>
+            <Text style={{ fontSize: 12, color: colors.error }}>Disconnect</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Scope picker (for manual Check now, shown only when connected) */}
+      {connected && connecting === "idle" && (
+        <>
+          <Pressable
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.xs,
+              paddingVertical: spacing.xs,
+              marginTop: spacing.sm,
+            }}
+            onPress={() => setScopePickerOpen((v) => !v)}
+          >
+            <Ionicons name="options-outline" size={14} color={colors.textMuted} />
+            <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
+              Manual range: {CAL_SCOPE_LABELS[scope]}
+            </Text>
+            <Ionicons
+              name={scopePickerOpen ? "chevron-up" : "chevron-down"}
+              size={13}
+              color={colors.textMuted}
+            />
+          </Pressable>
+          {scopePickerOpen && (
+            <View
+              style={{
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: colors.borderFaint,
+                marginBottom: spacing.sm,
+                paddingTop: spacing.sm,
+                gap: spacing.xs,
+              }}
+            >
+              {(["last-year", "all-time"] as CalScope[]).map((s) => (
+                <Pressable
+                  key={s}
+                  style={[
+                    { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md },
+                    scope === s && { backgroundColor: colors.accentSubtle },
+                  ]}
+                  onPress={() => { setScope(s); setScopePickerOpen(false); }}
+                >
+                  <Text
+                    style={[
+                      { fontSize: 13, color: colors.textSecondary },
+                      scope === s && { color: colors.accent },
+                    ]}
+                  >
+                    {CAL_SCOPE_LABELS[s]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </>
+      )}
+
+      {/* Auto-check switch (only when connected) */}
+      {connected && connecting === "idle" && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: spacing.sm,
+            paddingTop: spacing.sm,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: colors.borderFaint,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
+            Check automatically on startup
+          </Text>
+          <Switch
+            value={autoCheck}
+            onValueChange={onAutoCheckChange}
+            trackColor={{ false: colors.border, true: colors.accent }}
+            thumbColor={colors.surface}
+          />
+        </View>
+      )}
 
       {/* Last error */}
-      {lastError != null && (
+      {connected && lastError != null && (
         <Text
           style={{ fontSize: 11, color: colors.error, marginTop: spacing.xs }}
           numberOfLines={2}
@@ -845,6 +969,7 @@ export default function SourcesScreen() {
       setGrLastChecked(s.lastCheckedAt);
       setGrLastError(s.lastError);
     });
+    void getCalendarPrefs().then((p) => setCalConnected(p.connected));
   }, []);
 
   const anyActive = activeSource !== null;
@@ -857,6 +982,11 @@ export default function SourcesScreen() {
   const [calAutoCheck, setCalAutoCheckState] = useState(true);
   const [calLastChecked, setCalLastChecked] = useState<string | null>(null);
   const [calLastError, setCalLastError] = useState<string | null>(null);
+  // Calendar connect state
+  const [calConnected, setCalConnected] = useState(false);
+  const [calConnecting, setCalConnecting] = useState<CalConnecting>("idle");
+  const [calendarList, setCalendarList] = useState<CalendarListItem[]>([]);
+  const [calSelectedIds, setCalSelectedIds] = useState<Set<string>>(new Set());
 
   const [grAutoCheck, setGrAutoCheckState] = useState(true);
   const [grLastChecked, setGrLastChecked] = useState<string | null>(null);
@@ -912,6 +1042,84 @@ export default function SourcesScreen() {
     setGrAutoCheckState(v);
     await setSourceAutoCheck("goodreads", v, syncStorage);
   }, [syncStorage]);
+
+  // Returns true if a calendar should be excluded by default (system/automated)
+  const isDefaultExcluded = (cal: Calendar.Calendar): boolean => {
+    const typeStr = (cal.type as string | undefined)?.toLowerCase() ?? "";
+    const srcType = (cal.source?.type as string | undefined)?.toLowerCase() ?? "";
+    if (typeStr === "birthday" || srcType === "birthdays") return true;
+    if (/birthday|holiday|siri/i.test(cal.title)) return true;
+    return false;
+  };
+
+  const handleCalStartConnect = useCallback(async () => {
+    setCalConnecting("loading");
+    try {
+      if (!(await Calendar.isAvailableAsync())) {
+        dialog.alert("Not available", "This device does not expose a calendar.");
+        setCalConnecting("idle");
+        return;
+      }
+      const perm = await Calendar.requestCalendarPermissionsAsync();
+      if (perm.status !== "granted") {
+        if (!perm.canAskAgain) {
+          dialog.alert(
+            "Calendar access needed",
+            "Enable calendar access for Chronicle in Settings, then try again.",
+            () => void Linking.openSettings(),
+          );
+        } else {
+          dialog.alert("Calendar access needed", "Chronicle needs permission to read your calendar.");
+        }
+        setCalConnecting("idle");
+        return;
+      }
+      const cals = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      const list: CalendarListItem[] = cals.map((c) => ({
+        id: c.id,
+        title: c.title,
+        color: c.color ?? colors.accent,
+        defaultExcluded: isDefaultExcluded(c),
+      }));
+      // Pre-select non-excluded calendars
+      const preSelected = new Set(list.filter((c) => !c.defaultExcluded).map((c) => c.id));
+      setCalendarList(list);
+      setCalSelectedIds(preSelected);
+      setCalConnecting("picking");
+    } catch (err) {
+      dialog.alert("Connect failed", String(err));
+      setCalConnecting("idle");
+    }
+  }, [colors.accent, dialog]);
+
+  const handleToggleCalendar = useCallback((id: string) => {
+    setCalSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleCalConnectDone = useCallback(async () => {
+    const ids = [...calSelectedIds];
+    if (!ids.length) return;
+    await setCalendarPrefs({ connected: true, calendarIds: ids });
+    setCalConnected(true);
+    setCalConnecting("idle");
+  }, [calSelectedIds]);
+
+  const handleCalConnectCancel = useCallback(() => {
+    setCalendarList([]);
+    setCalSelectedIds(new Set());
+    setCalConnecting("idle");
+  }, []);
+
+  const handleCalDisconnect = useCallback(async () => {
+    await setCalendarPrefs({ connected: false, calendarIds: [] });
+    setCalConnected(false);
+    setCalConnecting("idle");
+  }, []);
 
   // ── Import summary ──────────────────────────────────────────────────────────
 
@@ -1247,7 +1455,16 @@ export default function SourcesScreen() {
         <CalendarSourceCard
           active={activeSource === "calendar"}
           disabled={anyActive}
+          connected={calConnected}
+          connecting={calConnecting}
+          calendarList={calendarList}
+          calSelectedIds={calSelectedIds}
           onSync={importFromCalendar}
+          onStartConnect={handleCalStartConnect}
+          onToggleCalendar={handleToggleCalendar}
+          onConnectDone={handleCalConnectDone}
+          onConnectCancel={handleCalConnectCancel}
+          onDisconnect={handleCalDisconnect}
           autoCheck={calAutoCheck}
           onAutoCheckChange={handleCalAutoCheckChange}
           lastCheckedAt={calLastChecked}
