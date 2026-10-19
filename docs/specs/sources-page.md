@@ -210,18 +210,17 @@ export type TileDef =
 ```ts
 export type SourceViewState = "active" | "checking" | "attention" | "paused";
 export interface SourceView {
-  id: string;
   state: SourceViewState;
   statusLine: string;
   needsReconnect: boolean;   // permission or credential problem, not a transient failure
 }
 export function deriveSourceView(input: {
-  connected: boolean; autoCheck: boolean; lastCheckedAt: string | null;
-  lastError: string | null; active: boolean; now: Date;
+  autoCheck: boolean; lastCheckedAt: string | null; lastError: string | null;
+  active: boolean; now: Date; itemCount?: number;
 }): SourceView;
 ```
 
-Pure, no native imports, unit-tested in Node under `src/lib/journal/__tests__/` or beside `connectedSources` (follow where `connectedSources.test.ts` lives). Rules: `active` flag wins (`checking`); a non-null `lastError` is `attention`, and `needsReconnect` is true when the error text is `Permission needed` or matches the existing permission and auth phrases; connected with `autoCheck` false is `paused`; otherwise `active`. Relative times use one formatter ("2 hours ago", "yesterday", "12 Oct"), shared with `PhotoSourceEntry`'s `fmtRelative`.
+Pure, no native imports, in `mobile/src/lib/sourceRegistry.ts`, unit-tested in Node from `src/lib/journal/__tests__/sourceRegistry.test.ts` (same arrangement as `connectedSources`). It takes no `id` or `connected` input: rows exist only for connected sources and the caller already knows the id. Rules: `active` flag wins (`checking`); a non-null `lastError` is `attention`, and `needsReconnect` is true when the error text is `Permission needed` or matches the existing permission and auth phrases; connected with `autoCheck` false is `paused`; otherwise `active`. Relative times use one formatter ("2 hours ago", "yesterday", "12 Oct"), shared with `PhotoSourceEntry`'s `fmtRelative`.
 
 ---
 
@@ -295,7 +294,7 @@ Each WP is one commit unless it genuinely needs more. Do one at a time, then sto
 
 ### Phase 1: foundations (no visible change)
 
-- [ ] **WP1: registry and state helper.** Add `sourceRegistry.ts` with the tile definitions (5.2) and `deriveSourceView` (5.3), plus unit tests. *Done when:* tests cover each state (checking, attention with and without reconnect, paused, active), relative time formatting, and the tile list order; `bun run test` green; mobile type-check shows no new errors.
+- [x] **WP1: registry and state helper.** Add `sourceRegistry.ts` with the tile definitions (5.2) and `deriveSourceView` (5.3), plus unit tests. *Done when:* tests cover each state (checking, attention with and without reconnect, paused, active), relative time formatting, and the tile list order; `bun run test` green; mobile type-check shows no new errors.
 - [ ] **WP2: sheet component.** Add `Sheet.tsx` on `Modal` (6) with scrim, handle, back handling, safe area, focus return, reduced motion. *Done when:* checked on a device in all three themes at 1.3x font scale: opens, scrolls long content, dismisses by scrim, back button and drag; a test screen or story is not required.
 
 ### Phase 2: new page, rows and tiles
@@ -342,4 +341,5 @@ Recommendations are mine. Anything marked BLOCKING stops its WP.
 
 Newest first. One entry per session.
 
+- **2026-10-19 (WP1 complete: registry and state helper):** Added `mobile/src/lib/sourceRegistry.ts` with `SOURCE_TILES` (8 tiles in the 4.2 order), `tileForConnector`, `tileForConnectedSource`, `fmtRelative` and `deriveSourceView`, and `src/lib/journal/__tests__/sourceRegistry.test.ts` (21 tests): tile order, unique ids, every forced connector exists in the registry, every `markId` exists in `SOURCE_MARKS`, relative time, and each state (checking wins over everything, attention with and without reconnect, paused, active with and without item counts). Decisions inside the WP: (1) `deriveSourceView` drops the `id` and `connected` fields from the draft in 5.3 (not needed, see 5.3); (2) the reconnect pattern matches what the sources actually throw: `Permission needed`, the Goodreads profile not found and `Is the profile public` messages, and HTTP 401, 403 and 404; (3) the status line for an error is the thrown message with its `Error:` prefix removed, since the helper does not know the source name (the row can prefix it); (4) relative times use "12 Oct" (day then month) from a week out, formatted by hand so output does not depend on device locale. `PhotoSourceEntry.fmtRelative` is left as is and goes with that file in WP4. Wrong-file copy lives on each file tile. Root suite: 497 passed, 2 todo. Mobile type-check: 22 errors before and after, same set (baseline). Nothing to check on a device (no UI). Install note: tests that import `mobile/` code need `npm install --no-package-lock --legacy-peer-deps` in `mobile/` first, or vite fails to load `expo/tsconfig.base`. Next: WP2 (sheet component).
 - **2026-10-19 (design session, no code):** Reviewed `mobile/app/sources.tsx`, `PhotoSourceEntry.tsx`, `connectedSources.ts`, the connector registry and `auto-import.md`. Reviewed a layout mockup with the user (Connected rows, Add a source tile grid, Recent imports) and agreed it as the direction. Found that the app keeps no copy of imported files (so `Import again` reopens the picker), that Flightradar24 is unsupported (so no Flights tile), and that brand marks exist for Netflix, Letterboxd, Goodreads and Viaduct. Wrote this draft. Next: WP1.
