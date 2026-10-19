@@ -2,6 +2,7 @@
 // Station data is a static JSON import so both Vite and Metro resolve it at
 // bundle time without dynamic-import path issues.
 import STATIONS_JSON from "./stations.generated.json";
+import { airportByCode } from "./airports";
 
 type StationTuple = [string, number, number, string]; // [name, lat, lon, timezone]
 const STATIONS = STATIONS_JSON as unknown as Record<string, StationTuple>;
@@ -85,9 +86,16 @@ export function locate(code: string): PlaceInfo | undefined {
   const curated = PLACES[key];
   if (curated) return curated;
   const station = STATIONS[key];
-  if (!station) return undefined;
-  const [name, lat, lon, timezone] = station;
-  return { name, lat, lon, timezone };
+  if (station) {
+    const [name, lat, lon, timezone] = station;
+    return { name, lat, lon, timezone };
+  }
+  // Airports last: a bare 3-letter code that is not a curated place or a station.
+  if (/^[A-Z]{3}$/.test(key)) {
+    const airport = airportByCode(key);
+    if (airport) return { name: airport.name, lat: airport.lat, lon: airport.lon, timezone: airport.timezone };
+  }
+  return undefined;
 }
 
 /** Convenience: just the timezone for a code. Returns undefined if stations not loaded. */

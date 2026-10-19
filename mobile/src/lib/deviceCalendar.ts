@@ -18,6 +18,26 @@ const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replac
 const dateOnly = (d: Date) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
 const localDt = (d: Date) => `${dateOnly(d)}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
 
+/** Invitee shape from expo-calendar; every field is optional on some platforms. */
+interface DeviceAttendee { name?: string; email?: string; isCurrentUser?: boolean; type?: string }
+
+/**
+ * ATTENDEE lines for the people on an invite. The owner and rooms/resources are left out,
+ * so the iCalendar connector only sees names worth matching to people.
+ */
+function attendeeLines(e: Calendar.Event): string[] {
+  const attendees = (e as unknown as { attendees?: DeviceAttendee[] }).attendees ?? [];
+  const lines: string[] = [];
+  for (const a of attendees) {
+    const name = a.name?.replace(/"/g, "'").replace(/\s+/g, " ").trim();
+    if (!name || a.isCurrentUser) continue;
+    const kind = String(a.type ?? "").toLowerCase();
+    if (kind === "resource" || kind === "room") continue;
+    lines.push(`ATTENDEE;CN="${name}":mailto:${a.email?.trim() || "unknown@invalid"}`);
+  }
+  return lines;
+}
+
 export function eventsToIcs(events: Calendar.Event[], tz: string): string {
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Chronicle//Device Calendar//EN"];
   for (const e of events) {
@@ -34,6 +54,7 @@ export function eventsToIcs(events: Calendar.Event[], tz: string): string {
     }
     if (e.location?.trim()) lines.push(`LOCATION:${esc(e.location.trim())}`);
     if (e.notes?.trim()) lines.push(`DESCRIPTION:${esc(e.notes.trim())}`);
+    lines.push(...attendeeLines(e));
     lines.push("END:VEVENT");
   }
   lines.push("END:VCALENDAR");

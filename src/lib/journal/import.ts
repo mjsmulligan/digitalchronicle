@@ -14,6 +14,7 @@ import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors
 import { enrichAll } from "./artworkEnrichment";
 import { loadStations } from "./geo";
 import { mergeEvaluation, sourceLocks } from "./evaluation";
+import { buildPeopleIndex, withMatchedPeople } from "./peopleMatch";
 import {
   uid, type Entry, type ImportRun, type ImportSkipCounts, type Leg, type StoreName,
 } from "./types";
@@ -104,6 +105,8 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
   const visible = allEntries(journal);
   const existing = buildDedupeIndex([...visible, ...allHiddenEntries(journal)]);
   const byId = new Map(visible.map((e) => [e.id, e]));
+  // People known to the journal, for tagging attendees and names found in events.
+  const peopleIndex = buildPeopleIndex(journal.people);
 
   // Fuzzy flight rule (5.3) looks at legs the user can see.
   const legsByDate = new Map<string, Entry[]>();
@@ -140,7 +143,7 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
         notes.push(POSSIBLE_DUPLICATE_NOTE);
       }
       const written: Entry = {
-        ...entry,
+        ...withMatchedPeople(entry, peopleIndex),
         unreviewed: "new",
         importId: runId,
         ...(notes.length ? { importNotes: notes.slice(0, MAX_NOTES) } : {}),
@@ -152,8 +155,10 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
     // supersedes: keep the user's id, trip, overrides, reflection and participants.
     const old = c.matchId ? byId.get(c.matchId) : undefined;
     if (!old) { skipped.duplicate++; continue; }
+    // Keep the user's participants; if they have none, tag from the new source data.
+    const incoming = old.participants === undefined ? withMatchedPeople(entry, peopleIndex) : entry;
     const merged = mergeEvaluation(
-      { ...entry, id: old.id, tripId: old.tripId, overrides: old.overrides, participants: old.participants } as Entry,
+      { ...incoming, id: old.id, tripId: old.tripId, overrides: old.overrides, participants: old.participants ?? incoming.participants } as Entry,
       old,
     );
     // An entry nobody has looked at yet stays "new"; a reviewed one becomes "updated".
