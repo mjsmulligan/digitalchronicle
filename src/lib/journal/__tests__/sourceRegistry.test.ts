@@ -83,7 +83,7 @@ describe("tile registry", () => {
   test("UI copy has no em dashes", () => {
     for (const t of SOURCE_TILES) {
       const text = [t.label, t.caption, t.kind === "file" ? t.wrongFileMessage : ""].join(" ");
-      expect(text).not.toContain("—");
+      expect(text).not.toContain(String.fromCharCode(0x2014));
     }
   });
 });
