@@ -6,7 +6,11 @@
  *
  * Classification rules:
  *   - All-day DTSTART + DTEND spanning ≥ 2 days → Stay (hotel, Airbnb, trip)
- *   - Summary contains "flight"/"fly" or two IATA codes → Leg (mode: air)
+ *   - Summary contains "flight"/"fly", two airport codes, or a flight number with a route
+ *     → Leg (mode: air). Airports are resolved from SUMMARY, DESCRIPTION and LOCATION
+ *     against the bundled airport table (see flights.ts).
+ *   - ATTENDEE/ORGANIZER display names are kept as free-text `companions`; matching them
+ *     to people happens at import time (peopleMatch.ts).
  *   - Summary contains "train"/"rail"/"eurostar"/etc. → Leg (mode: rail)
  *   - All-day single-day or timed event → JEvent
  *   - Events with RRULE (recurring) → skipped, warning emitted
@@ -19,6 +23,7 @@ import { timezoneFor } from "../../geo";
 import { localToUTC } from "../../tz";
 import type { Connector, ParseResult } from "../types";
 import { eventKey, stayKey, legKey } from "../keys";
+import { parseFlight } from "./flights";
 
 const SOURCE = "icalendar" as const;
 const now = () => new Date().toISOString();
@@ -140,38 +145,6 @@ function inferCategory(summary: string, cats: string): EventCategory {
 // Transport detection (flight + train → Leg)
 // ---------------------------------------------------------------------------
 
-/** IATA airport code — exactly 3 uppercase letters. */
-const IATA_RE = /\b([A-Z]{3})\b/g;
-
-/** Flight number — 1–3 letter airline code + 1–4 digits (e.g. BA123, LH4567). */
-const FLIGHT_NUM_RE = /\b([A-Z]{1,3}\s?\d{1,4})\b/;
-
-/** Common false-positive IATA-shaped words to ignore. */
-const IATA_IGNORE = new Set([
-  "MON","TUE","WED","THU","FRI","SAT","SUN",
-  "JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC",
-  "THE","AND","FOR","VIA","UTC","GMT",
-]);
-
-/**
- * Try to extract departure/arrival IATA codes from a summary.
- * "BA123 LHR → CDG"  |  "Flight LHR-CDG"  |  "LHR to CDG"
- * Returns null if fewer than two valid codes are found.
- */
-function extractIata(summary: string): { from: string; to: string; serviceNumber?: string } | null {
-  const upper = summary.toUpperCase();
-  const codes: string[] = [];
-  let m: RegExpExecArray | null;
-  IATA_RE.lastIndex = 0;
-  while ((m = IATA_RE.exec(upper)) !== null) {
-    if (!IATA_IGNORE.has(m[1])) codes.push(m[1]);
-  }
-  if (codes.length < 2) return null;
-  const fnMatch = FLIGHT_NUM_RE.exec(upper);
-  const serviceNumber = fnMatch ? fnMatch[1].replace(/\s/, "") : undefined;
-  return { from: codes[0], to: codes[1], serviceNumber };
-}
-
 /** Train keywords that unambiguously signal a rail leg. */
 const TRAIN_KW_RE = /\b(train|rail|eurostar|tgv|intercity|amtrak|sprinter|sleeper)\b/i;
 
@@ -202,37 +175,71 @@ interface TransportInfo {
   mode: "air" | "rail";
   from: string;
   to: string;
+  fromName?: string;
+  toName?: string;
   /** Flight or train service number, if parseable. */
   serviceNumber?: string;
+  warnings: string[];
 }
 
 /**
- * Return transport info if the event summary looks like a flight or train,
+ * Return transport info if the event looks like a flight or train,
  * otherwise null (→ falls through to JEvent classification).
+ * Flights are resolved from SUMMARY, DESCRIPTION and LOCATION (see flights.ts).
  */
-function detectTransport(summary: string): TransportInfo | null {
-  const lower = summary.toLowerCase();
-
-  // --- Flight: keyword or two IATA codes ---
-  const isFlightKw = /\bfl(ight|y)\b/.test(lower);
-  const iata = extractIata(summary);
-  if (isFlightKw || iata) {
-    return { mode: "air", from: iata?.from ?? "???", to: iata?.to ?? "???", serviceNumber: iata?.serviceNumber };
+function detectTransport(summary: string, location: string, description: string | undefined): TransportInfo | null {
+  // --- Flight: keyword, two airport codes, or flight number + route ---
+  const flight = parseFlight({ summary, location, description });
+  if (flight) {
+    return {
+      mode: "air",
+      from: flight.from.code ?? "???",
+      to: flight.to.code ?? "???",
+      fromName: flight.from.code ? undefined : flight.from.name,
+      toName: flight.to.code ? undefined : flight.to.name,
+      serviceNumber: flight.flightNumber,
+      warnings: flight.warnings,
+    };
   }
 
   // --- Train: keyword or recognisable service number (IC, ICE, TGV, etc.) ---
-  if (TRAIN_KW_RE.test(lower) || TRAIN_NUM_RE.test(summary)) {
+  if (TRAIN_KW_RE.test(summary) || TRAIN_NUM_RE.test(summary)) {
     const fromTo = extractTrainFromTo(summary);
     const numMatch = TRAIN_NUM_RE.exec(summary);
+    const missing = !fromTo;
     return {
       mode: "rail",
       from: fromTo?.from ?? "???",
       to:   fromTo?.to   ?? "???",
       serviceNumber: numMatch ? numMatch[0].replace(/\s+/, "") : undefined,
+      warnings: missing ? ["No station names found — fill in From/To before confirming"] : [],
     };
   }
 
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Attendees
+// ---------------------------------------------------------------------------
+
+/**
+ * Display names from ATTENDEE and ORGANIZER lines (CN parameter). Rooms and
+ * resources are skipped, and so are common-name values that are just an email.
+ * parseProps keeps only the first occurrence of a property, so these are read separately.
+ */
+function parseAttendeeNames(block: string): string[] {
+  const names: string[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (!/^(ATTENDEE|ORGANIZER)[;:]/i.test(line)) continue;
+    if (/;CUTYPE=(RESOURCE|ROOM)/i.test(line)) continue;
+    const cn = /;CN=(?:"([^"]*)"|([^;:]*))/i.exec(line);
+    if (!cn) continue;
+    const name = (cn[1] ?? cn[2] ?? "").replace(/\\,/g, ",").replace(/\s+/g, " ").trim();
+    if (!name || name.includes("@") || names.includes(name)) continue;
+    names.push(name);
+  }
+  return names;
 }
 
 // ---------------------------------------------------------------------------
@@ -288,12 +295,17 @@ function parseIcs(text: string): ParseResult {
     const location = props.get("LOCATION")?.value ?? "";
     const categories = props.get("CATEGORIES")?.value ?? "";
 
+    const attendees = parseAttendeeNames(block);
     const base = {
       id: uid(),
       source: SOURCE,
       tier: 3 as const,
       createdAt: now(),
       review: description,
+      // Free-text names from the invite. Matching them to people happens at import.
+      ...(attendees.length ? { companions: attendees } : {}),
+      // Source text kept for name matching and later reprocessing.
+      raw: { summary, ...(location ? { location } : {}), ...(description ? { description } : {}) },
     };
 
     // --- Classify: multi-day all-day → Stay ---
@@ -330,7 +342,7 @@ function parseIcs(text: string): ParseResult {
     }
 
     // --- Transport detection (flight or train) → Leg ---
-    const transport = detectTransport(summary);
+    const transport = detectTransport(summary, location, description);
     if (transport) {
       const startStr = dtstart.timeStr
         ? `${dtstart.dateStr}T${dtstart.timeStr}`
@@ -346,6 +358,8 @@ function parseIcs(text: string): ParseResult {
         mode: transport.mode,
         from: transport.from,
         to:   transport.to,
+        ...(transport.fromName ? { fromName: transport.fromName } : {}),
+        ...(transport.toName ? { toName: transport.toName } : {}),
         flightNumber: transport.mode === "air"  ? transport.serviceNumber : undefined,
         trainNumber:  transport.mode === "rail" ? transport.serviceNumber : undefined,
         start:    startStr,
@@ -357,11 +371,7 @@ function parseIcs(text: string): ParseResult {
         dedupeKey: "",
       };
       leg.dedupeKey = legKey(leg);
-      const warnings: string[] = [];
-      if (transport.from === "???") {
-        const label = transport.mode === "air" ? "airport codes" : "station names";
-        warnings.push(`No ${label} found — fill in From/To before confirming`);
-      }
+      const warnings = transport.warnings;
       out.entries.push({ entry: leg, warnings, sourceRow });
       return;
     }

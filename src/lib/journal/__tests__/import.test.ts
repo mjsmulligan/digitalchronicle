@@ -446,3 +446,54 @@ describe("importFile: enrichment", () => {
   });
 });
 
+
+// ─── people matching ─────────────────────────────────────────────────────────
+
+describe("importFile: people matching", () => {
+  const ics = (extra: string[]) =>
+    [
+      "BEGIN:VCALENDAR",
+      "BEGIN:VEVENT",
+      "UID:dinner-1",
+      "DTSTART:20260301T190000Z",
+      "DTEND:20260301T210000Z",
+      "SUMMARY:Dinner",
+      ...extra,
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
+
+  async function seedPeople() {
+    await putMany("people", [
+      { id: "me", name: "Mike Mulligan", isSelf: true, createdAt: "2026-01-01T00:00:00Z" },
+      { id: "kelly", name: "Kelly Fitzsimons", createdAt: "2026-01-01T00:00:00Z" },
+    ]);
+  }
+
+  test("tags attendees who match a person and keeps the rest as companions", async () => {
+    await seedPeople();
+    await importFile("cal.ics", ics([
+      'ATTENDEE;CN="Kelly Fitzsimons":mailto:k@example.com',
+      'ATTENDEE;CN="Someone Else":mailto:s@example.com',
+    ]), { forced: "icalendar" });
+    const [e] = getState().events;
+    expect(e.participants).toEqual(["me", "kelly"]);
+    expect(e.companions).toEqual(["Someone Else"]);
+  });
+
+  test("an event with no matching names is left alone (implicit self)", async () => {
+    await seedPeople();
+    await importFile("cal.ics", ics([]), { forced: "icalendar" });
+    const [e] = getState().events;
+    expect(e.participants).toBeUndefined();
+  });
+
+  test("a re-import does not override participants the user has set", async () => {
+    await seedPeople();
+    await importFile("cal.ics", ics([]), { forced: "icalendar" });
+    const [first] = getState().events;
+    await putMany("events", [{ ...first, participants: [] }]);
+    await importFile("cal.ics", ics(['ATTENDEE;CN="Kelly Fitzsimons":mailto:k@example.com']), { forced: "icalendar" });
+    expect(getState().events.every((e) => !e.participants?.includes("kelly"))).toBe(true);
+  });
+});
