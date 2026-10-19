@@ -48,9 +48,41 @@ const withJvmArgs = (cfg) =>
     return { modResults, ...rest };
   });
 
+// 3. Release signing: when CHRONICLE_KEYSTORE_PATH is set (the release workflow
+//    does this), sign the release build with that keystore instead of the debug
+//    one that Expo prebuild generates. Without it, nothing changes.
+const withReleaseSigning = (cfg) =>
+  withAppBuildGradle(cfg, ({ modResults, ...rest }) => {
+    const storePath = process.env.CHRONICLE_KEYSTORE_PATH;
+    if (!storePath || modResults.contents.includes("signingConfigs.release")) {
+      return { modResults, ...rest };
+    }
+    const releaseConfig = `
+        release {
+            storeFile file('${storePath.replace(/\\/g, "/")}')
+            storePassword System.getenv('CHRONICLE_KEYSTORE_PASSWORD')
+            keyAlias System.getenv('CHRONICLE_KEY_ALIAS')
+            keyPassword System.getenv('CHRONICLE_KEY_PASSWORD')
+        }`;
+    modResults.contents = modResults.contents
+      // add a release signing config after the debug one
+      .replace(
+        /(signingConfigs\s*\{\s*debug\s*\{[^}]*\})/,
+        `$1${releaseConfig}`
+      )
+      // point the release build type at it
+      .replace(
+        /(release\s*\{[^}]*?)signingConfig signingConfigs\.debug/,
+        "$1signingConfig signingConfigs.release"
+      );
+    return { modResults, ...rest };
+  });
+
 const withDateTimePicker = (cfg) => {
   cfg.plugins = [...(cfg.plugins ?? []), "@react-native-community/datetimepicker"];
   return cfg;
 };
 
-module.exports = withDateTimePicker(withJvmArgs(withCorrectNamespace(config)));
+module.exports = withDateTimePicker(
+  withReleaseSigning(withJvmArgs(withCorrectNamespace(config)))
+);
