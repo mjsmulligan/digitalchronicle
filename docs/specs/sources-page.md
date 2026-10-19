@@ -2,7 +2,7 @@
 
 **Status:** Draft v0.1. Layout decisions from the design session are folded in (section 12). Open questions in section 11 are small; only Q1 and Q2 touch a work package, and neither blocks WP1 to WP3.
 **Location:** `docs/specs/sources-page.md`
-**Branching:** one feature branch per work package, e.g. `feat/sources-page-wp1`, merged by PR
+**Branching:** one feature branch, `feat/sources-page`, for the whole feature. Commit and push after each work package, merge `main` into it now and then (never rebase pushed commits), and open a PR to `main` after WP3 (usable layout) and again after WP5. The branch must be in a working state at every commit.
 **Platform focus:** mobile only (`mobile/app/sources.tsx`). No engine changes. The web import page is out of scope (section 1).
 **Depends on:** `auto-import.md` (all WPs shipped). This spec reshapes the screen that spec left "messy and needing a future rework".
 
@@ -21,7 +21,7 @@ This spec follows the same working mode as `auto-import.md` and `mobile-design.m
 - One WP at a time. Per WP: do the scope, run the checks in "Done when", tick the WP here, commit (code and spec tick together), then stop and report in a few lines.
 - If a design decision changes, edit the relevant section and add a row to the Decision log (section 12).
 - Checks before every commit: `npm run type-check` in `mobile/` (the baseline has pre-existing errors, so the rule is "no new errors"); `bun run test` at the root if anything under `src/lib/journal/` changed. State what was checked by hand on a device or emulator.
-- Commit message format: `sources-page: WP2 connect and manage sheets`.
+- Commit message format: `sources-page: WP2 connect and manage sheets`. No Claude session link in commit messages or PR descriptions.
 
 **Writing rules for anything written into this repo or UI**
 - No em dashes anywhere (code comments, UI copy, docs, commit messages). Use a colon, comma, parentheses or a hyphen.
@@ -295,7 +295,7 @@ Each WP is one commit unless it genuinely needs more. Do one at a time, then sto
 ### Phase 1: foundations (no visible change)
 
 - [x] **WP1: registry and state helper.** Add `sourceRegistry.ts` with the tile definitions (5.2) and `deriveSourceView` (5.3), plus unit tests. *Done when:* tests cover each state (checking, attention with and without reconnect, paused, active), relative time formatting, and the tile list order; `bun run test` green; mobile type-check shows no new errors.
-- [ ] **WP2: sheet component.** Add `Sheet.tsx` on `Modal` (6) with scrim, handle, back handling, safe area, focus return, reduced motion. *Done when:* checked on a device in all three themes at 1.3x font scale: opens, scrolls long content, dismisses by scrim, back button and drag; a test screen or story is not required.
+- [ ] **WP2: sheet component** (code done, device check pending, so not ticked). Add `Sheet.tsx` on `Modal` (6) with scrim, handle, back handling, safe area, focus return, reduced motion. *Done when:* checked on a device in all three themes at 1.3x font scale: opens, scrolls long content, dismisses by scrim, back button and drag; a test screen or story is not required.
 
 ### Phase 2: new page, rows and tiles
 
@@ -341,5 +341,7 @@ Recommendations are mine. Anything marked BLOCKING stops its WP.
 
 Newest first. One entry per session.
 
+- **2026-10-19 (WP2 code written, device check pending):** Added `mobile/src/components/sources/Sheet.tsx`, a `Modal` based bottom sheet (Q2 taken as recommended, no new dependency). Props: `visible`, `title`, `onClose`, optional `returnFocusRef`, `children`. Behaviour: scrim and slide animation (timing, native driver), max height 85 percent of the window, scrolling content, dismiss by scrim, a 48dp close button, dragging the handle and header down (90dp or fast flick), and the Android back button (all call `onClose`; the parent owns `visible`). It stays mounted through the close animation, honours the system reduce motion setting (zero duration), announces its title on open, sets `accessibilityViewIsModal`, returns screen reader focus to `returnFocusRef` after closing, lifts above the keyboard on iOS (`KeyboardAvoidingView`; Android relies on the window resizing), and pads the bottom by the safe-area inset. Mobile type-check: 22 errors before and after, same set. **Not ticked:** the done-when needs a device check in all three themes at 1.3x font scale (open, scroll long content, dismiss by scrim, back button and drag), which has not been done. There is no test screen, so the first place to see the sheet is WP3 or WP4; check it there and tick WP2 then. Next: WP3.
+- **2026-10-19 (branching change):** Switched from one branch per WP to a single `feat/sources-page` branch (the WP1 branch was renamed and the spec branch folded in). See the Branching line.
 - **2026-10-19 (WP1 complete: registry and state helper):** Added `mobile/src/lib/sourceRegistry.ts` with `SOURCE_TILES` (8 tiles in the 4.2 order), `tileForConnector`, `tileForConnectedSource`, `fmtRelative` and `deriveSourceView`, and `src/lib/journal/__tests__/sourceRegistry.test.ts` (21 tests): tile order, unique ids, every forced connector exists in the registry, every `markId` exists in `SOURCE_MARKS`, relative time, and each state (checking wins over everything, attention with and without reconnect, paused, active with and without item counts). Decisions inside the WP: (1) `deriveSourceView` drops the `id` and `connected` fields from the draft in 5.3 (not needed, see 5.3); (2) the reconnect pattern matches what the sources actually throw: `Permission needed`, the Goodreads profile not found and `Is the profile public` messages, and HTTP 401, 403 and 404; (3) the status line for an error is the thrown message with its `Error:` prefix removed, since the helper does not know the source name (the row can prefix it); (4) relative times use "12 Oct" (day then month) from a week out, formatted by hand so output does not depend on device locale. `PhotoSourceEntry.fmtRelative` is left as is and goes with that file in WP4. Wrong-file copy lives on each file tile. Root suite: 497 passed, 2 todo. Mobile type-check: 22 errors before and after, same set (baseline). Nothing to check on a device (no UI). Install note: tests that import `mobile/` code need `npm install --no-package-lock --legacy-peer-deps` in `mobile/` first, or vite fails to load `expo/tsconfig.base`. Next: WP2 (sheet component).
 - **2026-10-19 (design session, no code):** Reviewed `mobile/app/sources.tsx`, `PhotoSourceEntry.tsx`, `connectedSources.ts`, the connector registry and `auto-import.md`. Reviewed a layout mockup with the user (Connected rows, Add a source tile grid, Recent imports) and agreed it as the direction. Found that the app keeps no copy of imported files (so `Import again` reopens the picker), that Flightradar24 is unsupported (so no Flights tile), and that brand marks exist for Netflix, Letterboxd, Goodreads and Viaduct. Wrote this draft. Next: WP1.
