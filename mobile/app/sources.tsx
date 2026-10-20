@@ -1,16 +1,16 @@
 /**
- * Sources — unified hub for all ways data enters Chronicle.
+ * Sources: the hub for every way data enters Chronicle.
  *
- * Sections:
- *   "On device"       — Photo library (scan), Device calendar
- *   "Online"          — Goodreads read-shelf sync
- *   "File import"     — CSV / ICS / VCF file picker
+ * Layout (docs/specs/sources-page.md, section 4):
+ *   Connected        status rows for sources that are set up and check themselves
+ *   Add a source     a grid of tiles: Connect tiles (photos, calendar, Goodreads)
+ *                    and File tiles (Netflix, Letterboxd, Viaduct, Setlist.fm, any file)
+ *   Recent imports   the latest runs, with Keep all, Import again and Undo import
+ *   People           phone contacts (creates People, not entries)
  *
- * Design principles:
- *   - All source cards share the same chrome (icon + title + status + action button)
- *   - Progress is shown as a slim animated bar, matching the commit progress card
- *   - Imports complete immediately; a summary dialog replaces the old batch review
- *   - A single "Sources" icon in the tab header replaces the old Import icon
+ * Connect tiles and rows open a Sheet: the one-time connect steps for a source
+ * that is not connected, or the manage controls for one that is
+ * (docs/specs/sources-page.md, section 6).
  */
 
 import React, {
@@ -21,33 +21,36 @@ import React, {
   useState,
 } from "react";
 import {
-  ActivityIndicator,
-  Animated,
   Linking,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { useJournal, putMany, allEntries, markRunReviewed, undoRun } from "@chronicle/journal/db";
 import { importFile, type ImportResult } from "@chronicle/journal/import";
-import {
-  uid,
-} from "@chronicle/journal/types";
+import { uid } from "@chronicle/journal/types";
 import type { Person, ImportRun } from "@chronicle/journal/types";
 import { readDeviceContacts } from "../src/lib/deviceContacts";
-import { parseContacts, type ContactDraft } from "@chronicle/journal/contacts";
+import { parseContacts } from "@chronicle/journal/contacts";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useTheme, spacing, radius, type ThemeColors, type ThemeFonts } from "../src/components/ThemeProvider";
+import { useTheme, spacing, radius } from "../src/components/ThemeProvider";
 import { ContactsReviewPanel, type ReviewContact, buildReviewContacts } from "../src/components/ContactsReviewPanel";
 import { useDialog, Dialog } from "../src/components/Dialog";
-import { PhotoSourceEntry } from "../src/components/PhotoSourceEntry";
+import { SectionLabel } from "../src/components/sources/SourceCard";
+import { CalendarSheet, CAL_SCOPE_DAYS, type CalendarListItem, type CalConnecting, type CalScope } from "../src/components/sources/CalendarSheet";
+import { ContactsSourceCard, type ContactsPhase } from "../src/components/sources/ContactsSourceCard";
+import { GoodreadsSheet } from "../src/components/sources/GoodreadsSheet";
+import { PhotosSheet, photoScopeOptions, isScanActive } from "../src/components/sources/PhotosSheet";
+import { Sheet } from "../src/components/sources/Sheet";
+import { SourceTile } from "../src/components/sources/SourceTile";
+import { ConnectedRow } from "../src/components/sources/ConnectedRow";
+import { RecentImportRow, runSummary } from "../src/components/sources/RecentImportRow";
 import { readDeviceCalendar } from "../src/lib/deviceCalendar";
 import * as Calendar from "expo-calendar/legacy";
 import { getCalendarPrefs, setCalendarPrefs } from "../src/lib/calendarPrefs";
@@ -59,868 +62,72 @@ import {
   getGoodreadsUserId,
   setGoodreadsUserId,
 } from "../src/lib/goodreadsPrefs";
+import { getScanMarker, clearScanMarker } from "../src/lib/exif/scanPrefs";
+import { useExifScan } from "../src/lib/exif/useExifScan";
+import type { ScanScope } from "../../src/lib/journal/sources/exif/types";
 import {
   getSourceState,
   setSourceAutoCheck,
   runSourceNow,
+  markSourceChecked,
   setDefaultStorage,
 } from "../src/lib/connectedSources";
 import { makeSyncPrefsStorage } from "../src/lib/syncPrefsStorage";
+import {
+  SOURCE_TILES,
+  deriveSourceView,
+  fmtRelative,
+  tileForConnectedSource,
+  tileForRunSource,
+  type ConnectedSourceId,
+  type FileTileDef,
+  type SourceView,
+} from "../src/lib/sourceRegistry";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ActiveSource = "calendar" | "goodreads" | "file" | "contacts" | null;
 
-type ContactsPhase = "idle" | "parsing" | "review" | "committing";
+/** Connect sheets, keyed by the sync runner source id. */
+type SheetId = ConnectedSourceId;
 
-// ─── Source card chrome ───────────────────────────────────────────────────────
-//
-// Consistent wrapper for calendar, goodreads, file cards. Matches the visual
-// style of PhotoSourceEntry from PhotoSourceEntry.tsx.
+const TILE_GAP = 12;
+const RECENT_LIMIT = 5;
 
-function SourceCard({
-  icon,
-  title,
-  statusText,
-  statusColor,
-  active,
-  progressPct,
-  action,
-  children,
-  colors,
-  fonts,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>["name"];
-  title: string;
-  statusText: string;
-  statusColor?: string;
-  active: boolean;
-  progressPct: number; // 0–1, only shown when active
-  action: React.ReactNode;
-  children?: React.ReactNode;
-  colors: ThemeColors;
-  fonts: ThemeFonts;
-}) {
-  const progressAnim = useRef(new Animated.Value(0)).current;
-  const loopRef = useRef<Animated.CompositeAnimation | null>(null);
-
-  useEffect(() => {
-    if (active) {
-      loopRef.current = Animated.loop(
-        Animated.sequence([
-          Animated.timing(progressAnim, { toValue: 0.7, duration: 1400, useNativeDriver: false }),
-          Animated.timing(progressAnim, { toValue: 0.15, duration: 1000, useNativeDriver: false }),
-        ]),
-      );
-      loopRef.current.start();
-    } else {
-      loopRef.current?.stop();
-      Animated.timing(progressAnim, {
-        toValue: progressPct,
-        duration: 300,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [active]);
-
-  return (
-    <View
-      style={[
-        sc.card,
-        { backgroundColor: colors.surface, borderColor: colors.borderFaint },
-      ]}
-    >
-      <View style={sc.header}>
-        <View style={[sc.iconWrap, { backgroundColor: colors.surfaceAccent }]}>
-          <Ionicons name={icon} size={20} color={colors.accent} />
-        </View>
-        <View style={sc.info}>
-          <Text style={[sc.title, { color: colors.textPrimary, fontFamily: fonts.serifSemiBold }]}>
-            {title}
-          </Text>
-          <Text style={[sc.status, { color: statusColor ?? colors.textMuted }]}>
-            {statusText}
-          </Text>
-        </View>
-        {action}
-      </View>
-
-      {active && (
-        <View style={sc.progressCard}>
-          <View style={[sc.progressTrack, { backgroundColor: colors.borderFaint }]}>
-            <Animated.View
-              style={[
-                sc.progressFill,
-                {
-                  backgroundColor: colors.accent,
-                  width: progressAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0%", "100%"],
-                  }),
-                },
-              ]}
-            />
-          </View>
-        </View>
-      )}
-
-      {children}
-    </View>
-  );
-}
-
-const sc = StyleSheet.create({
-  card: {
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    padding: spacing.lg,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  iconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: radius.lg,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: spacing.md,
-  },
-  info: { flex: 1 },
-  title: { fontSize: 15, marginBottom: 2 },
-  status: { fontSize: 12, lineHeight: 17 },
-  progressCard: { marginTop: spacing.sm },
-  progressTrack: {
-    height: 3,
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  progressFill: { height: "100%", borderRadius: 2 },
-});
-
-// ─── Section label ────────────────────────────────────────────────────────────
-
-function SectionLabel({ label, colors }: { label: string; colors: ThemeColors }) {
-  return (
-    <Text
-      style={{
-        fontSize: 11,
-        color: colors.textMuted,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        paddingHorizontal: spacing.lg,
-        marginTop: spacing.xl,
-        marginBottom: spacing.sm,
-      }}
-    >
-      {label}
-    </Text>
-  );
-}
-
-// ─── Action button (used inside source cards) ─────────────────────────────────
-
-function SrcButton({
-  label,
-  onPress,
-  disabled,
-  colors,
-  fonts,
-  variant = "primary",
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  colors: ThemeColors;
-  fonts: ThemeFonts;
-  variant?: "primary" | "ghost";
-}) {
-  return (
-    <Pressable
-      style={[
-        sb.btn,
-        variant === "primary"
-          ? { backgroundColor: colors.accentBold }
-          : { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.border },
-        disabled && { opacity: 0.45 },
-      ]}
-      onPress={onPress}
-      disabled={disabled}
-    >
-      <Text
-        style={[
-          sb.label,
-          { fontFamily: fonts.sansMedium ?? fonts.sans },
-          variant === "ghost" ? { color: colors.textSecondary } : { color: colors.white },
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-const sb = StyleSheet.create({
-  btn: {
-    paddingVertical: spacing.xs + 1,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  label: { fontSize: 13, fontWeight: "600" },
-});
-
-// ─── Calendar source card ─────────────────────────────────────────────────────
-
-type CalScope = "last-year" | "all-time";
-
-const CAL_SCOPE_DAYS: Record<CalScope, number> = {
-  "last-year": 365,
-  "all-time":  36500,
-};
-
-const CAL_SCOPE_LABELS: Record<CalScope, string> = {
-  "last-year": "Last year",
-  "all-time":  "All time",
-};
-
-export type CalendarListItem = {
-  id: string;
-  title: string;
-  color: string;
-  defaultExcluded: boolean;
-};
-
-type CalConnecting = "idle" | "loading" | "picking";
-
-function CalendarSourceCard({
-  active,
-  disabled,
-  connected,
-  connecting,
-  calendarList,
-  calSelectedIds,
-  onSync,
-  onStartConnect,
-  onToggleCalendar,
-  onConnectDone,
-  onConnectCancel,
-  onDisconnect,
-  autoCheck,
-  onAutoCheckChange,
-  lastCheckedAt,
-  lastError,
-  colors,
-  fonts,
-}: {
-  active: boolean;
-  disabled: boolean;
+interface StoredState {
   connected: boolean;
-  connecting: CalConnecting;
-  calendarList: CalendarListItem[];
-  calSelectedIds: Set<string>;
-  onSync: (pastDays: number) => void;
-  onStartConnect: () => void;
-  onToggleCalendar: (id: string) => void;
-  onConnectDone: () => void;
-  onConnectCancel: () => void;
-  onDisconnect: () => void;
   autoCheck: boolean;
-  onAutoCheckChange: (v: boolean) => void;
   lastCheckedAt: string | null;
   lastError: string | null;
-  colors: ThemeColors;
-  fonts: ThemeFonts;
-}) {
-  const [scope, setScope] = useState<CalScope>("last-year");
-  const [scopePickerOpen, setScopePickerOpen] = useState(false);
-
-  const statusText = active
-    ? "Syncing…"
-    : connected && lastCheckedAt
-    ? `Connected - last checked ${new Date(lastCheckedAt).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`
-    : connected
-    ? "Connected - not checked yet"
-    : "Imports one-off events from your calendar";
-
-  const action = active ? (
-    <ActivityIndicator size="small" color={colors.accent} />
-  ) : connecting === "loading" ? (
-    <ActivityIndicator size="small" color={colors.accent} />
-  ) : connected ? (
-    <SrcButton
-      label="Check now"
-      onPress={() => onSync(CAL_SCOPE_DAYS[scope])}
-      disabled={disabled}
-      colors={colors}
-      fonts={fonts}
-    />
-  ) : connecting === "picking" ? null : (
-    <SrcButton
-      label="Connect"
-      onPress={onStartConnect}
-      disabled={disabled}
-      colors={colors}
-      fonts={fonts}
-    />
-  );
-
-  return (
-    <SourceCard
-      icon="calendar-outline"
-      title="Device calendar"
-      statusText={statusText}
-      active={active}
-      progressPct={0}
-      colors={colors}
-      fonts={fonts}
-      action={action}
-    >
-      {/* Calendar picker (shown while connecting) */}
-      {connecting === "picking" && (
-        <View style={{ marginTop: spacing.md }}>
-          <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: spacing.sm }}>
-            Choose which calendars to import. Recurring events are always excluded.
-          </Text>
-          {calendarList.map((cal) => {
-            const selected = calSelectedIds.has(cal.id);
-            return (
-              <Pressable
-                key={cal.id}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingVertical: spacing.sm,
-                  gap: spacing.md,
-                }}
-                onPress={() => onToggleCalendar(cal.id)}
-              >
-                {/* Color dot */}
-                <View
-                  style={{
-                    width: 10,
-                    height: 10,
-                    borderRadius: 5,
-                    backgroundColor: cal.color || colors.accent,
-                  }}
-                />
-                <Text style={{ flex: 1, fontSize: 13, color: colors.textPrimary }}>
-                  {cal.title}
-                </Text>
-                {/* Checkbox */}
-                <View
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 4,
-                    borderWidth: 1.5,
-                    borderColor: selected ? colors.accent : colors.border,
-                    backgroundColor: selected ? colors.accent : "transparent",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {selected && (
-                    <Ionicons name="checkmark" size={13} color={colors.white} />
-                  )}
-                </View>
-              </Pressable>
-            );
-          })}
-          <View style={{ flexDirection: "row", gap: spacing.md, justifyContent: "flex-end", marginTop: spacing.sm }}>
-            <Pressable onPress={onConnectCancel}>
-              <Text style={{ fontSize: 13, color: colors.textMuted }}>Cancel</Text>
-            </Pressable>
-            <Pressable onPress={onConnectDone} disabled={calSelectedIds.size === 0}>
-              <Text
-                style={{
-                  fontSize: 13,
-                  color: calSelectedIds.size > 0 ? colors.accent : colors.textMuted,
-                  fontWeight: "600",
-                }}
-              >
-                Done
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-
-      {/* Connected management row */}
-      {connected && connecting === "idle" && (
-        <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm }}>
-          <Pressable onPress={onDisconnect}>
-            <Text style={{ fontSize: 12, color: colors.error }}>Disconnect</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Scope picker (for manual Check now, shown only when connected) */}
-      {connected && connecting === "idle" && (
-        <>
-          <Pressable
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.xs,
-              paddingVertical: spacing.xs,
-              marginTop: spacing.sm,
-            }}
-            onPress={() => setScopePickerOpen((v) => !v)}
-          >
-            <Ionicons name="options-outline" size={14} color={colors.textMuted} />
-            <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
-              Manual range: {CAL_SCOPE_LABELS[scope]}
-            </Text>
-            <Ionicons
-              name={scopePickerOpen ? "chevron-up" : "chevron-down"}
-              size={13}
-              color={colors.textMuted}
-            />
-          </Pressable>
-          {scopePickerOpen && (
-            <View
-              style={{
-                borderTopWidth: StyleSheet.hairlineWidth,
-                borderTopColor: colors.borderFaint,
-                marginBottom: spacing.sm,
-                paddingTop: spacing.sm,
-                gap: spacing.xs,
-              }}
-            >
-              {(["last-year", "all-time"] as CalScope[]).map((s) => (
-                <Pressable
-                  key={s}
-                  style={[
-                    { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.md },
-                    scope === s && { backgroundColor: colors.accentSubtle },
-                  ]}
-                  onPress={() => { setScope(s); setScopePickerOpen(false); }}
-                >
-                  <Text
-                    style={[
-                      { fontSize: 13, color: colors.textSecondary },
-                      scope === s && { color: colors.accent },
-                    ]}
-                  >
-                    {CAL_SCOPE_LABELS[s]}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-        </>
-      )}
-
-      {/* Auto-check switch (only when connected) */}
-      {connected && connecting === "idle" && (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginTop: spacing.sm,
-            paddingTop: spacing.sm,
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: colors.borderFaint,
-          }}
-        >
-          <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
-            Check automatically on startup
-          </Text>
-          <Switch
-            value={autoCheck}
-            onValueChange={onAutoCheckChange}
-            trackColor={{ false: colors.border, true: colors.accent }}
-            thumbColor={colors.surface}
-          />
-        </View>
-      )}
-
-      {/* Last error */}
-      {connected && lastError != null && (
-        <Text
-          style={{ fontSize: 11, color: colors.error, marginTop: spacing.xs }}
-          numberOfLines={2}
-        >
-          {lastError}
-        </Text>
-      )}
-    </SourceCard>
-  );
 }
+const NOT_CONNECTED: StoredState = { connected: false, autoCheck: true, lastCheckedAt: null, lastError: null };
 
-// ─── Contacts source card ─────────────────────────────────────────────────────
+// ─── Section header ───────────────────────────────────────────────────────────
 
-function ContactsSourceCard({
-  peopleCount,
-  phase,
-  disabled,
-  onImportFromDevice,
-  onPickFile,
-  colors,
-  fonts,
-}: {
-  peopleCount: number;
-  phase: ContactsPhase;
-  disabled: boolean;
-  onImportFromDevice: () => void;
-  onPickFile: () => void;
-  colors: ThemeColors;
-  fonts: ThemeFonts;
-}) {
-  const parsing = phase === "parsing" || phase === "committing";
+function SectionHeader({ title, right }: { title: string; right?: string }) {
+  const { colors, fonts } = useTheme();
   return (
-    <SourceCard
-      icon="people-outline"
-      title="Phone contacts"
-      statusText={
-        parsing
-          ? phase === "parsing" ? "Reading contacts…" : "Saving…"
-          : peopleCount > 0
-          ? `${peopleCount} ${peopleCount === 1 ? "person" : "people"} added`
-          : "Add people from your address book to tag them in entries"
-      }
-      active={parsing}
-      progressPct={0}
-      colors={colors}
-      fonts={fonts}
-      action={
-        parsing ? (
-          <ActivityIndicator size="small" color={colors.accent} />
-        ) : (
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <SrcButton
-              label="From device"
-              onPress={onImportFromDevice}
-              disabled={disabled}
-              colors={colors}
-              fonts={fonts}
-            />
-            <SrcButton
-              label="File"
-              onPress={onPickFile}
-              disabled={disabled}
-              colors={colors}
-              fonts={fonts}
-              variant="ghost"
-            />
-          </View>
-        )
-      }
-    />
-  );
-}
-
-// ─── Goodreads source card ────────────────────────────────────────────────────
-
-function GoodreadsSourceCard({
-  active,
-  disabled,
-  grId,
-  grEditing,
-  grInput,
-  onGrInputChange,
-  onSync,
-  onStartEdit,
-  onCancelEdit,
-  onSaveId,
-  onForget,
-  autoCheck,
-  onAutoCheckChange,
-  lastCheckedAt,
-  lastError,
-  colors,
-  fonts,
-}: {
-  active: boolean;
-  disabled: boolean;
-  grId: string | null;
-  grEditing: boolean;
-  grInput: string;
-  onGrInputChange: (v: string) => void;
-  onSync: () => void;
-  onStartEdit: () => void;
-  onCancelEdit: () => void;
-  onSaveId: () => void;
-  onForget: () => void;
-  autoCheck: boolean;
-  onAutoCheckChange: (v: boolean) => void;
-  lastCheckedAt: string | null;
-  lastError: string | null;
-  colors: ThemeColors;
-  fonts: ThemeFonts;
-}) {
-  const statusText = active
-    ? "Syncing…"
-    : grId
-    ? lastCheckedAt
-      ? `Connected · last checked ${new Date(lastCheckedAt).toLocaleDateString("en-US", { day: "numeric", month: "short" })}`
-      : `Connected — ${grId}`
-    : "Sync your read-shelf via public RSS";
-
-  return (
-    <SourceCard
-      icon="book-outline"
-      title="Goodreads"
-      statusText={statusText}
-      active={active}
-      progressPct={0}
-      colors={colors}
-      fonts={fonts}
-      action={
-        active ? (
-          <ActivityIndicator size="small" color={colors.accent} />
-        ) : grId && !grEditing ? (
-          <SrcButton
-            label="Check now"
-            onPress={onSync}
-            disabled={disabled}
-            colors={colors}
-            fonts={fonts}
-          />
-        ) : !grEditing ? (
-          <SrcButton
-            label="Connect"
-            onPress={onStartEdit}
-            disabled={disabled}
-            colors={colors}
-            fonts={fonts}
-          />
-        ) : null
-      }
-    >
-      {/* ID entry / management */}
-      {grId && !grEditing && (
-        <View
-          style={{
-            flexDirection: "row",
-            gap: spacing.md,
-            marginTop: spacing.sm,
-          }}
-        >
-          <Pressable onPress={onStartEdit}>
-            <Text style={{ fontSize: 12, color: colors.accent }}>Change ID</Text>
-          </Pressable>
-          <Pressable onPress={onForget}>
-            <Text style={{ fontSize: 12, color: colors.error }}>Disconnect</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Auto-check switch (only when connected) */}
-      {grId && !grEditing && (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginTop: spacing.sm,
-            paddingTop: spacing.sm,
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: colors.borderFaint,
-          }}
-        >
-          <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }}>
-            Check automatically on startup
-          </Text>
-          <Switch
-            value={autoCheck}
-            onValueChange={onAutoCheckChange}
-            trackColor={{ false: colors.border, true: colors.accent }}
-            thumbColor={colors.surface}
-          />
-        </View>
-      )}
-
-      {/* Last error */}
-      {grId && !grEditing && lastError != null && (
-        <Text
-          style={{ fontSize: 11, color: colors.error, marginTop: spacing.xs }}
-          numberOfLines={2}
-        >
-          {lastError}
-        </Text>
-      )}
-
-      {grEditing && (
-        <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-          <Text style={{ fontSize: 12, color: colors.textMuted, lineHeight: 18 }}>
-            Enter your Goodreads username. Your profile must be public.
-          </Text>
-          <TextInput
-            value={grInput}
-            onChangeText={onGrInputChange}
-            placeholder="your-username"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            style={{
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: radius.md,
-              padding: spacing.md,
-              color: colors.textPrimary,
-              backgroundColor: colors.surfaceMuted,
-              fontSize: 13,
-            }}
-          />
-          <View style={{ flexDirection: "row", gap: spacing.md, justifyContent: "flex-end" }}>
-            <Pressable onPress={onCancelEdit}>
-              <Text style={{ fontSize: 13, color: colors.textMuted }}>Cancel</Text>
-            </Pressable>
-            <Pressable onPress={onSaveId}>
-              <Text style={{ fontSize: 13, color: colors.accent, fontWeight: "600" }}>
-                Save & sync
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      )}
-    </SourceCard>
-  );
-}
-
-// ─── File import source card ──────────────────────────────────────────────────
-
-function FileSourceCard({
-  active,
-  disabled,
-  onPickFile,
-  colors,
-  fonts,
-}: {
-  active: boolean;
-  disabled: boolean;
-  onPickFile: () => void;
-  colors: ThemeColors;
-  fonts: ThemeFonts;
-}) {
-  return (
-    <SourceCard
-      icon="document-outline"
-      title="File import"
-      statusText={
-        active
-          ? "Parsing…"
-          : "CSV · ICS · VCF — Letterboxd, Setlist.fm, iCalendar, contacts…"
-      }
-      active={active}
-      progressPct={0}
-      colors={colors}
-      fonts={fonts}
-      action={
-        active ? (
-          <ActivityIndicator size="small" color={colors.accent} />
-        ) : (
-          <SrcButton
-            label="Choose file"
-            onPress={onPickFile}
-            disabled={disabled}
-            colors={colors}
-            fonts={fonts}
-          />
-        )
-      }
-    />
-  );
-}
-
-
-
-// ─── Recent import card ───────────────────────────────────────────────────────
-
-function runSourceIcon(source: string): React.ComponentProps<typeof Ionicons>["name"] {
-  if (source === "photo-library") return "images-outline";
-  if (source === "icalendar")     return "calendar-outline";
-  if (source === "goodreads")     return "book-outline";
-  return "document-outline";
-}
-
-function RecentImportCard({
-  run,
-  unreviewedCount,
-  onKeep,
-  onUndo,
-  colors,
-  fonts,
-}: {
-  run: ImportRun;
-  unreviewedCount: number;
-  onKeep: () => void;
-  onUndo: () => void;
-  colors: ThemeColors;
-  fonts: ThemeFonts;
-}) {
-  const displayName = run.trigger === "startup" ? "automatic" : run.filename;
-  const date = new Date(run.startedAt).toLocaleDateString("en-US", { day: "numeric", month: "short" });
-  const summary = [
-    run.added   > 0 ? `${run.added} new`     : "",
-    run.updated > 0 ? `${run.updated} updated` : "",
-  ].filter(Boolean).join(", ");
-  const undone = run.status === "undone";
-
-  return (
-    <View
-      style={[
-        sc.card,
-        { backgroundColor: colors.surface, borderColor: colors.borderFaint },
-        undone && { opacity: 0.5 },
-      ]}
-    >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-        <View style={[sc.iconWrap, { backgroundColor: colors.surfaceAccent }]}>
-          <Ionicons name={runSourceIcon(run.source)} size={16} color={colors.accent} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={{ fontSize: 13, color: colors.textPrimary, fontFamily: fonts.serifMedium }}
-            numberOfLines={1}
-          >
-            {displayName}
-          </Text>
-          <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 1 }}>
-            {summary}{summary ? " · " : ""}{date}
-          </Text>
-        </View>
-        {undone && (
-          <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: fonts.mono }}>
-            UNDONE
-          </Text>
-        )}
-      </View>
-
-      {!undone && (
-        <View
-          style={{
-            flexDirection: "row",
-            gap: spacing.sm,
-            marginTop: spacing.sm,
-            justifyContent: "flex-end",
-          }}
-        >
-          <SrcButton
-            label="Keep all"
-            onPress={onKeep}
-            disabled={unreviewedCount === 0}
-            colors={colors}
-            fonts={fonts}
-            variant="ghost"
-          />
-          <SrcButton
-            label="Undo import"
-            onPress={onUndo}
-            colors={colors}
-            fonts={fonts}
-            variant="ghost"
-          />
-        </View>
-      )}
+    <View style={sh.row}>
+      <Text accessibilityRole="header" style={[sh.title, { color: colors.textBright, fontFamily: fonts.serifSemiBold }]}>
+        {title}
+      </Text>
+      {right ? <Text style={[sh.right, { color: colors.textMuted }]}>{right}</Text> : null}
     </View>
   );
 }
+
+const sh = StyleSheet.create({
+  row: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
+  },
+  title: { fontSize: 18 },
+  right: { fontSize: 13 },
+});
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
@@ -929,10 +136,21 @@ export default function SourcesScreen() {
   const { uri: incomingUri } = useLocalSearchParams<{ uri?: string }>();
   const { top } = useSafeAreaInsets();
   const { colors, fonts } = useTheme();
+  const { width, fontScale } = useWindowDimensions();
   const journal = useJournal();
   const dialog = useDialog();
 
   const [activeSource, setActiveSource] = useState<ActiveSource>(null);
+  /** The File tile whose import is running (spinner on that tile). */
+  const [fileTileId, setFileTileId] = useState<string | null>(null);
+
+  // Sheets: a connect sheet for one source, and the actions menu for one run.
+  const [sheet, setSheet] = useState<SheetId | null>(null);
+  const [menuRun, setMenuRun] = useState<ImportRun | null>(null);
+  const [showAllRuns, setShowAllRuns] = useState(false);
+  const returnFocusRef = useRef<View | null>(null);
+  const openers = useRef<Record<string, View | null>>({});
+  const setOpener = (key: string) => (r: View | null) => { openers.current[key] = r; };
 
   // Contacts state
   const [contactsPhase, setContactsPhase] = useState<ContactsPhase>("idle");
@@ -952,26 +170,10 @@ export default function SourcesScreen() {
   const [grId, setGrId] = useState<string | null>(null);
   const [grInput, setGrInput] = useState("");
   const [grEditing, setGrEditing] = useState(false);
-  useEffect(() => {
-    void getGoodreadsUserId().then(setGrId);
-    // Ensure default storage is set (may already be set by _layout boot hook)
-    setDefaultStorage(syncStorage);
-    void getSourceState("icalendar", syncStorage).then((s) => {
-      setCalAutoCheckState(s.autoCheck);
-      setCalLastChecked(s.lastCheckedAt);
-      setCalLastError(s.lastError);
-    });
-    void getSourceState("goodreads", syncStorage).then((s) => {
-      setGrAutoCheckState(s.autoCheck);
-      setGrLastChecked(s.lastCheckedAt);
-      setGrLastError(s.lastError);
-    });
-    void getCalendarPrefs().then((p) => setCalConnected(p.connected));
-  }, []);
 
   const anyActive = activeSource !== null;
 
-  // ── Connected-source auto-check state ──────────────────────────────────────
+  // ── Connected-source state ──────────────────────────────────────────────────
 
   // One storage instance for this screen session
   const syncStorage = useMemo(() => makeSyncPrefsStorage(), []);
@@ -989,6 +191,135 @@ export default function SourcesScreen() {
   const [grLastChecked, setGrLastChecked] = useState<string | null>(null);
   const [grLastError, setGrLastError] = useState<string | null>(null);
 
+  const [photoState, setPhotoState] = useState<StoredState>(NOT_CONNECTED);
+  const [photoScope, setPhotoScope] = useState<ScanScope>(() => photoScopeOptions()[0].value);
+  const [photoScannedAt, setPhotoScannedAt] = useState<string | null>(null);
+  const [calScope, setCalScope] = useState<CalScope>("last-year");
+  const [calChosenCount, setCalChosenCount] = useState(0);
+  // The scan hook lives here so a scan keeps going, and its row keeps showing
+  // "Checking", when the sheet is closed.
+  const exif = useExifScan();
+  /** Sources being retried from an attention row. */
+  const [retrying, setRetrying] = useState<Set<string>>(new Set());
+
+  /** Reads every connected source's prefs. Called on mount and after anything that can change them. */
+  const reload = useCallback(async () => {
+    // Ensure default storage is set (may already be set by _layout boot hook)
+    setDefaultStorage(syncStorage);
+    const [cal, gr, photo, id, calPrefs, marker] = await Promise.all([
+      getSourceState("icalendar", syncStorage),
+      getSourceState("goodreads", syncStorage),
+      getSourceState("photo-library", syncStorage),
+      getGoodreadsUserId(),
+      getCalendarPrefs(),
+      getScanMarker(),
+    ]);
+    setCalAutoCheckState(cal.autoCheck);
+    setCalLastChecked(cal.lastCheckedAt);
+    setCalLastError(cal.lastError);
+    setGrAutoCheckState(gr.autoCheck);
+    setGrLastChecked(gr.lastCheckedAt);
+    setGrLastError(gr.lastError);
+    setGrId(id);
+    setCalConnected(calPrefs.connected);
+    setCalChosenCount(calPrefs.calendarIds.length);
+    // A scan counts as a check, so the later of the scan and the last startup check is shown.
+    const scanned = marker?.lastScannedAt ?? null;
+    setPhotoScannedAt(scanned);
+    if (marker && marker.scope.kind !== "since") setPhotoScope(marker.scope);
+    const checked = [photo.lastCheckedAt, scanned].filter(Boolean).sort().pop() ?? null;
+    setPhotoState({
+      connected: marker !== null,
+      autoCheck: photo.autoCheck,
+      lastCheckedAt: checked,
+      lastError: photo.lastError,
+    });
+  }, [syncStorage]);
+
+  useEffect(() => { void reload(); }, [reload]);
+
+  // ── Derived rows ────────────────────────────────────────────────────────────
+
+  const itemCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const e of allEntries(journal)) counts[e.source] = (counts[e.source] ?? 0) + 1;
+    return counts;
+  }, [journal]);
+
+  const connectedRows = useMemo(() => {
+    const now = new Date();
+    const stored: Record<ConnectedSourceId, StoredState> = {
+      "photo-library": photoState,
+      icalendar: {
+        connected: calConnected, autoCheck: calAutoCheck,
+        lastCheckedAt: calLastChecked, lastError: calLastError,
+      },
+      goodreads: {
+        connected: grId !== null, autoCheck: grAutoCheck,
+        lastCheckedAt: grLastChecked, lastError: grLastError,
+      },
+    };
+    const busy = (id: ConnectedSourceId) =>
+      retrying.has(id) ||
+      (id === "photo-library" && isScanActive(exif.state.phase)) ||
+      (id === "icalendar" && (activeSource === "calendar" || calConnecting === "loading")) ||
+      (id === "goodreads" && activeSource === "goodreads");
+    const rows: { id: ConnectedSourceId; view: SourceView }[] = [];
+    for (const tile of SOURCE_TILES) {
+      if (tile.kind !== "connect") continue;
+      const st = stored[tile.connectedSourceId];
+      if (!st.connected) continue;
+      rows.push({
+        id: tile.connectedSourceId,
+        view: deriveSourceView({
+          autoCheck: st.autoCheck,
+          lastCheckedAt: st.lastCheckedAt,
+          lastError: st.lastError,
+          active: busy(tile.connectedSourceId),
+          now,
+          itemCount: itemCounts[tile.connectedSourceId],
+        }),
+      });
+    }
+    // Attention first, then the registry order (which is by name within a kind).
+    return rows
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => Number(b.r.view.state === "attention") - Number(a.r.view.state === "attention") || a.i - b.i)
+      .map(({ r }) => r);
+  }, [photoState, calConnected, calAutoCheck, calLastChecked, calLastError,
+      grId, grAutoCheck, grLastChecked, grLastError, retrying, activeSource,
+      calConnecting, itemCounts, exif.state.phase]);
+
+  const stateById = useMemo(() => {
+    const m = new Map<ConnectedSourceId, SourceView["state"]>();
+    for (const r of connectedRows) m.set(r.id, r.view.state);
+    return m;
+  }, [connectedRows]);
+
+  // ── Sheets ──────────────────────────────────────────────────────────────────
+
+  const openSheet = useCallback((id: SheetId, openerKey: string) => {
+    returnFocusRef.current = openers.current[openerKey] ?? null;
+    setSheet(id);
+  }, []);
+
+  const closeSheet = useCallback(() => {
+    setSheet(null);
+    void reload();
+  }, [reload]);
+
+  const retrySource = useCallback(async (id: ConnectedSourceId) => {
+    setRetrying((prev) => new Set(prev).add(id));
+    try {
+      await runSourceNow(id, syncStorage);
+    } catch {
+      // runSourceNow stored the error; the row shows it
+    } finally {
+      setRetrying((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      void reload();
+    }
+  }, [syncStorage, reload]);
+
   // ── Recent imports ──────────────────────────────────────────────────────────
 
   // Map from runId -> count of entries still unreviewed (live, from journal state)
@@ -1002,7 +333,7 @@ export default function SourcesScreen() {
     return map;
   }, [journal]);
 
-  // Newest-first; only runs that actually added or updated something
+  // Newest-first
   const recentRuns = useMemo(
     () => [...journal.importRuns]
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt)),
@@ -1078,8 +409,12 @@ export default function SourcesScreen() {
         color: c.color ?? colors.accent,
         defaultExcluded: isDefaultExcluded(c),
       }));
-      // Pre-select non-excluded calendars
-      const preSelected = new Set(list.filter((c) => !c.defaultExcluded).map((c) => c.id));
+      // Editing an existing connection starts from the saved choice; a new one from the defaults.
+      const saved = await getCalendarPrefs();
+      const savedIds = new Set(saved.calendarIds.filter((id) => list.some((c) => c.id === id)));
+      const preSelected = saved.connected && savedIds.size > 0
+        ? savedIds
+        : new Set(list.filter((c) => !c.defaultExcluded).map((c) => c.id));
       setCalendarList(list);
       setCalSelectedIds(preSelected);
       setCalConnecting("picking");
@@ -1098,13 +433,20 @@ export default function SourcesScreen() {
     });
   }, []);
 
-  const handleCalConnectDone = useCallback(async () => {
+  const handleCalConnectDone = async () => {
     const ids = [...calSelectedIds];
     if (!ids.length) return;
+    const firstConnect = !calConnected;
     await setCalendarPrefs({ connected: true, calendarIds: ids });
     setCalConnected(true);
+    setCalChosenCount(ids.length);
     setCalConnecting("idle");
-  }, [calSelectedIds]);
+    if (firstConnect) {
+      // The first check runs once the sheet has closed, and shows the normal summary.
+      closeSheet();
+      setTimeout(() => void importFromCalendar(CAL_SCOPE_DAYS["last-year"]), 280);
+    }
+  };
 
   const handleCalConnectCancel = useCallback(() => {
     setCalendarList([]);
@@ -1164,24 +506,33 @@ export default function SourcesScreen() {
 
   // ── Source actions ──────────────────────────────────────────────────────────
 
-  const processUri = async (uri: string, filename: string) => {
+  const processUri = async (uri: string, filename: string, tile?: FileTileDef) => {
     setActiveSource("file");
+    setFileTileId(tile?.id ?? null);
     await new Promise<void>((r) => setTimeout(r, 50));
     try {
       const response = await fetch(uri);
       if (!response.ok) throw new Error(`Could not read file (HTTP ${response.status})`);
       const text = await response.text();
       await new Promise<void>((r) => setTimeout(r, 0));
-      const result = await importFile(filename, text);
-      showImportSummary(result);
+      const result = await importFile(filename, text, tile?.connector ? { forced: tile.connector } : undefined);
+      // A forced connector that read nothing and reported errors means the wrong kind of file.
+      const skippedTotal = result.skipped.duplicate + result.skipped.inFile + result.skipped.removed;
+      if (tile?.connector && result.added === 0 && result.updated === 0 && skippedTotal === 0 && result.errors.length > 0) {
+        dialog.alert(`Not a ${tile.label} file`, tile.wrongFileMessage);
+      } else {
+        showImportSummary(result);
+      }
     } catch (err) {
       dialog.alert("Import failed", String(err));
     } finally {
       setActiveSource(null);
+      setFileTileId(null);
     }
   };
 
-  const pickFile = async () => {
+  /** Opens the picker. With a tile, the connector is forced; without, the file is detected. */
+  const pickFile = async (tile?: FileTileDef) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ["text/csv", "text/calendar", "text/x-vcard", "application/json", "application/octet-stream", "*/*"],
@@ -1189,7 +540,7 @@ export default function SourcesScreen() {
       });
       if (result.canceled || !result.assets[0]) return;
       const { uri, name } = result.assets[0];
-      await processUri(uri, name ?? "imported-file");
+      await processUri(uri, name ?? "imported-file", tile);
     } catch (err) {
       dialog.alert("Import failed", String(err));
     }
@@ -1356,15 +707,18 @@ export default function SourcesScreen() {
         return;
       }
       if (!res.count) {
+        await markSourceChecked("icalendar", syncStorage);
         dialog.alert("No events found", "No one-off events found in that time range.");
         return;
       }
       const result = await importFile("device-calendar.ics", res.ics, { forced: "icalendar" });
+      await markSourceChecked("icalendar", syncStorage);
       showImportSummary(result);
     } catch (err) {
       dialog.alert("Import failed", String(err));
     } finally {
       setActiveSource(null);
+      void reload();
     }
   };
 
@@ -1374,15 +728,18 @@ export default function SourcesScreen() {
     try {
       const { csv, count } = await fetchGoodreadsShelfCsv(userId);
       if (!count) {
+        await markSourceChecked("goodreads", syncStorage);
         dialog.alert("No books found", "Your Goodreads \"read\" shelf is empty or private.");
         return;
       }
       const result = await importFile(`goodreads-${userId}.csv`, csv, { forced: "goodreads" });
+      await markSourceChecked("goodreads", syncStorage);
       showImportSummary(result);
     } catch (err) {
       dialog.alert("Import failed", String(err));
     } finally {
       setActiveSource(null);
+      void reload();
     }
   };
 
@@ -1410,6 +767,70 @@ export default function SourcesScreen() {
     setGrEditing(false);
   };
 
+  // Reconnect from an attention row: open the card and start the source's connect step.
+  const reconnect = (id: ConnectedSourceId) => {
+    openSheet(id, `row:${id}`);
+    if (id === "icalendar") void handleCalStartConnect();
+    if (id === "goodreads") { setGrInput(grId ?? ""); setGrEditing(true); }
+    if (id === "photo-library") {
+      // Asks for photo access again, then reads only photos added since the last scan.
+      exif.reset();
+      void exif.start({ kind: "since", timestamp: photoScannedAt ?? new Date(0).toISOString() });
+    }
+  };
+
+  // ── Sheet helpers ───────────────────────────────────────────────────────────
+
+  /** Closes the sheet, then runs `fn` once it has gone, so dialogs never open over it. */
+  const runFromSheet = (fn: () => void) => {
+    closeSheet();
+    setTimeout(fn, 280);
+  };
+
+  const confirmDisconnect = (label: string, fn: () => void | Promise<void>) => {
+    runFromSheet(() =>
+      dialog.confirm(
+        `Disconnect ${label}`,
+        "Chronicle stops checking this source. Entries already imported stay in your journal.",
+        "Disconnect",
+        fn,
+      ),
+    );
+  };
+
+  /** The view for the open sheet's source (never missing: the sheet only opens for a known source). */
+  const sheetView = (id: ConnectedSourceId): SourceView =>
+    connectedRows.find((r) => r.id === id)?.view
+    ?? { state: "active", statusLine: "Not connected", needsReconnect: false };
+
+  const lastCheckDetail = (checkedAt: string | null, error: string | null): string => {
+    const when = checkedAt ? fmtRelative(checkedAt) : "Never checked";
+    return error ? `${when}\n${error.replace(/^(\w*Error):\s*/, "")}` : when;
+  };
+
+  // A finished scan counts as a successful check, so the row clears an old error.
+  useEffect(() => {
+    if (exif.state.phase !== "done") return;
+    void markSourceChecked("photo-library", syncStorage).then(reload);
+  }, [exif.state.phase, syncStorage, reload]);
+
+  // ── Layout ──────────────────────────────────────────────────────────────────
+
+  const contentWidth = width - spacing.lg * 2;
+  const columns = width >= 600 ? 4 : fontScale >= 1.3 && width < 420 ? 2 : 3;
+  const tileWidth = Math.floor((contentWidth - TILE_GAP * (columns - 1)) / columns);
+
+  const sheetTile = sheet ? tileForConnectedSource(sheet) : undefined;
+  const visibleRuns = showAllRuns ? recentRuns : recentRuns.slice(0, RECENT_LIMIT);
+
+  /** Actions menu for one run. Runs after the sheet has closed so dialogs do not stack on it. */
+  const afterMenu = (fn: () => void) => {
+    setMenuRun(null);
+    setTimeout(fn, 280);
+  };
+  const menuTile = menuRun && menuRun.trigger === "manual" ? tileForRunSource(menuRun.source) : undefined;
+  const menuUnreviewed = menuRun ? (unreviewedByRun.get(menuRun.id) ?? 0) : 0;
+
   return (
     <>
       <Stack.Screen
@@ -1429,31 +850,108 @@ export default function SourcesScreen() {
         style={{ flex: 1, backgroundColor: colors.bg }}
         contentContainerStyle={{ paddingTop: spacing.md, paddingBottom: spacing["3xl"] }}
       >
-        {/* ── On device ───────────────────────────────────────────────────── */}
-        <SectionLabel label="On device" colors={colors} />
+        {/* ── Connected ──────────────────────────────────────────────────── */}
+        {connectedRows.length > 0 ? (
+          <>
+            <SectionHeader
+              title="Connected"
+              right={`${connectedRows.length} ${connectedRows.length === 1 ? "source" : "sources"}`}
+            />
+            <View
+              style={{
+                marginHorizontal: spacing.lg,
+                backgroundColor: colors.surface,
+                borderColor: colors.borderFaint,
+                borderWidth: 1,
+                borderRadius: radius["2xl"],
+                overflow: "hidden",
+              }}
+            >
+              {connectedRows.map(({ id, view }, i) => {
+                const tile = tileForConnectedSource(id);
+                if (!tile) return null;
+                return (
+                  <View key={id}>
+                    {i > 0 && <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.borderFaint }} />}
+                    <ConnectedRow
+                      tile={tile}
+                      view={view}
+                      openerRef={setOpener(`row:${id}`)}
+                      onOpen={() => openSheet(id, `row:${id}`)}
+                      onReconnect={() => reconnect(id)}
+                      onRetry={() => void retrySource(id)}
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </>
+        ) : (
+          <Text style={{ fontSize: 14, lineHeight: 20, color: colors.textMuted, paddingHorizontal: spacing.lg, marginTop: spacing.sm }}>
+            Nothing connected yet. Connect a source and it will check itself on every launch.
+          </Text>
+        )}
 
-        <PhotoSourceEntry />
+        {/* ── Add a source ───────────────────────────────────────────────── */}
+        <SectionHeader title="Add a source" />
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: TILE_GAP, paddingHorizontal: spacing.lg }}>
+          {SOURCE_TILES.map((tile) => (
+            <SourceTile
+              key={tile.id}
+              tile={tile}
+              width={tileWidth}
+              openerRef={setOpener(`tile:${tile.id}`)}
+              connectedState={tile.kind === "connect" ? stateById.get(tile.connectedSourceId) : undefined}
+              busy={tile.kind === "file" && fileTileId === tile.id}
+              disabled={anyActive && !(tile.kind === "file" && fileTileId === tile.id)}
+              onPress={() => {
+                if (tile.kind === "connect") openSheet(tile.connectedSourceId, `tile:${tile.id}`);
+                else void pickFile(tile.connector ? tile : undefined);
+              }}
+            />
+          ))}
+        </View>
+        <Text style={{ fontSize: 13, lineHeight: 18, color: colors.textMuted, paddingHorizontal: spacing.lg, marginTop: spacing.md }}>
+          A tick means set up once and checked automatically. The other tiles ask for a file each time.
+        </Text>
 
-        <CalendarSourceCard
-          active={activeSource === "calendar"}
-          disabled={anyActive}
-          connected={calConnected}
-          connecting={calConnecting}
-          calendarList={calendarList}
-          calSelectedIds={calSelectedIds}
-          onSync={importFromCalendar}
-          onStartConnect={handleCalStartConnect}
-          onToggleCalendar={handleToggleCalendar}
-          onConnectDone={handleCalConnectDone}
-          onConnectCancel={handleCalConnectCancel}
-          onDisconnect={handleCalDisconnect}
-          autoCheck={calAutoCheck}
-          onAutoCheckChange={handleCalAutoCheckChange}
-          lastCheckedAt={calLastChecked}
-          lastError={calLastError}
-          colors={colors}
-          fonts={fonts}
-        />
+        {/* ── Recent imports ──────────────────────────────────────────────── */}
+        {recentRuns.length > 0 && (
+          <>
+            <SectionHeader title="Recent imports" />
+            <View
+              style={{
+                marginHorizontal: spacing.lg,
+                backgroundColor: colors.surface,
+                borderColor: colors.borderFaint,
+                borderWidth: 1,
+                borderRadius: radius["2xl"],
+                overflow: "hidden",
+              }}
+            >
+              {visibleRuns.map((run, i) => (
+                <View key={run.id}>
+                  {i > 0 && <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: colors.borderFaint }} />}
+                  <RecentImportRow run={run} onMenu={() => setMenuRun(run)} />
+                </View>
+              ))}
+            </View>
+            {recentRuns.length > RECENT_LIMIT && (
+              <Pressable
+                onPress={() => setShowAllRuns((v) => !v)}
+                accessibilityRole="button"
+                style={{ minHeight: 48, justifyContent: "center", paddingHorizontal: spacing.lg }}
+              >
+                <Text style={{ fontSize: 14, color: colors.accent, fontWeight: "600" }}>
+                  {showAllRuns ? "Show fewer" : `Show all ${recentRuns.length}`}
+                </Text>
+              </Pressable>
+            )}
+          </>
+        )}
+
+        {/* ── People ──────────────────────────────────────────────────────── */}
+        <SectionLabel label="People" colors={colors} />
 
         <ContactsSourceCard
           peopleCount={journal.people.length}
@@ -1490,62 +988,124 @@ export default function SourcesScreen() {
             <Text style={{ color: colors.errorLight, fontSize: 13 }}>{contactsError}</Text>
           </View>
         )}
-
-        {/* ── Online ──────────────────────────────────────────────────────── */}
-        <SectionLabel label="Online" colors={colors} />
-
-        <GoodreadsSourceCard
-          active={activeSource === "goodreads"}
-          disabled={anyActive && activeSource !== "goodreads"}
-          grId={grId}
-          grEditing={grEditing}
-          grInput={grInput}
-          onGrInputChange={setGrInput}
-          onSync={onGoodreadsSync}
-          onStartEdit={() => setGrEditing(true)}
-          onCancelEdit={() => setGrEditing(false)}
-          onSaveId={saveGoodreadsId}
-          onForget={forgetGoodreads}
-          autoCheck={grAutoCheck}
-          onAutoCheckChange={handleGrAutoCheckChange}
-          lastCheckedAt={grLastChecked}
-          lastError={grLastError}
-          colors={colors}
-          fonts={fonts}
-        />
-
-        {/* ── File import ──────────────────────────────────────────────────── */}
-        <SectionLabel label="File import" colors={colors} />
-
-        <FileSourceCard
-          active={activeSource === "file"}
-          disabled={anyActive && activeSource !== "file"}
-          onPickFile={pickFile}
-          colors={colors}
-          fonts={fonts}
-        />
-
-        {/* ── Recent imports ───────────────────────────────────────────── */}
-        {recentRuns.length > 0 && (
-          <>
-            <SectionLabel label="Recent imports" colors={colors} />
-            {recentRuns.map((run) => (
-              <RecentImportCard
-                key={run.id}
-                run={run}
-                unreviewedCount={unreviewedByRun.get(run.id) ?? 0}
-                onKeep={() => handleKeepRun(run.id)}
-                onUndo={() => handleUndoRun(run)}
-                colors={colors}
-                fonts={fonts}
-              />
-            ))}
-          </>
-        )}
-
       </ScrollView>
+
+      {/* Connect (not connected) or manage (connected) for one source. */}
+      <Sheet
+        visible={sheet !== null}
+        title={sheetTile?.label ?? ""}
+        onClose={closeSheet}
+        returnFocusRef={returnFocusRef}
+      >
+        {sheet === "photo-library" && (
+          <PhotosSheet
+            connected={photoState.connected}
+            view={sheetView("photo-library")}
+            scan={exif.state}
+            scope={photoScope}
+            onScopeChange={setPhotoScope}
+            onScan={() => { exif.reset(); void exif.start(photoScope); }}
+            onCancelScan={exif.cancel}
+            onCheckNow={() => void retrySource("photo-library")}
+            autoCheck={photoState.autoCheck}
+            onAutoCheck={(v) => { setPhotoState((st) => ({ ...st, autoCheck: v })); void setSourceAutoCheck("photo-library", v, syncStorage); }}
+            lastCheckDetail={lastCheckDetail(photoState.lastCheckedAt, photoState.lastError)}
+            onManagePlaces={() => { closeSheet(); router.push("/staging/places" as never); }}
+            onDisconnect={() => confirmDisconnect("Photos", async () => { await clearScanMarker(); exif.reset(); await reload(); })}
+          />
+        )}
+        {sheet === "icalendar" && (
+          <CalendarSheet
+            connected={calConnected}
+            connecting={calConnecting}
+            calendarList={calendarList}
+            selectedIds={calSelectedIds}
+            onToggleCalendar={handleToggleCalendar}
+            onStartConnect={handleCalStartConnect}
+            onConnectDone={handleCalConnectDone}
+            onConnectCancel={handleCalConnectCancel}
+            chosenCount={calChosenCount}
+            scope={calScope}
+            onScopeChange={setCalScope}
+            view={sheetView("icalendar")}
+            onCheckNow={() => runFromSheet(() => void importFromCalendar(CAL_SCOPE_DAYS[calScope]))}
+            autoCheck={calAutoCheck}
+            onAutoCheck={handleCalAutoCheckChange}
+            lastCheckDetail={lastCheckDetail(calLastChecked, calLastError)}
+            onDisconnect={() => confirmDisconnect("Google Calendar", async () => { await handleCalDisconnect(); await reload(); })}
+          />
+        )}
+        {sheet === "goodreads" && (
+          <GoodreadsSheet
+            userId={grId}
+            editing={grEditing}
+            input={grInput}
+            onInput={setGrInput}
+            onStartEdit={() => { setGrInput(grId ?? ""); setGrEditing(true); }}
+            onCancelEdit={() => setGrEditing(false)}
+            onSave={() => { closeSheet(); setTimeout(() => void saveGoodreadsId(), 280); }}
+            view={sheetView("goodreads")}
+            onCheckNow={() => runFromSheet(() => { if (grId) void syncGoodreads(grId); })}
+            autoCheck={grAutoCheck}
+            onAutoCheck={handleGrAutoCheckChange}
+            lastCheckDetail={lastCheckDetail(grLastChecked, grLastError)}
+            onDisconnect={() => confirmDisconnect("Goodreads", async () => { await forgetGoodreads(); await reload(); })}
+          />
+        )}
+      </Sheet>
+
+      {/* Actions for one recent import. */}
+      <Sheet
+        visible={menuRun !== null}
+        title={menuRun ? (menuRun.trigger === "startup" ? "Automatic import" : menuRun.filename) : ""}
+        onClose={() => setMenuRun(null)}
+      >
+        {menuRun && (
+          <View>
+            <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: spacing.sm }}>
+              {runSummary(menuRun) || "No changes"}
+            </Text>
+            {menuUnreviewed > 0 && (
+              <MenuRow label={`Keep all ${menuUnreviewed}`} icon="checkmark-done-outline"
+                onPress={() => afterMenu(() => handleKeepRun(menuRun.id))} />
+            )}
+            {menuTile && (
+              <MenuRow label="Import again" icon="refresh-outline"
+                onPress={() => afterMenu(() => void pickFile(menuTile.connector ? menuTile : undefined))} />
+            )}
+            <MenuRow label="Undo import" icon="arrow-undo-outline" destructive
+              onPress={() => afterMenu(() => handleUndoRun(menuRun))} />
+          </View>
+        )}
+      </Sheet>
 
       <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>
   );
+
+  function MenuRow({ label, icon, onPress, destructive }: {
+    label: string;
+    icon: React.ComponentProps<typeof Ionicons>["name"];
+    onPress: () => void;
+    destructive?: boolean;
+  }) {
+    const color = destructive ? colors.error : colors.textPrimary;
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ pressed }) => ({
+          minHeight: 52,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          opacity: pressed ? 0.6 : 1,
+        })}
+      >
+        <Ionicons name={icon} size={20} color={color} />
+        <Text style={{ fontSize: 16, color }}>{label}</Text>
+      </Pressable>
+    );
+  }
 }

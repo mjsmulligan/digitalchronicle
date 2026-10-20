@@ -167,6 +167,19 @@ export async function getSourceState(
   };
 }
 
+/**
+ * Record that a manual check (Check now, Connect) succeeded, so the source
+ * stops showing an old error and its "last checked" time is current.
+ * The silent runner does this itself; manual flows call this.
+ */
+export async function markSourceChecked(
+  id: string,
+  storage: SyncStorage = requireStorage()
+): Promise<void> {
+  await storage.set(`lastCheckedAt_${id}`, new Date().toISOString());
+  await storage.set(`lastError_${id}`, null);
+}
+
 export async function setSourceAutoCheck(
   id: string,
   enabled: boolean,
