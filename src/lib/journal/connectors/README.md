@@ -70,6 +70,13 @@ Adding a new source means touching only that folder and `registry.ts`.
    The `<select>` in the import UI and the file-input `accept` list are built
    automatically from `CONNECTORS` — no other UI changes needed.
 
+   **Mobile Sources page (file connectors only):** to give the connector a tile
+   in the "Add a source" grid, add one `file` entry to `SOURCE_TILES` in
+   `mobile/src/lib/sourceRegistry.ts` with the connector `id`, a label, an icon
+   glyph (and a `markId` if it has a brand mark in `icons.ts`), and the message
+   shown when the wrong file is picked. A test there checks that the connector id
+   exists. See `docs/specs/sources-page.md`.
+
 6. **Run tests**
 
    ```bash
