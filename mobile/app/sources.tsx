@@ -8,8 +8,9 @@
  *   Recent imports   the latest runs, with Keep all, Import again and Undo import
  *   People           phone contacts (creates People, not entries)
  *
- * WP3: Connect tiles and rows open the existing source cards inside a Sheet.
- * WP4 replaces those with proper connect and manage sheets.
+ * Connect tiles and rows open a Sheet: the one-time connect steps for a source
+ * that is not connected, or the manage controls for one that is
+ * (docs/specs/sources-page.md, section 6).
  */
 
 import React, {
@@ -41,11 +42,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme, spacing, radius } from "../src/components/ThemeProvider";
 import { ContactsReviewPanel, type ReviewContact, buildReviewContacts } from "../src/components/ContactsReviewPanel";
 import { useDialog, Dialog } from "../src/components/Dialog";
-import { PhotoSourceEntry } from "../src/components/PhotoSourceEntry";
 import { SectionLabel } from "../src/components/sources/SourceCard";
-import { CalendarSourceCard, type CalendarListItem, type CalConnecting } from "../src/components/sources/CalendarSourceCard";
+import { CalendarSheet, CAL_SCOPE_DAYS, type CalendarListItem, type CalConnecting, type CalScope } from "../src/components/sources/CalendarSheet";
 import { ContactsSourceCard, type ContactsPhase } from "../src/components/sources/ContactsSourceCard";
-import { GoodreadsSourceCard } from "../src/components/sources/GoodreadsSourceCard";
+import { GoodreadsSheet } from "../src/components/sources/GoodreadsSheet";
+import { PhotosSheet, photoScopeOptions, isScanActive } from "../src/components/sources/PhotosSheet";
 import { Sheet } from "../src/components/sources/Sheet";
 import { SourceTile } from "../src/components/sources/SourceTile";
 import { ConnectedRow } from "../src/components/sources/ConnectedRow";
@@ -61,7 +62,9 @@ import {
   getGoodreadsUserId,
   setGoodreadsUserId,
 } from "../src/lib/goodreadsPrefs";
-import { getScanMarker } from "../src/lib/exif/scanPrefs";
+import { getScanMarker, clearScanMarker } from "../src/lib/exif/scanPrefs";
+import { useExifScan } from "../src/lib/exif/useExifScan";
+import type { ScanScope } from "../../src/lib/journal/sources/exif/types";
 import {
   getSourceState,
   setSourceAutoCheck,
@@ -73,6 +76,7 @@ import { makeSyncPrefsStorage } from "../src/lib/syncPrefsStorage";
 import {
   SOURCE_TILES,
   deriveSourceView,
+  fmtRelative,
   tileForConnectedSource,
   tileForRunSource,
   type ConnectedSourceId,
@@ -188,6 +192,13 @@ export default function SourcesScreen() {
   const [grLastError, setGrLastError] = useState<string | null>(null);
 
   const [photoState, setPhotoState] = useState<StoredState>(NOT_CONNECTED);
+  const [photoScope, setPhotoScope] = useState<ScanScope>(() => photoScopeOptions()[0].value);
+  const [photoScannedAt, setPhotoScannedAt] = useState<string | null>(null);
+  const [calScope, setCalScope] = useState<CalScope>("last-year");
+  const [calChosenCount, setCalChosenCount] = useState(0);
+  // The scan hook lives here so a scan keeps going, and its row keeps showing
+  // "Checking", when the sheet is closed.
+  const exif = useExifScan();
   /** Sources being retried from an attention row. */
   const [retrying, setRetrying] = useState<Set<string>>(new Set());
 
@@ -211,8 +222,11 @@ export default function SourcesScreen() {
     setGrLastError(gr.lastError);
     setGrId(id);
     setCalConnected(calPrefs.connected);
+    setCalChosenCount(calPrefs.calendarIds.length);
     // A scan counts as a check, so the later of the scan and the last startup check is shown.
     const scanned = marker?.lastScannedAt ?? null;
+    setPhotoScannedAt(scanned);
+    if (marker && marker.scope.kind !== "since") setPhotoScope(marker.scope);
     const checked = [photo.lastCheckedAt, scanned].filter(Boolean).sort().pop() ?? null;
     setPhotoState({
       connected: marker !== null,
@@ -247,6 +261,7 @@ export default function SourcesScreen() {
     };
     const busy = (id: ConnectedSourceId) =>
       retrying.has(id) ||
+      (id === "photo-library" && isScanActive(exif.state.phase)) ||
       (id === "icalendar" && (activeSource === "calendar" || calConnecting === "loading")) ||
       (id === "goodreads" && activeSource === "goodreads");
     const rows: { id: ConnectedSourceId; view: SourceView }[] = [];
@@ -273,7 +288,7 @@ export default function SourcesScreen() {
       .map(({ r }) => r);
   }, [photoState, calConnected, calAutoCheck, calLastChecked, calLastError,
       grId, grAutoCheck, grLastChecked, grLastError, retrying, activeSource,
-      calConnecting, itemCounts]);
+      calConnecting, itemCounts, exif.state.phase]);
 
   const stateById = useMemo(() => {
     const m = new Map<ConnectedSourceId, SourceView["state"]>();
@@ -394,8 +409,12 @@ export default function SourcesScreen() {
         color: c.color ?? colors.accent,
         defaultExcluded: isDefaultExcluded(c),
       }));
-      // Pre-select non-excluded calendars
-      const preSelected = new Set(list.filter((c) => !c.defaultExcluded).map((c) => c.id));
+      // Editing an existing connection starts from the saved choice; a new one from the defaults.
+      const saved = await getCalendarPrefs();
+      const savedIds = new Set(saved.calendarIds.filter((id) => list.some((c) => c.id === id)));
+      const preSelected = saved.connected && savedIds.size > 0
+        ? savedIds
+        : new Set(list.filter((c) => !c.defaultExcluded).map((c) => c.id));
       setCalendarList(list);
       setCalSelectedIds(preSelected);
       setCalConnecting("picking");
@@ -414,13 +433,20 @@ export default function SourcesScreen() {
     });
   }, []);
 
-  const handleCalConnectDone = useCallback(async () => {
+  const handleCalConnectDone = async () => {
     const ids = [...calSelectedIds];
     if (!ids.length) return;
+    const firstConnect = !calConnected;
     await setCalendarPrefs({ connected: true, calendarIds: ids });
     setCalConnected(true);
+    setCalChosenCount(ids.length);
     setCalConnecting("idle");
-  }, [calSelectedIds]);
+    if (firstConnect) {
+      // The first check runs once the sheet has closed, and shows the normal summary.
+      closeSheet();
+      setTimeout(() => void importFromCalendar(CAL_SCOPE_DAYS["last-year"]), 280);
+    }
+  };
 
   const handleCalConnectCancel = useCallback(() => {
     setCalendarList([]);
@@ -745,8 +771,48 @@ export default function SourcesScreen() {
   const reconnect = (id: ConnectedSourceId) => {
     openSheet(id, `row:${id}`);
     if (id === "icalendar") void handleCalStartConnect();
-    if (id === "goodreads") setGrEditing(true);
+    if (id === "goodreads") { setGrInput(grId ?? ""); setGrEditing(true); }
+    if (id === "photo-library") {
+      // Asks for photo access again, then reads only photos added since the last scan.
+      exif.reset();
+      void exif.start({ kind: "since", timestamp: photoScannedAt ?? new Date(0).toISOString() });
+    }
   };
+
+  // ── Sheet helpers ───────────────────────────────────────────────────────────
+
+  /** Closes the sheet, then runs `fn` once it has gone, so dialogs never open over it. */
+  const runFromSheet = (fn: () => void) => {
+    closeSheet();
+    setTimeout(fn, 280);
+  };
+
+  const confirmDisconnect = (label: string, fn: () => void | Promise<void>) => {
+    runFromSheet(() =>
+      dialog.confirm(
+        `Disconnect ${label}`,
+        "Chronicle stops checking this source. Entries already imported stay in your journal.",
+        "Disconnect",
+        fn,
+      ),
+    );
+  };
+
+  /** The view for the open sheet's source (never missing: the sheet only opens for a known source). */
+  const sheetView = (id: ConnectedSourceId): SourceView =>
+    connectedRows.find((r) => r.id === id)?.view
+    ?? { state: "active", statusLine: "Not connected", needsReconnect: false };
+
+  const lastCheckDetail = (checkedAt: string | null, error: string | null): string => {
+    const when = checkedAt ? fmtRelative(checkedAt) : "Never checked";
+    return error ? `${when}\n${error.replace(/^(\w*Error):\s*/, "")}` : when;
+  };
+
+  // A finished scan counts as a successful check, so the row clears an old error.
+  useEffect(() => {
+    if (exif.state.phase !== "done") return;
+    void markSourceChecked("photo-library", syncStorage).then(reload);
+  }, [exif.state.phase, syncStorage, reload]);
 
   // ── Layout ──────────────────────────────────────────────────────────────────
 
@@ -924,60 +990,68 @@ export default function SourcesScreen() {
         )}
       </ScrollView>
 
-      {/* Connect and manage: the existing cards inside a sheet (WP4 replaces these). */}
+      {/* Connect (not connected) or manage (connected) for one source. */}
       <Sheet
         visible={sheet !== null}
         title={sheetTile?.label ?? ""}
         onClose={closeSheet}
         returnFocusRef={returnFocusRef}
       >
-        {/* Cards carry their own horizontal margin; cancel the sheet's padding. */}
-        <View style={{ marginHorizontal: -spacing.lg }}>
-          {sheet === "photo-library" && <PhotoSourceEntry />}
-          {sheet === "icalendar" && (
-            <CalendarSourceCard
-              active={activeSource === "calendar"}
-              disabled={anyActive}
-              connected={calConnected}
-              connecting={calConnecting}
-              calendarList={calendarList}
-              calSelectedIds={calSelectedIds}
-              onSync={importFromCalendar}
-              onStartConnect={handleCalStartConnect}
-              onToggleCalendar={handleToggleCalendar}
-              onConnectDone={handleCalConnectDone}
-              onConnectCancel={handleCalConnectCancel}
-              onDisconnect={handleCalDisconnect}
-              autoCheck={calAutoCheck}
-              onAutoCheckChange={handleCalAutoCheckChange}
-              lastCheckedAt={calLastChecked}
-              lastError={calLastError}
-              colors={colors}
-              fonts={fonts}
-            />
-          )}
-          {sheet === "goodreads" && (
-            <GoodreadsSourceCard
-              active={activeSource === "goodreads"}
-              disabled={anyActive && activeSource !== "goodreads"}
-              grId={grId}
-              grEditing={grEditing}
-              grInput={grInput}
-              onGrInputChange={setGrInput}
-              onSync={onGoodreadsSync}
-              onStartEdit={() => setGrEditing(true)}
-              onCancelEdit={() => setGrEditing(false)}
-              onSaveId={saveGoodreadsId}
-              onForget={forgetGoodreads}
-              autoCheck={grAutoCheck}
-              onAutoCheckChange={handleGrAutoCheckChange}
-              lastCheckedAt={grLastChecked}
-              lastError={grLastError}
-              colors={colors}
-              fonts={fonts}
-            />
-          )}
-        </View>
+        {sheet === "photo-library" && (
+          <PhotosSheet
+            connected={photoState.connected}
+            view={sheetView("photo-library")}
+            scan={exif.state}
+            scope={photoScope}
+            onScopeChange={setPhotoScope}
+            onScan={() => { exif.reset(); void exif.start(photoScope); }}
+            onCancelScan={exif.cancel}
+            onCheckNow={() => void retrySource("photo-library")}
+            autoCheck={photoState.autoCheck}
+            onAutoCheck={(v) => { setPhotoState((st) => ({ ...st, autoCheck: v })); void setSourceAutoCheck("photo-library", v, syncStorage); }}
+            lastCheckDetail={lastCheckDetail(photoState.lastCheckedAt, photoState.lastError)}
+            onManagePlaces={() => { closeSheet(); router.push("/staging/places" as never); }}
+            onDisconnect={() => confirmDisconnect("Photos", async () => { await clearScanMarker(); exif.reset(); await reload(); })}
+          />
+        )}
+        {sheet === "icalendar" && (
+          <CalendarSheet
+            connected={calConnected}
+            connecting={calConnecting}
+            calendarList={calendarList}
+            selectedIds={calSelectedIds}
+            onToggleCalendar={handleToggleCalendar}
+            onStartConnect={handleCalStartConnect}
+            onConnectDone={handleCalConnectDone}
+            onConnectCancel={handleCalConnectCancel}
+            chosenCount={calChosenCount}
+            scope={calScope}
+            onScopeChange={setCalScope}
+            view={sheetView("icalendar")}
+            onCheckNow={() => runFromSheet(() => void importFromCalendar(CAL_SCOPE_DAYS[calScope]))}
+            autoCheck={calAutoCheck}
+            onAutoCheck={handleCalAutoCheckChange}
+            lastCheckDetail={lastCheckDetail(calLastChecked, calLastError)}
+            onDisconnect={() => confirmDisconnect("Google Calendar", async () => { await handleCalDisconnect(); await reload(); })}
+          />
+        )}
+        {sheet === "goodreads" && (
+          <GoodreadsSheet
+            userId={grId}
+            editing={grEditing}
+            input={grInput}
+            onInput={setGrInput}
+            onStartEdit={() => { setGrInput(grId ?? ""); setGrEditing(true); }}
+            onCancelEdit={() => setGrEditing(false)}
+            onSave={() => { closeSheet(); setTimeout(() => void saveGoodreadsId(), 280); }}
+            view={sheetView("goodreads")}
+            onCheckNow={() => runFromSheet(() => { if (grId) void syncGoodreads(grId); })}
+            autoCheck={grAutoCheck}
+            onAutoCheck={handleGrAutoCheckChange}
+            lastCheckDetail={lastCheckDetail(grLastChecked, grLastError)}
+            onDisconnect={() => confirmDisconnect("Goodreads", async () => { await forgetGoodreads(); await reload(); })}
+          />
+        )}
       </Sheet>
 
       {/* Actions for one recent import. */}
