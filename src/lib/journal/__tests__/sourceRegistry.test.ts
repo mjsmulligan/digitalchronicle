@@ -9,6 +9,7 @@ import {
   fmtRelative,
   tileForConnector,
   tileForConnectedSource,
+  tileForRunSource,
   type SourceViewInput,
 } from "../../../../mobile/src/lib/sourceRegistry";
 import { getConnector } from "../connectors/registry";
@@ -78,6 +79,14 @@ describe("tile registry", () => {
     expect(tileForConnector("icalendar")).toBeUndefined();
     expect(tileForConnectedSource("icalendar")?.id).toBe("calendar");
     expect(tileForConnectedSource("netflix")).toBeUndefined();
+  });
+
+  test("Import again maps a run source to a file tile", () => {
+    expect(tileForRunSource("netflix")?.id).toBe("netflix");
+    expect(tileForRunSource("generic")?.id).toBe("any-file");
+    expect(tileForRunSource("icalendar")).toBeUndefined();
+    expect(tileForRunSource("photo-library")).toBeUndefined();
+    expect(tileForRunSource("goodreads")).toBeUndefined();
   });
 
   test("UI copy has no em dashes", () => {

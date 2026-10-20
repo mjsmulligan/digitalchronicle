@@ -7,6 +7,7 @@
 import { describe, test, expect, beforeEach } from "vitest";
 import {
   runConnectedSources,
+  markSourceChecked,
   setDefaultStorage,
   _resetRegistry,
   SIX_HOURS_MS,
@@ -175,6 +176,15 @@ describe("runConnectedSources", () => {
     expect(p1).toBe(p2);
     await p1;
     expect(checkCount).toBe(1);
+  });
+
+  test("markSourceChecked records a manual success and clears an old error", async () => {
+    await storage.set("lastError_s", "Error: Permission needed");
+    await markSourceChecked("s", storage);
+    expect(await storage.get("lastError_s")).toBeNull();
+    const stored = await storage.get("lastCheckedAt_s");
+    expect(stored).not.toBeNull();
+    expect(Math.abs(Date.now() - new Date(stored!).getTime())).toBeLessThan(5000);
   });
 
 });

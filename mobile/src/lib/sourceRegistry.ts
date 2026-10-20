@@ -134,6 +134,21 @@ export function tileForConnector(connector: string): FileTileDef | undefined {
   );
 }
 
+/**
+ * The File tile that "Import again" should reopen for an ImportRun.source, or
+ * undefined when the run did not come from a file tile (device calendar,
+ * photo library, Goodreads sync). Runs detected as the generic connector map to
+ * Any file.
+ */
+export function tileForRunSource(source: string): FileTileDef | undefined {
+  return (
+    tileForConnector(source) ??
+    (source === "generic"
+      ? SOURCE_TILES.find((t): t is FileTileDef => t.kind === "file" && t.connector === undefined)
+      : undefined)
+  );
+}
+
 /** The Connect tile for a sync-runner source id, or undefined. */
 export function tileForConnectedSource(id: string): ConnectTileDef | undefined {
   return SOURCE_TILES.find(
