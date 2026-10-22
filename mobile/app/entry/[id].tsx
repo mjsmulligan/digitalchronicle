@@ -19,6 +19,7 @@ import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, st
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { TripPicker } from "../../src/components/TripPicker";
 import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { resolveAirportText } from "@chronicle/journal/airports";
 import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
@@ -153,7 +154,12 @@ function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; ic
   const locLabel = (code: string, name?: string) => {
     const label = name ?? locationLabel(code);
     if (!label) return "–";
-    return label !== code ? `${label} (${code})` : label;
+    // Show the IATA code only for multi-airport cities (LHR vs LGW, CDG vs ORY).
+    // Single-airport cities like Dublin don't need the code alongside the city name.
+    const isMultiAirport = label !== code
+      && /^[A-Z]{3}$/.test(code)
+      && (resolveAirportText(label).candidates?.length ?? 0) > 1;
+    return isMultiAirport ? `${label} (${code})` : label;
   };
   return (
     <>
