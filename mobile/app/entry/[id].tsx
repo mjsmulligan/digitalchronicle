@@ -6,7 +6,7 @@
  * WP-E3    — Merge action shows same-day entries; merges two into one.
  */
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, Image, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, Image, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import { PosterCard } from "../../src/components/PosterCard";
 import { eventToArtworkKey, bookToArtworkKey } from "@chronicle/journal/artwork";
 import { resolveArtwork, resolveBookCoverForEntry, resolveArtistImage } from "@chronicle/journal/artworkEnrichment";
@@ -113,15 +113,15 @@ function sourceLabel(source?: string): string {
 // ── shared prop types ─────────────────────────────────────────────────────────
 
 type DetailStyles = {
-  title: object;
-  subtitleRow: object;
-  subtitle: object;
-  ratingRow: object;
-  ratingNum: object;
-  divider: object;
-  field: object;
-  fieldLabel: object;
-  fieldValue: object;
+  title: StyleProp<TextStyle>;
+  subtitleRow: StyleProp<ViewStyle>;
+  subtitle: StyleProp<TextStyle>;
+  ratingRow: StyleProp<ViewStyle>;
+  ratingNum: StyleProp<TextStyle>;
+  divider: StyleProp<ViewStyle>;
+  field: StyleProp<ViewStyle>;
+  fieldLabel: StyleProp<TextStyle>;
+  fieldValue: StyleProp<TextStyle>;
 };
 
 type IconColors = { secondary: string; star: string };
@@ -415,6 +415,12 @@ export default function EntryDetailScreen() {
   const { width: screenW, height: screenH } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  // Resolve entry early so heroIsPortrait can be computed before useState
+  const entry = useMemo<Entry | undefined>(
+    () => allEntries(journal).find((e) => e.id === id),
+    [journal, id]
+  );
+
   /**
    * Concert artist images (Deezer/TADB) are square (1:1).
    * TMDB film/TV/book posters are portrait (2:3).
@@ -547,11 +553,6 @@ export default function EntryDetailScreen() {
   const iconColors = useMemo<IconColors>(
     () => ({ secondary: colors.textSecondary, star: colors.star }),
     [colors],
-  );
-
-  const entry = useMemo<Entry | undefined>(
-    () => allEntries(journal).find((e) => e.id === id),
-    [journal, id]
   );
 
   const heroUri = useHeroUri(entry);

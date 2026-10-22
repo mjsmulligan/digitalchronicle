@@ -9,11 +9,11 @@
 import { useCallback, useRef, useState } from "react";
 import { putMany, getState } from "@chronicle/journal/db";
 import { uid, type ImportRun } from "@chronicle/journal/types";
-import { resolveLocalDay } from "../../../../src/lib/journal/sources/exif/timeResolution";
-import { InMemoryLocalityCache, ResolvingLocalityResolver } from "../../../../src/lib/journal/sources/exif/localityResolver";
-import { buildPlaceEntries } from "../../../../src/lib/journal/sources/exif/entryBuilder";
-import { buildStagingPlan } from "../../../../src/lib/journal/sources/exif/stagingService";
-import type { ScanScope, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord } from "../../../../src/lib/journal/sources/exif/types";
+import { resolveLocalDay } from "@chronicle/journal/sources/exif/timeResolution";
+import { InMemoryLocalityCache, ResolvingLocalityResolver } from "@chronicle/journal/sources/exif/localityResolver";
+import { buildPlaceEntries } from "@chronicle/journal/sources/exif/entryBuilder";
+import { buildStagingPlan } from "@chronicle/journal/sources/exif/stagingService";
+import type { ScanScope, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord } from "@chronicle/journal/sources/exif/types";
 import { setScanMarker } from "./scanPrefs";
 
 // ─── Lazy device module loader ────────────────────────────────────────────────
@@ -165,7 +165,7 @@ export function useExifScan() {
           finishedAt: new Date().toISOString(),
           status: "done",
           added: plan.newEntries.length,
-          updated: 0,
+          updated: plan.updatedEntries.length,
           skipped: { duplicate: 0, inFile: 0, removed: 0 },
           errors: [],
           replaced: [],

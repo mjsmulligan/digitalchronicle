@@ -16,7 +16,7 @@ export function mergeEntries<T extends Entry>(winner: T, loser: Entry): T {
   // Review: winner's wins; fall back to loser's
   const review = winner.review ?? loser.review;
 
-  // Rating: if winner has no rating (or rating was source-locked and loser has a user rating), use loser's
+  // Rating: winner's wins; fall back to loser's
   const rating = winner.rating ?? loser.rating;
 
   // Overrides: merge (winner's values win on key collision)
@@ -35,7 +35,8 @@ export function mergeEntries<T extends Entry>(winner: T, loser: Entry): T {
 
   // Container links: winner wins; loser is fallback
   const tripId   = winner.tripId   ?? loser.tripId;
-  const seriesId = (winner as any).seriesId ?? (loser as any).seriesId;
+  const seriesId = ("seriesId" in winner ? (winner as { seriesId?: string }).seriesId : undefined)
+                ?? ("seriesId" in loser  ? (loser  as { seriesId?: string }).seriesId : undefined);
 
   // Additional sources: collect from loser
   const existingAdditional = winner.additionalSources ?? [];

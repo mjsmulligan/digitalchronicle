@@ -156,8 +156,8 @@ export const connector: Connector = {
   sniff(name, head) {
     const n = name.toLowerCase();
     if (n.includes("goodreads") || n === "goodreads_library_export.csv") return 0.97;
-    // Header contains "Book Id" which is Goodreads-specific
-    if (head.includes("Book Id") && head.includes("Exclusive Shelf")) return 0.9;
+    // Header contains "book id" which is Goodreads-specific (head is lowercased by detectConnector)
+    if (head.includes("book id") && head.includes("exclusive shelf")) return 0.9;
     return 0;
   },
   parse({ text }) {

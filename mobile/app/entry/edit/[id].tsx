@@ -33,7 +33,7 @@ import {
   type Tier,
   type AnyOverrides,
 } from "@chronicle/journal/types";
-import { useTheme } from "../../../src/components/ThemeProvider";
+import { useTheme, type ThemeColors, type ThemeFonts, spacing as themeSpacing, radius as themeRadius } from "../../../src/components/ThemeProvider";
 import { KindIcon } from "../../../src/components/KindIcon";
 import { DateField } from "../../../src/components/DateField";
 import { useDialog, Dialog } from "../../../src/components/Dialog";
@@ -84,23 +84,29 @@ function combineDateTime(date: string, time: string): string {
   return `${date}T${t}`;
 }
 
+// ── shared form prop types ────────────────────────────────────────────────────
+
+/** Shared token props passed from the edit screen down to every kind-form. */
+interface FormProps {
+  /** StyleSheet object created by the edit screen's useMemo. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  styles: Record<string, any>;
+  colors: ThemeColors;
+  fonts: ThemeFonts;
+  spacing: typeof themeSpacing;
+  radius: typeof themeRadius;
+}
+
 // ── per-kind form sections ────────────────────────────────────────────────────
 
 function LegForm({
   initial,
   styles,
   colors,
-  fonts,
-  spacing,
-  radius,
   onChange,
 }: {
   initial: Leg;
-  styles: any;
-  colors: any;
-  fonts: any;
-  spacing: any;
-  radius: any;
+} & Pick<FormProps, "styles" | "colors"> & {
   onChange: (fields: Partial<Leg>) => void;
 }) {
   const v = view(initial);
@@ -276,8 +282,7 @@ function StayForm({
   onChange,
 }: {
   initial: Stay;
-  styles: any;
-  colors: any;
+} & Pick<FormProps, "styles" | "colors"> & {
   onChange: (fields: Partial<Stay>) => void;
 }) {
   const v = view(initial);
@@ -331,8 +336,7 @@ function EventForm({
   onChange,
 }: {
   initial: JEvent;
-  styles: any;
-  colors: any;
+} & Pick<FormProps, "styles" | "colors"> & {
   onChange: (fields: Partial<JEvent>) => void;
 }) {
   const v = view(initial);
@@ -418,8 +422,7 @@ function FilmForm({
   onChange,
 }: {
   initial: Film;
-  styles: any;
-  colors: any;
+} & Pick<FormProps, "styles" | "colors"> & {
   onChange: (fields: Partial<Film>) => void;
 }) {
   const v = view(initial);
@@ -478,8 +481,7 @@ function EpisodeForm({
   onChange,
 }: {
   initial: Episode;
-  styles: any;
-  colors: any;
+} & Pick<FormProps, "styles" | "colors"> & {
   onChange: (fields: Partial<Episode>) => void;
 }) {
   const v = view(initial);
@@ -551,8 +553,7 @@ function BookForm({
   onChange,
 }: {
   initial: Book;
-  styles: any;
-  colors: any;
+} & Pick<FormProps, "styles" | "colors"> & {
   onChange: (fields: Partial<Book>) => void;
 }) {
   const v = view(initial);
@@ -805,7 +806,6 @@ export default function EditEntryScreen() {
         }
 
         if (newEntry) {
-          const targetStore = storeFor(newEntry);
           await saveUserEdit(newEntry);
           await hideMany(storeFor(entry), [entry.id]);
           // Navigate to the new entry's detail
@@ -902,9 +902,6 @@ export default function EditEntryScreen() {
             initial={syntheticEntry as Leg}
             styles={styles}
             colors={colors}
-            fonts={fonts}
-            spacing={spacing}
-            radius={radius}
             onChange={setFieldPatch}
           />
         )}

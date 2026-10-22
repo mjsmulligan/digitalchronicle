@@ -46,6 +46,9 @@
       ],
       "@chronicle/journal/artistImageProvider": [
         "../src/lib/journal/artistImageProvider"
+      ],
+      "@chronicle/journal/sources/exif/*": [
+        "../src/lib/journal/sources/exif/*"
       ]
     }
   },
