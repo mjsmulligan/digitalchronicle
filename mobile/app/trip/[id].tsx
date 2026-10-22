@@ -8,7 +8,8 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
-import { entryTitle, view, type Entry, type Trip, type Leg } from "@chronicle/journal/types";
+import { entryTitle, view, type Entry, type Trip, type Leg, type Stay, type Person } from "@chronicle/journal/types";
+import { PersonAvatar } from "../../src/components/PersonAvatar";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
@@ -46,10 +47,6 @@ function groupByDay(entries: Entry[]): TripDayGroup[] {
   return [...map.entries()].map(([iso, items]) => ({ iso, items }));
 }
 
-const PURPOSE_KIND: Record<string, string> = {
-  leisure: "leisure", work: "work", family: "family",
-};
-
 // ── data ──────────────────────────────────────────────────────────────────────
 
 interface TripDayGroup {
@@ -76,7 +73,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     },
     headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
     tripDateRange: { ...textScale.sm, color: colors.textTertiary, fontFamily: fonts.mono, flex: 1 },
-    purposeIconWrap: { marginLeft: spacingScale.sm },
     tripTitle: {
       fontSize: 22,
       fontFamily: fonts.serifBold,
@@ -89,6 +85,24 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     tripMetaDot:  { ...textScale.smMd, color: colors.textMuted },
     tripMetaSuggested: { ...textScale.smMd, color: colors.accentSoft, fontWeight: "600" },
     tripNotes: { ...textScale.md, color: colors.textSecondary, marginTop: 10 },
+
+    // Participants strip
+    participantsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm,
+      marginTop: spacingScale.sm,
+      flexWrap: "wrap",
+    },
+    participantsAvatars: {
+      flexDirection: "row",
+      gap: 3,
+    },
+    participantsText: {
+      ...textScale.sm,
+      color: colors.textSecondary,
+      flex: 1,
+    },
 
     // Per-type entry breakdown
     statRow: {
@@ -339,6 +353,28 @@ export default function TripDetailScreen() {
       .sort(compareEntriesChronological);
   }, [journal, trip]);
 
+  const participants = useMemo<Person[]>(() => {
+    if (!trip) return [];
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const e of entries) {
+      for (const pid of e.participants ?? []) {
+        if (!seen.has(pid)) { seen.add(pid); ids.push(pid); }
+      }
+    }
+    return ids
+      .map((pid) => journal.people.find((p) => p.id === pid))
+      .filter((p): p is Person => p !== undefined);
+  }, [entries, journal.people, trip]);
+
+  const uniqueCities = useMemo<number>(() => {
+    const cities = entries
+      .filter((e) => e.kind === "stay")
+      .map((e) => (e as Stay).city)
+      .filter(Boolean);
+    return new Set(cities).size;
+  }, [entries]);
+
   const suggestions = useMemo<Entry[]>(() => {
     if (!trip) return [];
     return allEntries(journal)
@@ -523,33 +559,38 @@ export default function TripDetailScreen() {
           {/* Trip summary card */}
           {(() => {
             const headerStats: { kind: string; subkind?: string; count: number }[] = [
-              { kind: "leg",   subkind: "air",  count: entries.filter((e) => e.kind === "leg"   && (e as Leg).mode === "air").length  },
-              { kind: "leg",   subkind: "rail", count: entries.filter((e) => e.kind === "leg"   && (e as Leg).mode === "rail").length },
-              { kind: "stay",                   count: entries.filter((e) => e.kind === "stay").length  },
-              { kind: "event",                  count: entries.filter((e) => e.kind === "event").length },
+              { kind: "leg",     subkind: "air",  count: entries.filter((e) => e.kind === "leg"     && (e as Leg).mode === "air").length  },
+              { kind: "leg",     subkind: "rail", count: entries.filter((e) => e.kind === "leg"     && (e as Leg).mode === "rail").length },
+              { kind: "stay",                     count: entries.filter((e) => e.kind === "stay").length    },
+              { kind: "event",                    count: entries.filter((e) => e.kind === "event").length   },
+              { kind: "film",                     count: entries.filter((e) => e.kind === "film").length    },
+              { kind: "book",                     count: entries.filter((e) => e.kind === "book").length    },
+              { kind: "episode",                  count: entries.filter((e) => e.kind === "episode").length },
             ].filter((s) => s.count > 0);
+
+            const participantNames = participants.slice(0, 3).map((p) => p.name.split(" ")[0]);
+            const participantOverflow = participants.length > 3 ? ` +${participants.length - 3}` : "";
+
             return (
               <View style={styles.headerCard}>
                 <View style={styles.headerTop}>
                   <Text style={styles.tripDateRange}>
                     {fmt(trip.start)} {"→"} {fmt(trip.end)}
                   </Text>
-                  {trip.purpose && (
-                    <View style={styles.purposeIconWrap}>
-                      <KindIcon
-                        kind={PURPOSE_KIND[trip.purpose] ?? "location"}
-                        size={18}
-                        color={colors.textSecondary}
-                        accessibilityLabel=""
-                      />
-                    </View>
-                  )}
                 </View>
                 <Text style={styles.tripTitle}>{trip.title}</Text>
                 <View style={styles.tripMeta}>
                   <Text style={styles.tripMetaText}>
                     {n} {n === 1 ? "night" : "nights"}
                   </Text>
+                  {uniqueCities > 0 && (
+                    <>
+                      <Text style={styles.tripMetaDot}>{"·"}</Text>
+                      <Text style={styles.tripMetaText}>
+                        {uniqueCities} {uniqueCities === 1 ? "city" : "cities"}
+                      </Text>
+                    </>
+                  )}
                   <Text style={styles.tripMetaDot}>{"·"}</Text>
                   <Text style={styles.tripMetaText}>
                     {entries.length} {entries.length === 1 ? "entry" : "entries"}
@@ -577,6 +618,18 @@ export default function TripDetailScreen() {
                         <Text style={styles.statNum}>{s.count}</Text>
                       </View>
                     ))}
+                  </View>
+                )}
+                {participants.length > 0 && (
+                  <View style={styles.participantsRow}>
+                    <View style={styles.participantsAvatars}>
+                      {participants.slice(0, 5).map((p) => (
+                        <PersonAvatar key={p.id} person={p} size={22} colors={colors} fonts={fonts} />
+                      ))}
+                    </View>
+                    <Text style={styles.participantsText} numberOfLines={1}>
+                      {participantNames.join(", ")}{participantOverflow}
+                    </Text>
                   </View>
                 )}
                 {trip.rating !== undefined && (
