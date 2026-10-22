@@ -17,7 +17,8 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
-import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { TripPicker } from "../../src/components/TripPicker";
+import { view, CATEGORY_LABEL, entryTitle, codeToCity, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
 import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
@@ -147,9 +148,14 @@ function Divider({ styles }: { styles: Pick<DetailStyles, "divider"> }) {
 function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "leg") return null;
+  // "Dublin (DUB)" when the city name differs from the code; bare code/name when it doesn't.
+  const locLabel = (code: string, name?: string) => {
+    const city = name ?? codeToCity(code);
+    return city !== code ? `${city} (${code})` : city;
+  };
   return (
     <>
-      <Text style={styles.title}>{v.fromName ?? v.from} {"→"} {v.toName ?? v.to}</Text>
+      <Text style={styles.title}>{v.fromName ?? codeToCity(v.from)} {"→"} {v.toName ?? codeToCity(v.to)}</Text>
       <View style={styles.subtitleRow}>
         <KindIcon kind="leg" subkind={v.mode} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{modeLabel(v.mode)}</Text>
@@ -157,8 +163,8 @@ function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; ic
       <Divider styles={styles} />
       <Field label="Date" value={fmt(v.start)} styles={styles} />
       {v.end && <Field label="Arrival" value={fmt(v.end)} styles={styles} />}
-      <Field label="From" value={v.fromName ? `${v.fromName} (${v.from})` : v.from} styles={styles} />
-      <Field label="To" value={v.toName ? `${v.toName} (${v.to})` : v.to} styles={styles} />
+      <Field label="From" value={locLabel(v.from, v.fromName)} styles={styles} />
+      <Field label="To"   value={locLabel(v.to,   v.toName)}   styles={styles} />
       <Field label="Flight" value={v.flightNumber} styles={styles} />
       <Field label="Aircraft" value={v.aircraft} styles={styles} />
       <Field label="Operator" value={v.operator} styles={styles} />
@@ -412,6 +418,7 @@ export default function EntryDetailScreen() {
   const [mergeVisible, setMergeVisible] = useState(false);
   const [mergeSaving, setMergeSaving] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [tripPickerVisible, setTripPickerVisible] = useState(false);
   const { width: screenW, height: screenH } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -665,6 +672,17 @@ export default function EntryDetailScreen() {
     .map((pid) => journal.people.find((p) => p.id === pid)?.name ?? pid)
     .join(", ");
 
+  const linkedTrip = journal.trips.find((t) => t.id === entry.tripId);
+
+  const handleTripConfirm = async (id: string | undefined) => {
+    try {
+      await saveUserEdit({ ...entry, tripId: id });
+    } catch (err) {
+      dialog.alert("Could not save", String(err));
+    }
+    setTripPickerVisible(false);
+  };
+
   const reflection = entry.reflection ?? (entry as any).journal;
   const reflectionLocked = isLocked(entry, "reflection");
   const ratingLocked = isLocked(entry, "rating");
@@ -758,6 +776,22 @@ export default function EntryDetailScreen() {
           <View style={[styles.sourceValue, { gap: 4 }]}>
             <Text style={[styles.fieldValue, !participantNames && { color: colors.textMuted }]} numberOfLines={1}>
               {participantNames || "Add people…"}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+          </View>
+        </View>
+      </Pressable>
+
+      {/* Trip — always visible; tap to assign/change/unlink */}
+      <Pressable
+        style={({ pressed }) => [styles.metaCard, pressed && { opacity: 0.7 }]}
+        onPress={() => setTripPickerVisible(true)}
+      >
+        <View style={styles.sourceFieldRow}>
+          <Text style={styles.fieldLabel}>Trip</Text>
+          <View style={[styles.sourceValue, { gap: 4 }]}>
+            <Text style={[styles.fieldValue, !linkedTrip && { color: colors.textMuted }]} numberOfLines={1}>
+              {linkedTrip?.title ?? "Add to trip…"}
             </Text>
             <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
           </View>
@@ -911,6 +945,13 @@ export default function EntryDetailScreen() {
       people={journal.people}
       onConfirm={handleParticipantsConfirm}
       onDismiss={() => setPickerVisible(false)}
+    />
+    <TripPicker
+      visible={tripPickerVisible}
+      selectedId={entry.tripId}
+      trips={journal.trips}
+      onConfirm={handleTripConfirm}
+      onDismiss={() => setTripPickerVisible(false)}
     />
     <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>

@@ -1,4 +1,5 @@
 import { view, type Entry, type StoreName, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEntry } from "./types";
+import { codeToCity } from "./airports";
 
 export type EntryCategory = "movement" | "presence" | "attendance" | "consumption";
 
@@ -27,11 +28,11 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
     category: "movement",
     title: (e) => {
       const v = view(e as Leg);
-      return `${v.from} → ${v.to}`;
+      return `${v.fromName ?? codeToCity(v.from)} → ${v.toName ?? codeToCity(v.to)}`;
     },
     placeLabel: (e) => {
       const v = view(e as Leg);
-      return v.toName ?? v.to;
+      return v.toName ?? codeToCity(v.to);
     },
     hasPlace: (e) => {
       const l = e as Leg;
