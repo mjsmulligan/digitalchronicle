@@ -53,6 +53,10 @@ import { makeSyncPrefsStorage } from "../src/lib/syncPrefsStorage";
 import { makeGoodreadsSource } from "../src/lib/goodreadsSource";
 import { makeCalendarSource } from "../src/lib/calendarSource";
 import { makePhotoSource } from "../src/lib/exif/photoSource";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const ENRICH_STALE_MS = 6 * 60 * 60 * 1000; // 6 hours
+const LAST_ENRICHED_KEY = "lastEnrichedAt";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -158,11 +162,19 @@ function RootLayoutInner() {
 
           // Warm the artwork cache in the background for all film/TV/book entries.
           // Fire-and-forget: don't await, don't block splash hide.
-          // PosterCard also triggers on-demand resolution when an entry is opened,
-          // but enrichAll pre-caches so images appear immediately on first visit.
-          enrichAll(allEntries(getState())).catch((e) =>
-            console.warn("[Chronicle] enrichAll failed:", e)
-          );
+          // Skip if the cache was enriched within the last 6 hours — on a warm
+          // cache this avoids hundreds of serial SQLite reads that cost time for
+          // zero network output. On-demand resolution in PosterCard handles any
+          // stragglers that arrive between runs.
+          const lastEnriched = await AsyncStorage.getItem(LAST_ENRICHED_KEY);
+          const enrichIsStale =
+            !lastEnriched ||
+            Date.now() - new Date(lastEnriched).getTime() > ENRICH_STALE_MS;
+          if (enrichIsStale) {
+            enrichAll(allEntries(getState()))
+              .then(() => AsyncStorage.setItem(LAST_ENRICHED_KEY, new Date().toISOString()))
+              .catch((e) => console.warn("[Chronicle] enrichAll failed:", e));
+          }
         } catch (artworkErr) {
           // Artwork init failure is non-fatal; app continues without posters or covers
           console.warn("[Chronicle] Artwork init failed:", artworkErr);

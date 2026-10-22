@@ -482,9 +482,37 @@ export default function ChronicleScreen() {
 
   const isFiltered = pillLabel.length > 0;
 
+  // Stable renderItem avoids FlatList re-reconciling all visible cells on every
+  // filter/search keypress. Dependencies cover every value closed over inside.
+  const renderFeedItem = useCallback(
+    ({ item }: { item: FeedItem }) => {
+      if (item.type === "month") {
+        return (
+          <MonthHeader
+            label={item.label}
+            iconCounts={item.iconCounts}
+            colors={colors}
+            fonts={fonts}
+          />
+        );
+      }
+      return (
+        <DayGroup
+          group={item.group}
+          colors={colors}
+          fonts={fonts}
+          onEntryPress={(entry) => router.push(`/entry/${entry.id}`)}
+          onEntryLongPress={handleEntryLongPress}
+        />
+      );
+    },
+    [colors, fonts, router, handleEntryLongPress],
+  );
+
   // ── render ─────────────────────────────────────────────────────────────────
 
-  const hasAnyData = allEntries(journal).length > 0;
+  // Stable memo — avoids calling allEntries() on every render (it iterates all store arrays)
+  const hasAnyData = useMemo(() => allEntries(journal).length > 0, [journal]);
   const hasFilteredData = feedItems.some((i) => i.type === "day");
 
   if (!hasAnyData) {
@@ -677,27 +705,7 @@ export default function ChronicleScreen() {
         style={styles.list}
         data={feedItems}
         keyExtractor={(item) => item.key}
-        renderItem={({ item }) => {
-          if (item.type === "month") {
-            return (
-              <MonthHeader
-                label={item.label}
-                iconCounts={item.iconCounts}
-                colors={colors}
-                fonts={fonts}
-              />
-            );
-          }
-          return (
-            <DayGroup
-              group={item.group}
-              colors={colors}
-              fonts={fonts}
-              onEntryPress={(entry) => router.push(`/entry/${entry.id}`)}
-              onEntryLongPress={handleEntryLongPress}
-            />
-          );
-        }}
+        renderItem={renderFeedItem}
         ListHeaderComponent={searchPanel}
         ListEmptyComponent={
           <View style={styles.empty}>

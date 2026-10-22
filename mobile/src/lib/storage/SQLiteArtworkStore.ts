@@ -74,6 +74,23 @@ export class SQLiteArtworkStore implements ArtworkStorage {
     });
   }
 
+  async getByKeys(keys: string[]): Promise<Map<string, ArtworkMatch>> {
+    if (!keys.length) return new Map();
+    return this.enqueue(async () => {
+      const placeholders = keys.map(() => "?").join(", ");
+      const rows = await this.db.getAllAsync<{ data: string }>(
+        `SELECT data FROM artwork_match WHERE id IN (${placeholders})`,
+        keys,
+      );
+      return new Map(
+        rows.map((r) => {
+          const m = JSON.parse(r.data) as ArtworkMatch;
+          return [m.id, m];
+        }),
+      );
+    });
+  }
+
   async upsert(match: ArtworkMatch): Promise<void> {
     return this.enqueue(async () => {
       await this.db.runAsync(
