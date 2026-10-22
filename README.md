@@ -37,7 +37,12 @@ Key specifications from the project discovery and data model:
 
 This project was built with [Lovable](https://lovable.dev).
 
-The on-demand station lookup is derived from [Trainline EU's stations.csv](https://github.com/trainline-eu/stations) (revision `a3e4437539deecff25b9d31af04fb3e46730fb4a`), licensed under the [Open Database License 1.0](https://github.com/trainline-eu/stations/blob/master/LICENCE.txt). The generated, filtered data is included in `src/lib/journal/stations.generated.ts`; it downloads from the app's own origin when journal entries, an import, or a new entry need place resolution. Run `python3 scripts/build-station-gazetteer.py stations.csv src/lib/journal/stations.generated.ts` to regenerate it from the source CSV.
+The on-demand station lookup is derived from [Trainline EU's stations.csv](https://github.com/trainline-eu/stations) (revision `a3e4437539deecff25b9d31af04fb3e46730fb4a`), licensed under the [Open Database License 1.0](https://github.com/trainline-eu/stations/blob/master/LICENCE.txt). The generated, filtered data is included in `src/lib/journal/stations.generated.json`; it is bundled statically at build time. Each entry is `[name, lat, lon, timezone, city]` where `city` is derived from the Trainline `parent_station_id` → `is_city` join. To regenerate:
+
+```sh
+# Download the source CSV from the pinned revision, then:
+python3 scripts/build-station-gazetteer.py stations.csv src/lib/journal/stations.generated.json
+```
 
 **Live app**: https://digitalchronicle.lovable.app
 

@@ -4,7 +4,7 @@
 import STATIONS_JSON from "./stations.generated.json";
 import { airportByCode } from "./airports";
 
-type StationTuple = [string, number, number, string]; // [name, lat, lon, timezone]
+type StationTuple = [string, number, number, string, string]; // [name, lat, lon, timezone, city]
 const STATIONS = STATIONS_JSON as unknown as Record<string, StationTuple>;
 
 /** No-op on this side — data is already loaded statically.  Kept for API compat. */
@@ -234,26 +234,19 @@ export function timezoneFor(code: string): string | undefined {
  *
  * This is a read-time display helper — it never modifies stored data.
  */
+/**
+ * Display label for a leg endpoint.
+ * IATA airport codes are replaced with their city name (DUB → "Dublin").
+ * Everything else — station names, typed city names — is returned as-is;
+ * they are already human-readable and need no further transformation.
+ */
 export function locationLabel(code: string): string {
   if (!code || code === "???") return "";
-
-  // 1. IATA airport code — use the airport's city field for a clean city name.
   const key = normKey(code);
   if (/^[A-Z]{3}$/.test(key)) {
     const airport = airportByCode(key);
     if (airport) return airport.city;
   }
-
-  // 2. Curated PLACES (airports with overridden display or rail stations).
-  const curated = PLACES[key];
-  if (curated) return curated.city ?? curated.name;
-
-  // 3. Trainline stations dataset — name is canonical but city-level phrasing
-  //    is not guaranteed; return it as-is since it is still more readable than
-  //    a raw code.
-  const station = STATIONS[key];
-  if (station) return station[0]; // [name, lat, lon, timezone]
-
-  // 4. Fallback — the value is already free text (e.g. typed city name).
   return code;
 }
+
