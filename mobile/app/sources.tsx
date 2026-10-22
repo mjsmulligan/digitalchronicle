@@ -135,6 +135,35 @@ const sh = StyleSheet.create({
   right: { fontSize: 13 },
 });
 
+// ─── Menu row (actions sheet) ─────────────────────────────────────────────────
+
+function MenuRow({ label, icon, onPress, destructive }: {
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  onPress: () => void;
+  destructive?: boolean;
+}) {
+  const { colors } = useTheme();
+  const color = destructive ? colors.error : colors.textPrimary;
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => ({
+        minHeight: 52,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        opacity: pressed ? 0.6 : 1,
+      })}
+    >
+      <Ionicons name={icon} size={20} color={color} />
+      <Text style={{ fontSize: 16, color }}>{label}</Text>
+    </Pressable>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function SourcesScreen() {
@@ -1088,30 +1117,4 @@ export default function SourcesScreen() {
       <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>
   );
-
-  function MenuRow({ label, icon, onPress, destructive }: {
-    label: string;
-    icon: React.ComponentProps<typeof Ionicons>["name"];
-    onPress: () => void;
-    destructive?: boolean;
-  }) {
-    const color = destructive ? colors.error : colors.textPrimary;
-    return (
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={({ pressed }) => ({
-          minHeight: 52,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.md,
-          opacity: pressed ? 0.6 : 1,
-        })}
-      >
-        <Ionicons name={icon} size={20} color={color} />
-        <Text style={{ fontSize: 16, color }}>{label}</Text>
-      </Pressable>
-    );
-  }
 }
