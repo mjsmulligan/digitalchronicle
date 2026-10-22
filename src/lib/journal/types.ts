@@ -1,7 +1,7 @@
 import { timezoneFor } from "./geo";
 import { localToUTC } from "./tz";
 import { locationLabel } from "./geo";
-export { locationLabel } from "./geo";
+export { locationLabel, locationCity } from "./geo";
 
 /**
  * Identifier for the import source that produced an entry.
