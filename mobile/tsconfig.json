@@ -49,6 +49,9 @@
       ],
       "@chronicle/journal/sources/exif/*": [
         "../src/lib/journal/sources/exif/*"
+      ],
+      "@chronicle/journal/tripSuggestion": [
+        "../src/lib/journal/tripSuggestion"
       ]
     }
   },
