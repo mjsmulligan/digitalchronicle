@@ -141,8 +141,9 @@ describe("goodreads connector — sniff", () => {
   });
 
   it("scores 0.9 for header containing 'Book Id' and 'Exclusive Shelf'", () => {
+    // detectConnector() always lowercases before calling sniff(), so head arrives lowercase.
     expect(
-      sniff("unknown.csv", "Book Id,Title,Author,Exclusive Shelf"),
+      sniff("unknown.csv", "book id,title,author,exclusive shelf"),
     ).toBe(0.9);
   });
 

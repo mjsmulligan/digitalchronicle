@@ -64,7 +64,7 @@ import {
 } from "../src/lib/goodreadsPrefs";
 import { getScanMarker, clearScanMarker } from "../src/lib/exif/scanPrefs";
 import { useExifScan } from "../src/lib/exif/useExifScan";
-import type { ScanScope } from "../../src/lib/journal/sources/exif/types";
+import type { ScanScope } from "@chronicle/journal/sources/exif/types";
 import {
   getSourceState,
   setSourceAutoCheck,
@@ -83,6 +83,12 @@ import {
   type FileTileDef,
   type SourceView,
 } from "../src/lib/sourceRegistry";
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+/** Delay (ms) between closing a sheet and running a follow-up action, so the
+ * sheet dismiss animation fully completes before we start work. */
+const SHEET_CLOSE_DELAY_MS = 280;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -473,7 +479,7 @@ export default function SourcesScreen() {
     if (firstConnect) {
       // The first check runs once the sheet has closed, and shows the normal summary.
       closeSheet();
-      setTimeout(() => void importFromCalendar(CAL_SCOPE_DAYS["last-year"]), 280);
+      setTimeout(() => void importFromCalendar(CAL_SCOPE_DAYS["last-year"]), SHEET_CLOSE_DELAY_MS);
     }
   };
 
@@ -813,7 +819,7 @@ export default function SourcesScreen() {
   /** Closes the sheet, then runs `fn` once it has gone, so dialogs never open over it. */
   const runFromSheet = (fn: () => void) => {
     closeSheet();
-    setTimeout(fn, 280);
+    setTimeout(fn, SHEET_CLOSE_DELAY_MS);
   };
 
   const confirmDisconnect = (label: string, fn: () => void | Promise<void>) => {
@@ -855,7 +861,7 @@ export default function SourcesScreen() {
   /** Actions menu for one run. Runs after the sheet has closed so dialogs do not stack on it. */
   const afterMenu = (fn: () => void) => {
     setMenuRun(null);
-    setTimeout(fn, 280);
+    setTimeout(fn, SHEET_CLOSE_DELAY_MS);
   };
   const menuTile = menuRun && menuRun.trigger === "manual" ? tileForRunSource(menuRun.source) : undefined;
   const menuUnreviewed = menuRun ? (unreviewedByRun.get(menuRun.id) ?? 0) : 0;
@@ -1072,7 +1078,7 @@ export default function SourcesScreen() {
             onInput={setGrInput}
             onStartEdit={() => { setGrInput(grId ?? ""); setGrEditing(true); }}
             onCancelEdit={() => setGrEditing(false)}
-            onSave={() => { closeSheet(); setTimeout(() => void saveGoodreadsId(), 280); }}
+            onSave={() => { closeSheet(); setTimeout(() => void saveGoodreadsId(), SHEET_CLOSE_DELAY_MS); }}
             view={sheetView("goodreads")}
             onCheckNow={() => runFromSheet(() => { if (grId) void syncGoodreads(grId); })}
             autoCheck={grAutoCheck}

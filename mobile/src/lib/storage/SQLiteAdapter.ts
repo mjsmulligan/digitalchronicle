@@ -103,9 +103,14 @@ export class SQLiteAdapter implements StorageAdapter {
     if (!ids.length) return;
     return this.enqueue(async () => {
       await this.db.withExclusiveTransactionAsync(async (txn) => {
-        for (const id of ids) {
-          await txn.runAsync(`DELETE FROM "${store}" WHERE id = ?`, [id]);
-        }
+        // Use a single IN-list statement instead of one DELETE per id.
+        // expo-sqlite doesn't support array binding directly, so build the
+        // placeholder list manually.
+        const placeholders = ids.map(() => "?").join(", ");
+        await txn.runAsync(
+          `DELETE FROM "${store}" WHERE id IN (${placeholders})`,
+          ids,
+        );
       });
     });
   }
@@ -113,14 +118,21 @@ export class SQLiteAdapter implements StorageAdapter {
   async replaceAll(data: JournalData): Promise<void> {
     return this.enqueue(async () => {
       await this.db.withExclusiveTransactionAsync(async (txn) => {
+        // Use a prepared statement per store (same pattern as putMany) so SQL
+        // is compiled once rather than once per row — important for full restore.
         for (const store of STORES) {
           await txn.runAsync(`DELETE FROM "${store}"`);
           const items = (data[store] ?? []) as Row[];
-          for (const item of items) {
-            await txn.runAsync(
-              `INSERT INTO "${store}" (id, data) VALUES (?, ?)`,
-              [item.id, JSON.stringify(item)]
-            );
+          if (!items.length) continue;
+          const stmt = await txn.prepareAsync(
+            `INSERT INTO "${store}" (id, data) VALUES (?, ?)`
+          );
+          try {
+            for (const item of items) {
+              await stmt.executeAsync([item.id, JSON.stringify(item)]);
+            }
+          } finally {
+            await stmt.finalizeAsync();
           }
         }
       });

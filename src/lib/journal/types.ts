@@ -76,8 +76,15 @@ interface Base {
   /** Tier 1 manual overrides layered on top of source data */
   overrides?: AnyOverrides;
   createdAt: string;
+  /**
+   * @deprecated Under review — not used by any screen or connector.
+   * Remove once a decision is made on whether entry-level purpose belongs on Base.
+   */
   purpose?: Purpose;
-  /** Person ids or free-text names of who was there */
+  /**
+   * @deprecated Use `participants` instead. Will be consolidated in DM9.
+   * Present on older entries; migration will move values to `participants`.
+   */
   companions?: string[];
   /** Parsed source record, including nested JSON fields, retained for later reprocessing. */
   raw?: Record<string, unknown>;
@@ -139,6 +146,10 @@ export interface JEvent extends Base {
   category: EventCategory;
   /** Headline: artist for concerts, title for other moments */
   artist: string;
+  /**
+   * @deprecated Legacy field pre-dating `Base.participants`. Use `participants` instead.
+   * Kept for backwards compatibility with existing entries; will be removed in DM9.
+   */
   people?: string[];
   venue: string;
   city: string;
