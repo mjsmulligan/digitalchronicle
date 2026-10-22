@@ -10,6 +10,7 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, type Entry, type Trip, type Leg, type Stay, type Person } from "@chronicle/journal/types";
 import { PersonAvatar } from "../../src/components/PersonAvatar";
+import { TripPicker } from "../../src/components/TripPicker";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
@@ -339,6 +340,7 @@ export default function TripDetailScreen() {
 
   const [addingAll, setAddingAll] = useState(false);
   const [addingId,  setAddingId]  = useState<string | null>(null);
+  const [mergePickerVisible, setMergePickerVisible] = useState(false);
   const dialog = useDialog();
 
   const trip = useMemo<Trip | undefined>(
@@ -456,6 +458,43 @@ export default function TripDetailScreen() {
     );
   };
 
+  const mergeTrip = (otherId: string | undefined) => {
+    setMergePickerVisible(false);
+    if (!otherId || !trip) return;
+    const other = journal.trips.find((t) => t.id === otherId);
+    if (!other) return;
+    dialog.confirm(
+      `Merge "${other.title}" into "${trip.title}"?`,
+      `All entries from "${other.title}" will move here. Its trip record will be removed. This cannot be undone.`,
+      "Merge",
+      async () => {
+        try {
+          // Re-link all of the other trip's entries to this trip
+          const otherEntries = allEntries(journal).filter((e) => e.tripId === other.id);
+          const byStore = new Map<string, Entry[]>();
+          for (const e of otherEntries) {
+            const s = storeFor(e);
+            if (!byStore.has(s)) byStore.set(s, []);
+            byStore.get(s)!.push(e);
+          }
+          for (const [store, items] of byStore) {
+            await putMany(store, items.map((e) => ({ ...e, tripId: trip.id })));
+          }
+          // Expand this trip's date range to cover the other trip
+          const newStart = trip.start < other.start ? trip.start : other.start;
+          const newEnd   = trip.end   > other.end   ? trip.end   : other.end;
+          if (newStart !== trip.start || newEnd !== trip.end) {
+            await putMany("trips", [{ ...trip, start: newStart, end: newEnd }]);
+          }
+          // Delete the other trip
+          await removeMany("trips", [other.id]);
+        } catch (err) {
+          dialog.alert("Merge failed", String(err));
+        }
+      }
+    );
+  };
+
   const addEntry = async (entry: Entry) => {
     setAddingId(entry.id);
     try {
@@ -544,6 +583,13 @@ export default function TripDetailScreen() {
                     accessibilityLabel="Dissolve trip"
                   >
                     <Ionicons name="trash-outline" size={22} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setMergePickerVisible(true)}
+                    style={{ padding: 8 }}
+                    accessibilityLabel="Merge with another trip"
+                  >
+                    <Ionicons name="git-merge-outline" size={22} color={colors.textMuted} />
                   </Pressable>
                   <Pressable
                     onPress={() => router.push(`/trip/edit/${trip.id}`)}
@@ -655,6 +701,15 @@ export default function TripDetailScreen() {
         ) : null
       }
       contentContainerStyle={styles.content}
+    />
+    <TripPicker
+      visible={mergePickerVisible}
+      selectedId={undefined}
+      trips={journal.trips.filter((t) => t.id !== trip.id)}
+      onConfirm={mergeTrip}
+      onDismiss={() => setMergePickerVisible(false)}
+      title="Merge with…"
+      hideNoTrip
     />
     <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>
