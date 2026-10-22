@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { TripPicker } from "../../src/components/TripPicker";
-import { view, CATEGORY_LABEL, entryTitle, codeToCity, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
 import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
@@ -148,14 +148,16 @@ function Divider({ styles }: { styles: Pick<DetailStyles, "divider"> }) {
 function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "leg") return null;
-  // "Dublin (DUB)" when the city name differs from the code; bare code/name when it doesn't.
+  // "Dublin (DUB)" when the city name differs from the raw code; just the label otherwise.
+  // Empty codes (unknown origin/destination) show "–".
   const locLabel = (code: string, name?: string) => {
-    const city = name ?? codeToCity(code);
-    return city !== code ? `${city} (${code})` : city;
+    const label = name ?? locationLabel(code);
+    if (!label) return "–";
+    return label !== code ? `${label} (${code})` : label;
   };
   return (
     <>
-      <Text style={styles.title}>{v.fromName ?? codeToCity(v.from)} {"→"} {v.toName ?? codeToCity(v.to)}</Text>
+      <Text style={styles.title}>{v.fromName ?? (locationLabel(v.from) || "–")} {"→"} {v.toName ?? (locationLabel(v.to) || "–")}</Text>
       <View style={styles.subtitleRow}>
         <KindIcon kind="leg" subkind={v.mode} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{modeLabel(v.mode)}</Text>

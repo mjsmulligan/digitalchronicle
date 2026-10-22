@@ -146,37 +146,78 @@ function inferCategory(summary: string, cats: string): EventCategory {
 // ---------------------------------------------------------------------------
 
 /** Train keywords that unambiguously signal a rail leg. */
-const TRAIN_KW_RE = /\b(train|rail|eurostar|tgv|intercity|amtrak|sprinter|sleeper)\b/i;
+/** Train keyword pattern — any of these words signal a rail leg. */
+const TRAIN_KW_RE = /\b(train|rail|eurostar|tgv|thalys|intercity|inter[- ]city|amtrak|sprinter|sleeper|night\s+train|dart|iarnrod|irish\s+rail|railjet|nightjet|ouigo|frecciarossa|italo)\b/i;
 
 /** Common train service number prefixes (IC, ICE, RE, TGV, etc.). */
-const TRAIN_NUM_RE = /\b(IC|ICE|EC|EN|RE|RB|TER|TGV|AVE|ITA|Amtrak|Eurostar)\s*\d+\b/i;
+const TRAIN_NUM_RE = /\b(IC|ICE|EC|EN|RE|RB|NJ|RJ|TER|TGV|AVE|ITA|FA|FR|Amtrak|Eurostar|DART)\s*\d+\b/i;
 
 /**
- * Try to extract free-text from/to for trains using arrow or keyword-anchored
- * "to" patterns (trains lack IATA-style codes):
- *   "Eurostar London → Paris"
- *   "Train London Paddington to Bristol Temple Meads"
+ * Try to extract free-text from/to station names for rail legs.
+ * Trains lack IATA-style codes, so we parse the calendar event summary.
+ *
+ * Handles:
+ *   "Eurostar London → Paris"             arrow (→ or ->)
+ *   "Train London – Paris"                en-dash
+ *   "Train London — Paris"                em-dash
+ *   "Train London to Edinburgh"           keyword + "to"
+ *   "from London Paddington to Bristol"   explicit "from … to …"
+ *   "Eurostar to Paris"                   destination-only (from stays empty)
+ *   "IC72 Berlin München"                 service number + two city names
  */
 function extractTrainFromTo(summary: string): { from: string; to: string } | null {
-  // Arrow patterns: "X → Y" or "X -> Y"
-  const arrowMatch = /^(.*?)\s*(?:→|->)\s*(.+)$/.exec(summary.trim());
-  if (arrowMatch) {
-    const rawFrom = arrowMatch[1].trim().replace(TRAIN_KW_RE, "").trim();
-    const to = arrowMatch[2].trim();
-    if (rawFrom && to) return { from: rawFrom, to };
+  const s = summary.trim();
+
+  // 1. Any dash/arrow separator: "X → Y", "X -> Y", "X – Y", "X — Y", "X - Y"
+  //    Strip leading keyword/service-number noise from the left side.
+  const sepMatch = /^(.*?)\s*(?:→|->|–|—)\s*(.+)$/.exec(s);
+  if (sepMatch) {
+    const rawFrom = sepMatch[1].trim()
+      .replace(TRAIN_KW_RE, "")
+      .replace(TRAIN_NUM_RE, "")
+      .trim();
+    const to = sepMatch[2].trim();
+    if (to) return { from: rawFrom, to };
   }
-  // Keyword-anchored "to": "Train London to Edinburgh"
-  const toMatch = /^(?:.*\b(?:train|rail|eurostar|tgv|intercity|amtrak|sprinter|sleeper)\b\s*)(.+?)\s+to\s+(.+)$/i.exec(summary.trim());
-  if (toMatch) return { from: toMatch[1].trim(), to: toMatch[2].trim() };
+
+  // 2. Explicit "from X to Y"
+  const fromToMatch = /\bfrom\s+(.+?)\s+to\s+(.+)$/i.exec(s);
+  if (fromToMatch) {
+    const from = fromToMatch[1].trim();
+    const to   = fromToMatch[2].trim();
+    if (from && to) return { from, to };
+  }
+
+  // 3. Keyword-anchored "to": "Train London to Edinburgh"
+  //    The keyword group eats the train word; everything before "to" is the origin.
+  const kwToMatch = /^(?:.*?\b(?:train|rail|eurostar|tgv|thalys|intercity|amtrak|sprinter|sleeper|night\s+train|dart|railjet|nightjet|ouigo|frecciarossa|italo)\b\s+)(.+?)\s+to\s+(.+)$/i.exec(s);
+  if (kwToMatch) {
+    const from = kwToMatch[1].trim();
+    const to   = kwToMatch[2].trim();
+    if (from && to) return { from, to };
+  }
+
+  // 4. Service-number-anchored "to": "IC72 Berlin to München" or "IC72 to München"
+  const numToMatch = /\b(?:IC|ICE|EC|EN|RE|RB|NJ|RJ|TER|TGV|AVE|ITA|FA|FR|Amtrak|Eurostar|DART)\s*\d+\s+(?:(.+?)\s+to\s+(.+)|to\s+(.+))$/i.exec(s);
+  if (numToMatch) {
+    if (numToMatch[1] && numToMatch[2]) return { from: numToMatch[1].trim(), to: numToMatch[2].trim() };
+    if (numToMatch[3]) return { from: "", to: numToMatch[3].trim() };
+  }
+
+  // 5. Destination-only: "Keyword to Destination" with no parseable origin.
+  //    Return empty from so the user is prompted to fill it in.
+  const destOnlyMatch = /\b(?:train|rail|eurostar|tgv|thalys|intercity|amtrak|sprinter|sleeper|dart|railjet|nightjet|ouigo|frecciarossa|italo)\b\s+to\s+(.+)$/i.exec(s);
+  if (destOnlyMatch) return { from: "", to: destOnlyMatch[1].trim() };
+
   return null;
 }
 
 interface TransportInfo {
   mode: "air" | "rail";
+  /** IATA code, free-text place name, or "" when unknown. Never "???". */
   from: string;
+  /** IATA code, free-text place name, or "" when unknown. Never "???". */
   to: string;
-  fromName?: string;
-  toName?: string;
   /** Flight or train service number, if parseable. */
   serviceNumber?: string;
   warnings: string[];
@@ -191,12 +232,14 @@ function detectTransport(summary: string, location: string, description: string 
   // --- Flight: keyword, two airport codes, or flight number + route ---
   const flight = parseFlight({ summary, location, description });
   if (flight) {
+    // When a side resolved to a code, store the code in `from`/`to`.
+    // When no code but a place name was extracted (e.g. "London" — ambiguous),
+    // store the name directly rather than "???" so it is readable in the UI.
+    // When nothing at all was extracted, store "" (displays as "–").
     return {
       mode: "air",
-      from: flight.from.code ?? "???",
-      to: flight.to.code ?? "???",
-      fromName: flight.from.code ? undefined : flight.from.name,
-      toName: flight.to.code ? undefined : flight.to.name,
+      from: flight.from.code ?? flight.from.name ?? "",
+      to:   flight.to.code   ?? flight.to.name   ?? "",
       serviceNumber: flight.flightNumber,
       warnings: flight.warnings,
     };
@@ -206,13 +249,19 @@ function detectTransport(summary: string, location: string, description: string 
   if (TRAIN_KW_RE.test(summary) || TRAIN_NUM_RE.test(summary)) {
     const fromTo = extractTrainFromTo(summary);
     const numMatch = TRAIN_NUM_RE.exec(summary);
-    const missing = !fromTo;
+    // Warn only when we have no destination at all (partial matches with a known
+    // destination are still useful — the user just needs to fill in the origin).
+    const missingDest = !fromTo?.to;
+    const missingFrom = !fromTo?.from;
+    const warnings: string[] = [];
+    if (missingDest) warnings.push("No station names found — fill in From/To before confirming");
+    else if (missingFrom) warnings.push("Origin station unknown — fill in From before confirming");
     return {
       mode: "rail",
-      from: fromTo?.from ?? "???",
-      to:   fromTo?.to   ?? "???",
+      from: fromTo?.from ?? "",
+      to:   fromTo?.to   ?? "",
       serviceNumber: numMatch ? numMatch[0].replace(/\s+/, "") : undefined,
-      warnings: missing ? ["No station names found — fill in From/To before confirming"] : [],
+      warnings,
     };
   }
 
@@ -358,8 +407,6 @@ function parseIcs(text: string): ParseResult {
         mode: transport.mode,
         from: transport.from,
         to:   transport.to,
-        ...(transport.fromName ? { fromName: transport.fromName } : {}),
-        ...(transport.toName ? { toName: transport.toName } : {}),
         flightNumber: transport.mode === "air"  ? transport.serviceNumber : undefined,
         trainNumber:  transport.mode === "rail" ? transport.serviceNumber : undefined,
         start:    startStr,

@@ -1,7 +1,7 @@
 import { timezoneFor } from "./geo";
 import { localToUTC } from "./tz";
-import { codeToCity } from "./airports";
-export { codeToCity } from "./airports";
+import { locationLabel } from "./geo";
+export { locationLabel } from "./geo";
 
 /**
  * Identifier for the import source that produced an entry.
@@ -549,7 +549,7 @@ export function day(s: string) {
 
 export function entryTitle(e: Entry): string {
   const v = view(e);
-  if (v.kind === "leg") return `${v.fromName ?? codeToCity(v.from)} → ${v.toName ?? codeToCity(v.to)}`;
+  if (v.kind === "leg") return `${v.fromName ?? (locationLabel(v.from) || "–")} → ${v.toName ?? (locationLabel(v.to) || "–")}`;
   if (v.kind === "stay") return v.place;
   if (v.kind === "place-entry") {
     // Derive a human-readable name from localityKey ("gb:london" → "London",
