@@ -204,12 +204,13 @@ describe("icalendar connector", () => {
       expect(leg.flightNumber).toBe("BA123");
     });
 
-    it("'Flight to Paris' → Leg with ??? placeholders and warning", () => {
+    it("'Flight to Paris' → Leg with place name in to and warning", () => {
+      // Ambiguous destination: place name is preserved in `to`, origin unknown → "".
       const { entries } = parseFlight("Flight to Paris");
       const leg = entries[0].entry as Leg;
       expect(leg.kind).toBe("leg");
-      expect(leg.from).toBe("???");
-      expect(leg.to).toBe("???");
+      expect(leg.from).toBe("");       // origin unknown
+      expect(leg.to).toBe("Paris");   // place name stored directly
       expect(entries[0].warnings.length).toBeGreaterThan(0);
     });
 
@@ -269,24 +270,28 @@ describe("icalendar connector", () => {
       expect(leg.to).toBe("Paris");
     });
 
-    it("'ICE123 Hamburg → Berlin' → Leg with trainNumber", () => {
+    it("'ICE123 Hamburg → Berlin' → Leg with trainNumber; service number stripped from from", () => {
+      // The improved extractor strips the service-number prefix from the origin side.
       const { entries } = parseTrain("ICE123 Hamburg → Berlin");
       const leg = entries[0].entry as Leg;
       expect(leg.kind).toBe("leg");
       expect(leg.mode).toBe("rail");
-      expect(leg.from).toBe("ICE123 Hamburg");
+      expect(leg.from).toBe("Hamburg"); // service number stripped
       expect(leg.to).toBe("Berlin");
       expect(leg.trainNumber).toBeDefined();
     });
 
-    it("'Train to Cork' → Leg with ??? placeholders and warning", () => {
+    it("'Train to Cork' → Leg with destination captured and origin warning", () => {
+      // Destination-only: "Train to Cork" now captures "Cork" as `to`
+      // and emits a warning about the unknown origin (not "no station names").
       const { entries } = parseTrain("Train to Cork");
       const leg = entries[0].entry as Leg;
       expect(leg.kind).toBe("leg");
       expect(leg.mode).toBe("rail");
-      expect(leg.from).toBe("???");
+      expect(leg.from).toBe("");     // origin unknown → empty string
+      expect(leg.to).toBe("Cork");  // destination captured
       expect(entries[0].warnings.length).toBeGreaterThan(0);
-      expect(entries[0].warnings[0]).toMatch(/station names/i);
+      expect(entries[0].warnings[0]).toMatch(/origin/i);
     });
 
     it("train does not set flightNumber", () => {

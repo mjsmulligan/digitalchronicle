@@ -139,7 +139,7 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
       const notes = [...(parsed.entries[i].warnings ?? [])];
       // A leg with placeholder codes and another leg on the same date might be a
       // repeat of a flight we already have. Import it flagged, with a note (5.3).
-      if (entry.kind === "leg" && (entry as Leg).from === "???" && (legsByDate.get(entry.start.slice(0, 10))?.length ?? 0) > 0) {
+      if (entry.kind === "leg" && !(entry as Leg).from && (legsByDate.get(entry.start.slice(0, 10))?.length ?? 0) > 0) {
         notes.push(POSSIBLE_DUPLICATE_NOTE);
       }
       const written: Entry = {
