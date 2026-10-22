@@ -14,6 +14,9 @@ import {
   Text,
   TextInput,
   View,
+  type ImageStyle,
+  type TextStyle,
+  type ViewStyle,
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
@@ -89,8 +92,7 @@ function combineDateTime(date: string, time: string): string {
 /** Shared token props passed from the edit screen down to every kind-form. */
 interface FormProps {
   /** StyleSheet object created by the edit screen's useMemo. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  styles: Record<string, any>;
+  styles: Record<string, ViewStyle | TextStyle | ImageStyle>;
   colors: ThemeColors;
   fonts: ThemeFonts;
   spacing: typeof themeSpacing;

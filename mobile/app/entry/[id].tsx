@@ -25,6 +25,7 @@ import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { SourceMark } from "../../src/components/SourceMark";
+import { sourceLabel } from "@chronicle/journal/connectors/registry";
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -97,19 +98,6 @@ function fmt(date: string): string {
 
 function modeLabel(mode: Leg["mode"]): string {
   return mode === "air" ? "Flight" : mode === "rail" ? "Train" : "Drive";
-}
-
-function sourceLabel(source?: string): string {
-  const map: Record<string, string> = {
-    letterboxd:       "Letterboxd",
-    netflix:          "Netflix",
-    goodreads:        "Goodreads",
-    viaduct:          "Viaduct",
-    "setlist.fm":     "Setlist.fm",
-    "photo-library":  "Photo library",
-    manual:           "Manual",
-  };
-  return source ? (map[source] ?? source) : "Unknown";
 }
 
 // ── shared prop types ─────────────────────────────────────────────────────────
