@@ -32,6 +32,18 @@ export function isAirportCode(code: string): boolean {
   return Object.prototype.hasOwnProperty.call(AIRPORTS, code.trim().toUpperCase());
 }
 
+/**
+ * Resolve an IATA code to its municipality/city name.
+ * Returns the original code unchanged when it isn't in the airports table
+ * (e.g. train station codes, "???", free-text place names).
+ *   "DUB" → "Dublin"
+ *   "LHR" → "London"
+ *   "PARIS GARE DU NORD" → "PARIS GARE DU NORD"  (no lookup)
+ */
+export function codeToCity(code: string): string {
+  return airportByCode(code)?.city ?? code;
+}
+
 // ---------------------------------------------------------------------------
 // Free-text resolution ("Dublin", "Faro Airport", "Milan Linate")
 // ---------------------------------------------------------------------------
