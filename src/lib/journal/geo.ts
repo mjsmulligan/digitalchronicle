@@ -4,7 +4,7 @@
 import STATIONS_JSON from "./stations.generated.json";
 import { airportByCode } from "./airports";
 
-type StationTuple = [string, number, number, string]; // [name, lat, lon, timezone]
+type StationTuple = [string, number, number, string, string]; // [name, lat, lon, timezone, city]
 const STATIONS = STATIONS_JSON as unknown as Record<string, StationTuple>;
 
 /** No-op on this side — data is already loaded statically.  Kept for API compat. */
@@ -248,11 +248,10 @@ export function locationLabel(code: string): string {
   const curated = PLACES[key];
   if (curated) return curated.city ?? curated.name;
 
-  // 3. Trainline stations dataset — name is canonical but city-level phrasing
-  //    is not guaranteed; return it as-is since it is still more readable than
-  //    a raw code.
+  // 3. Trainline stations dataset — prefer the city field (index 4) added by the
+  //    parent_station_id join; fall back to the canonical station name (index 0).
   const station = STATIONS[key];
-  if (station) return station[0]; // [name, lat, lon, timezone]
+  if (station) return station[4] || station[0]; // city || name
 
   // 4. Fallback — the value is already free text (e.g. typed city name).
   return code;
