@@ -235,61 +235,18 @@ export function timezoneFor(code: string): string | undefined {
  * This is a read-time display helper — it never modifies stored data.
  */
 /**
- * Display label for a leg endpoint, used in leg titles ("from → to").
- *
- * Airports use the city name (DUB → "Dublin", LHR → "London") because IATA codes
- * uniquely identify an airport and city is the natural unit for air travel.
- *
- * Stations use the canonical station name ("Frankfurt Hbf", "London Paddington")
- * because multiple stations often serve the same city — Frankfurt Airport → Frankfurt
- * Hbf is a meaningful distinct journey, not a round-trip.
+ * Display label for a leg endpoint.
+ * IATA airport codes are replaced with their city name (DUB → "Dublin").
+ * Everything else — station names, typed city names — is returned as-is;
+ * they are already human-readable and need no further transformation.
  */
 export function locationLabel(code: string): string {
   if (!code || code === "???") return "";
-
-  // 1. IATA airport code → city name.
   const key = normKey(code);
   if (/^[A-Z]{3}$/.test(key)) {
     const airport = airportByCode(key);
     if (airport) return airport.city;
   }
-
-  // 2. Curated PLACES — use station name, not city, for the same reason as above.
-  const curated = PLACES[key];
-  if (curated) return curated.name;
-
-  // 3. Trainline stations dataset — canonical station name.
-  const station = STATIONS[key];
-  if (station) return station[0];
-
-  // 4. Fallback — already free text (typed city or station name).
   return code;
 }
 
-/**
- * City-level label for grouping contexts (trip suggestion titles, place labels).
- *
- * Unlike locationLabel, this always prefers the city name when available, so
- * "Frankfurt Hbf" and "Frankfurt Airport" both resolve to "Frankfurt" for the
- * purposes of labelling a trip destination.
- */
-export function locationCity(code: string): string {
-  if (!code || code === "???") return "";
-
-  // 1. IATA airport code → city name (same as locationLabel).
-  const key = normKey(code);
-  if (/^[A-Z]{3}$/.test(key)) {
-    const airport = airportByCode(key);
-    if (airport) return airport.city;
-  }
-
-  // 2. Curated PLACES → city when present, otherwise name.
-  const curated = PLACES[key];
-  if (curated) return curated.city ?? curated.name;
-
-  // 3. Trainline stations dataset → city (index 4) when available, otherwise name.
-  const station = STATIONS[key];
-  if (station) return station[4] || station[0];
-
-  return code;
-}

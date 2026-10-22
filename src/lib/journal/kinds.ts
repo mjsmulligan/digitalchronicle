@@ -1,5 +1,5 @@
 import { view, type Entry, type StoreName, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEntry } from "./types";
-import { locationLabel, locationCity } from "./geo";
+import { locationLabel } from "./geo";
 
 export type EntryCategory = "movement" | "presence" | "attendance" | "consumption";
 
@@ -32,7 +32,7 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
     },
     placeLabel: (e) => {
       const v = view(e as Leg);
-      return v.toName ?? (locationCity(v.to) || "–");
+      return v.toName ?? (locationLabel(v.to) || "–");
     },
     hasPlace: (e) => {
       const l = e as Leg;
