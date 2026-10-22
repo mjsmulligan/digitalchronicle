@@ -20,6 +20,7 @@
 import { allEntries } from "./db";
 import { view } from "./types";
 import type { JournalData } from "./types";
+import { codeToCity } from "./airports";
 
 export const MAX_TRIP_DAYS  = 30;  // most holidays are ≤ 4 weeks; was 90
 const HOME_RADIUS_KM        = 75;
@@ -142,10 +143,13 @@ export function suggestTrips(
       ? trueDestLegs
       : windowLegs.filter((l) => !isHomeCode(view(l).to));
 
-    const uniqueDests = [...new Set(destLegs.map((l) => view(l).toName ?? view(l).to))];
+    const uniqueDests = [...new Set(destLegs.map((l) => {
+      const vl = view(l);
+      return vl.toName ?? codeToCity(vl.to);
+    }))];
     const title = uniqueDests.length
       ? uniqueDests.slice(0, 2).join(" · ")
-      : (vOut.toName ?? vOut.to);
+      : (vOut.toName ?? codeToCity(vOut.to));
 
     used.add(outLeg.id);
     used.add(retLeg.id);

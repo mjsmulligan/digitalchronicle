@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { TripPicker } from "../../src/components/TripPicker";
-import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { view, CATEGORY_LABEL, entryTitle, codeToCity, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
 import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
@@ -148,9 +148,14 @@ function Divider({ styles }: { styles: Pick<DetailStyles, "divider"> }) {
 function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "leg") return null;
+  // "Dublin (DUB)" when the city name differs from the code; bare code/name when it doesn't.
+  const locLabel = (code: string, name?: string) => {
+    const city = name ?? codeToCity(code);
+    return city !== code ? `${city} (${code})` : city;
+  };
   return (
     <>
-      <Text style={styles.title}>{v.fromName ?? v.from} {"→"} {v.toName ?? v.to}</Text>
+      <Text style={styles.title}>{v.fromName ?? codeToCity(v.from)} {"→"} {v.toName ?? codeToCity(v.to)}</Text>
       <View style={styles.subtitleRow}>
         <KindIcon kind="leg" subkind={v.mode} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{modeLabel(v.mode)}</Text>
@@ -158,8 +163,8 @@ function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; ic
       <Divider styles={styles} />
       <Field label="Date" value={fmt(v.start)} styles={styles} />
       {v.end && <Field label="Arrival" value={fmt(v.end)} styles={styles} />}
-      <Field label="From" value={v.fromName ? `${v.fromName} (${v.from})` : v.from} styles={styles} />
-      <Field label="To" value={v.toName ? `${v.toName} (${v.to})` : v.to} styles={styles} />
+      <Field label="From" value={locLabel(v.from, v.fromName)} styles={styles} />
+      <Field label="To"   value={locLabel(v.to,   v.toName)}   styles={styles} />
       <Field label="Flight" value={v.flightNumber} styles={styles} />
       <Field label="Aircraft" value={v.aircraft} styles={styles} />
       <Field label="Operator" value={v.operator} styles={styles} />
