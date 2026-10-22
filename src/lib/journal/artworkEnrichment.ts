@@ -354,11 +354,11 @@ export async function enrichAll(
     }
 
     if (filmKeySet.size && !signal?.aborted) {
-      // 2: filter to unresolved
+      // 2: filter to unresolved — one batch read instead of N serial reads
+      const filmCacheMap = await storage.getByKeys(Array.from(filmKeySet));
       const toResolve: string[] = [];
       for (const key of filmKeySet) {
-        if (signal?.aborted) break;
-        const cached = await storage.getByKey(key);
+        const cached = filmCacheMap.get(key);
         if (!cached) toResolve.push(key);
         else if (cached.status === "none" && cached.fetched_at < cutoff) toResolve.push(key);
       }
@@ -384,16 +384,22 @@ export async function enrichAll(
 
   if (_fetchBookCoversEnabled && getBookCoverProvider()) {
     // 1: collect book entries with a resolvable key
-    const bookEntries: Book[] = [];
+    const bookCandidates: { entry: Book; key: string }[] = [];
     for (const entry of entries) {
       if (entry.kind !== "book") continue;
       const key = bookToArtworkKey(entry);
-      if (!key) continue;
-      // 2: filter to unresolved
-      if (signal?.aborted) break;
-      const cached = await storage.getByKey(key);
-      if (!cached || (cached.status === "none" && cached.fetched_at < cutoff)) {
-        bookEntries.push(entry as Book);
+      if (key) bookCandidates.push({ entry: entry as Book, key });
+    }
+
+    // 2: filter to unresolved — one batch read instead of N serial reads
+    const bookEntries: Book[] = [];
+    if (bookCandidates.length && !signal?.aborted) {
+      const bookCacheMap = await storage.getByKeys(bookCandidates.map((c) => c.key));
+      for (const { entry, key } of bookCandidates) {
+        const cached = bookCacheMap.get(key);
+        if (!cached || (cached.status === "none" && cached.fetched_at < cutoff)) {
+          bookEntries.push(entry);
+        }
       }
     }
 
@@ -427,15 +433,20 @@ export async function enrichAll(
     }
 
     if (artistNames.size && !signal?.aborted) {
-      // 2: filter to unresolved
-      const toResolve: string[] = [];
+      // 2: filter to unresolved — one batch read instead of N serial reads
+      const artistCandidates: { name: string; key: string }[] = [];
       for (const name of artistNames) {
-        if (signal?.aborted) break;
         const key = artistToArtworkKey(name);
-        if (!key) continue;
-        const cached = await storage.getByKey(key);
-        if (!cached || (cached.status === "none" && cached.fetched_at < cutoff)) {
-          toResolve.push(name);
+        if (key) artistCandidates.push({ name, key });
+      }
+      const toResolve: string[] = [];
+      if (artistCandidates.length && !signal?.aborted) {
+        const artistCacheMap = await storage.getByKeys(artistCandidates.map((c) => c.key));
+        for (const { name, key } of artistCandidates) {
+          const cached = artistCacheMap.get(key);
+          if (!cached || (cached.status === "none" && cached.fetched_at < cutoff)) {
+            toResolve.push(name);
+          }
         }
       }
 

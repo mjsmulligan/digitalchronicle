@@ -225,6 +225,11 @@ export function artistToArtworkKey(artistName: string): string | null {
 export interface ArtworkStorage {
   /** Look up a single cached result. Returns undefined on cache miss. */
   getByKey(key: string): Promise<ArtworkMatch | undefined>;
+  /**
+   * Batch look up multiple cached results in one round-trip.
+   * Returns a Map keyed by artwork key; missing keys are absent from the map.
+   */
+  getByKeys(keys: string[]): Promise<Map<string, ArtworkMatch>>;
   /** Insert or replace a match record. */
   upsert(match: ArtworkMatch): Promise<void>;
   /** Remove a cached result (used when clearing the artwork cache). */
@@ -305,6 +310,28 @@ export class IDBartworkStore implements ArtworkStorage {
     });
   }
 
+  async getByKeys(keys: string[]): Promise<Map<string, ArtworkMatch>> {
+    if (!keys.length) return new Map();
+    const db = await this.db();
+    const result = new Map<string, ArtworkMatch>();
+    const tx = db.transaction(STORE, "readonly");
+    const store = tx.objectStore(STORE);
+    await Promise.all(
+      keys.map(
+        (key) =>
+          new Promise<void>((resolve, reject) => {
+            const req = store.get(key);
+            req.onsuccess = () => {
+              if (req.result) result.set(key, req.result as ArtworkMatch);
+              resolve();
+            };
+            req.onerror = () => reject(req.error);
+          }),
+      ),
+    );
+    return result;
+  }
+
   async upsert(match: ArtworkMatch): Promise<void> {
     const db = await this.db();
     return new Promise((resolve, reject) => {
@@ -355,6 +382,15 @@ export class MemoryArtworkStore implements ArtworkStorage {
 
   async getByKey(key: string): Promise<ArtworkMatch | undefined> {
     return this.store.get(key);
+  }
+
+  async getByKeys(keys: string[]): Promise<Map<string, ArtworkMatch>> {
+    const result = new Map<string, ArtworkMatch>();
+    for (const key of keys) {
+      const m = this.store.get(key);
+      if (m) result.set(key, m);
+    }
+    return result;
   }
 
   async upsert(match: ArtworkMatch): Promise<void> {

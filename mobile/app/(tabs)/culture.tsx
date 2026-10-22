@@ -420,44 +420,62 @@ function PosterGrid({
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const filmProvider = getArtworkProvider();
     const bookProvider = getBookCoverProvider();
-    Promise.all(
-      items.map(async (item) => {
-        let uri: string | null = null;
-        if (kind === "concert") {
-          // Artist images — poster_path IS the full URL (TheAudioDB/Deezer).
-          // Sanitize spaces: TADB sometimes stores URLs with literal spaces in
-          // filenames; React Native Image silently rejects those.
-          const match = await resolveArtistImage(item.title);
-          uri = match?.poster_path ? match.poster_path.replace(/ /g, "%20") : null;
-        } else if (item.bookEntry) {
-          // Books: use resolveBookCoverForEntry + Open Library image URL
-          const match = await resolveBookCoverForEntry(item.bookEntry);
-          uri = match?.poster_path && bookProvider
-            ? bookProvider.imageUrl(match.poster_path)
-            : null;
-        } else if (item.artworkKey) {
-          // Films / TV: use resolveArtwork + TMDB image URL
-          const match = await resolveArtwork(item.artworkKey);
-          uri = match?.poster_path && filmProvider
-            ? filmProvider.imageUrl(match.poster_path)
-            : null;
+
+    // Resolve all items with a concurrency cap (3 workers) rather than an
+    // unbounded Promise.all. This matches enrichAll's ENRICH_CONCURRENCY pattern
+    // and prevents a burst of N serial SQLite reads saturating the artwork queue
+    // on every Culture tab mount.
+    const resolveItem = async (item: PosterGridItem): Promise<[string, string | null]> => {
+      let uri: string | null = null;
+      if (kind === "concert") {
+        // Artist images — poster_path IS the full URL (TheAudioDB/Deezer).
+        // Sanitize spaces: TADB sometimes stores URLs with literal spaces in
+        // filenames; React Native Image silently rejects those.
+        const match = await resolveArtistImage(item.title);
+        uri = match?.poster_path ? match.poster_path.replace(/ /g, "%20") : null;
+      } else if (item.bookEntry) {
+        // Books: use resolveBookCoverForEntry + Open Library image URL
+        const match = await resolveBookCoverForEntry(item.bookEntry);
+        uri = match?.poster_path && bookProvider
+          ? bookProvider.imageUrl(match.poster_path)
+          : null;
+      } else if (item.artworkKey) {
+        // Films / TV: use resolveArtwork + TMDB image URL
+        const match = await resolveArtwork(item.artworkKey);
+        uri = match?.poster_path && filmProvider
+          ? filmProvider.imageUrl(match.poster_path)
+          : null;
+      }
+      return [item.id, uri];
+    };
+
+    (async () => {
+      const results: [string, string | null][] = [];
+      let idx = 0;
+      async function worker(): Promise<void> {
+        while (idx < items.length) {
+          if (cancelled) return;
+          const item = items[idx++];
+          results.push(await resolveItem(item));
         }
-        return [item.id, uri] as const;
-      }),
-    ).then((results) => {
+      }
+      const workerCount = Math.min(3, items.length);
+      await Promise.all(Array.from({ length: workerCount }, worker));
+
       if (cancelled) return;
       setUriMap(new Map(results));
       setResolved(true);
       // If every URI is null and this is the first attempt, the artwork storage
       // or providers weren't ready yet (boot is async). Schedule one retry after
       // 3s to give enrichAll time to warm the cache.
-      const allNull = results.every(([, uri]) => uri === null);
+      const allNull = results.every(([, u]) => u === null);
       if (allNull && retryKey === 0 && items.length > 0) {
         retryTimer = setTimeout(() => {
           if (!cancelled) setRetryKey(1);
         }, 3000);
       }
-    });
+    })();
+
     return () => {
       cancelled = true;
       if (retryTimer) clearTimeout(retryTimer);
@@ -621,8 +639,13 @@ export default function CultureScreen() {
     setTimeout(() => setRefreshing(false), 1500);
   }, []);
 
-  // Track which series are expanded (default: all collapsed)
+  // Track which series are expanded (default: all collapsed).
+  // expandedKeysRef is kept in sync so renderItem can read the current set
+  // without needing it as a useCallback dependency (which would invalidate
+  // the callback on every toggle and defeat the memoisation).
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
+  const expandedKeysRef = useRef(expandedKeys);
+  expandedKeysRef.current = expandedKeys;
 
   const toggleSeries = useCallback((key: string) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -877,7 +900,12 @@ export default function CultureScreen() {
     }
 
     return items;
-  }, [filter, allConcerts, concertGridItems, filmGridItems, tvGridItems, bookGridItems, journal.books, journal.films, journal.episodes]);
+  // expandedKeys is intentionally in deps: listItems must rebuild when a series
+  // is toggled so pushEntries includes/excludes child rows correctly.
+  // To reduce rebuild cost, groupHeader items resolve `collapsed` at render time
+  // via expandedKeysRef (see renderItem) rather than baking a snapshot here.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, allConcerts, concertGridItems, filmGridItems, tvGridItems, bookGridItems, journal.books, journal.films, journal.episodes, expandedKeys]);
 
   const isEmpty = counts.all === 0;
 
@@ -953,6 +981,10 @@ export default function CultureScreen() {
 
               case "groupHeader":
                 if (item.collapsible) {
+                  // Resolve collapsed state at render time from the ref so this
+                  // renderItem call doesn't need expandedKeys as a dep and won't
+                  // go stale between when listItems rebuilds and when the cell paints.
+                  const isCollapsed = !expandedKeysRef.current.has(item.seriesKey!);
                   return (
                     <View>
                       <Pressable
@@ -963,7 +995,7 @@ export default function CultureScreen() {
                           pressed && styles.groupHeaderPressed,
                         ]}
                         accessibilityRole="button"
-                        accessibilityLabel={`${item.collapsed ? "Expand" : "Collapse"} ${item.title}`}
+                        accessibilityLabel={`${isCollapsed ? "Expand" : "Collapse"} ${item.title}`}
                       >
                         {/* Leading icon — mirrors EntryRow's markWrap position */}
                         <View style={styles.groupHeaderMark}>
@@ -983,14 +1015,14 @@ export default function CultureScreen() {
                           )}
                           <Text style={styles.groupHeaderSubtitle}>{item.subtitle}</Text>
                           <Ionicons
-                            name={item.collapsed ? "chevron-forward" : "chevron-down"}
+                            name={isCollapsed ? "chevron-forward" : "chevron-down"}
                             size={13}
                             color={colors.textTertiary}
                           />
                         </View>
                       </Pressable>
                       {/* Poster — only shown when collapsed; reveals the artwork without crowding the episode list */}
-                      {item.collapsed && item.artworkKey && (
+                      {isCollapsed && item.artworkKey && (
                         <View style={styles.posterWrap}>
                           <PosterCard
                             artworkKey={item.artworkKey}
@@ -1000,7 +1032,7 @@ export default function CultureScreen() {
                         </View>
                       )}
                       {/* Artist photo — shown when concert group is collapsed */}
-                      {item.collapsed && item.artistName && (
+                      {isCollapsed && item.artistName && (
                         <ArtistImage artistName={item.artistName} colors={colors} />
                       )}
                     </View>
