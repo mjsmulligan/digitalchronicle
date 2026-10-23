@@ -295,16 +295,48 @@ function parseAttendeeNames(block: string): string[] {
 // Location parsing
 // ---------------------------------------------------------------------------
 
+/** Trailing address parts that are not a city: postcodes ("518054", "SW1A 1AA", "D02 X285"). */
+const POSTCODE_RE = /^(\d{4,}(-\d+)?|[A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2}|[A-Z]\d{2} ?[A-Z\d]{4})$/i;
+/** A two-letter country or state code ("CN", "UK", "TX"). */
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/;
+
 /**
  * Split a LOCATION value into venue + city.
- * Common format: "Venue Name, City" or "Venue, Street, City".
+ * Common format: "Venue Name, City" or "Venue, Street, City". Full postal
+ * addresses ("Venue, Street, City, 518054, CN,") also work: trailing postcode and
+ * country code are skipped so the city is the last real place name.
  * Falls back to using the whole string as the venue.
  */
 function parseLocation(loc: string): { venue: string; city: string } {
   if (!loc) return { venue: "", city: "" };
   const parts = loc.split(",").map((s) => s.trim()).filter(Boolean);
+  const rest = [...parts];
+  while (rest.length > 2 && (POSTCODE_RE.test(rest[rest.length - 1]) || COUNTRY_CODE_RE.test(rest[rest.length - 1]))) {
+    rest.pop();
+  }
+  if (rest.length >= 2) return { venue: rest[0], city: rest[rest.length - 1] };
   if (parts.length >= 2) return { venue: parts[0], city: parts[parts.length - 1] };
   return { venue: loc, city: "" };
+}
+
+/**
+ * Travel-itinerary hotel bookings (the "Hotel: … / Address: … / No. of nights: …"
+ * layout) carry the hotel name and address in DESCRIPTION; SUMMARY is just a noisy
+ * "NAME, 04 February, 2026 – 05 February, 2026, GUEST" line.
+ */
+function parseHotelBooking(description: string | undefined): { name: string; address?: string; nights?: number } | null {
+  if (!description) return null;
+  const name = /^Hotel:[ \t]*(.+)$/im.exec(description)?.[1].trim();
+  if (!name) return null;
+  const address = /^Address:[ \t]*(.+)$/im.exec(description)?.[1].trim();
+  const nightsText = /^No\. of nights:[ \t]*(\d+)/im.exec(description)?.[1];
+  // "Hotel:" alone could be anything; require a second booking-style line.
+  if (!address && !nightsText && !/^(Confirmation|Check-?in):/im.test(description)) return null;
+  return { name, address, nights: nightsText ? parseInt(nightsText, 10) : undefined };
+}
+
+function addDays(dateStr: string, n: number): string {
+  return new Date(Date.parse(dateStr) + n * 86_400_000).toISOString().slice(0, 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -357,28 +389,37 @@ function parseIcs(text: string): ParseResult {
       raw: { summary, ...(location ? { location } : {}), ...(description ? { description } : {}) },
     };
 
-    // --- Classify: multi-day all-day → Stay ---
+    // --- Classify: hotel booking, or multi-day all-day → Stay ---
+    const hotel = parseHotelBooking(description);
+    // A booking is a stay even for one night, so it does not need the multi-day shape.
+    const hotelEnd = hotel
+      ? dtend && daysBetween(dtstart.dateStr, dtend.dateStr) >= 1
+        ? dtend.dateStr
+        : hotel.nights ? addDays(dtstart.dateStr, hotel.nights) : undefined
+      : undefined;
     if (
-      dtstart.isDateOnly &&
-      dtend &&
-      dtend.isDateOnly &&
-      daysBetween(dtstart.dateStr, dtend.dateStr) >= 2
+      (hotel && hotelEnd) ||
+      (dtstart.isDateOnly &&
+        dtend &&
+        dtend.isDateOnly &&
+        daysBetween(dtstart.dateStr, dtend.dateStr) >= 2)
     ) {
-      const { venue, city } = parseLocation(location);
+      const { venue, city } = parseLocation(hotel?.address || location);
       const resolvedCity = city || venue || undefined;
       const tz = resolvedCity ? timezoneFor(resolvedCity) : undefined;
+      const endDate = hotel ? hotelEnd! : dtend!.dateStr;
       const s: Stay = {
         ...base,
         kind: "stay",
-        place: summary,
+        place: hotel?.name ?? summary,
         city: resolvedCity,
         start: dtstart.dateStr,
         // iCal DTEND for all-day is exclusive (check-out day) — store as-is
-        end: dtend.dateStr,
+        end: endDate,
         startTz: tz,
         endTz: tz,
         startUTC: localToUTC(dtstart.dateStr, tz),
-        endUTC: localToUTC(dtend.dateStr, tz),
+        endUTC: localToUTC(endDate, tz),
         dedupeKey: "",
       };
       s.dedupeKey = stayKey(s);

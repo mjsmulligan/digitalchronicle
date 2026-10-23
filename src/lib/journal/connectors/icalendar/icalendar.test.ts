@@ -342,3 +342,52 @@ describe("icalendar connector", () => {
     });
   });
 });
+
+describe("icalendar connector: hotel bookings and addresses", () => {
+  const ics = (extra: string) =>
+    ["BEGIN:VCALENDAR", "VERSION:2.0", "BEGIN:VEVENT", "UID:a@test", ...extra.split("\n"), "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const parse = (extra: string) => {
+    const r = connector.parse({ name: "h.ics", text: ics(extra) });
+    if (r instanceof Promise) throw new Error("sync expected");
+    return r;
+  };
+  const booking = [
+    "SUMMARY:EXAMPLE HOTEL SHENZHEN\\, 04 February\\, 2026 – 05 February\\, 2026\\, DOE Jane Ms",
+    "LOCATION:HAI DE SAN DAO\\, HOU HAI BIN RD\\,SHENZHEN\\,518054\\, CN\\,",
+    "DESCRIPTION:Hotel: EXAMPLE HOTEL SHENZHEN\\nAddress: HAI DE SAN DAO\\, HOU HAI BIN RD\\,SHENZHEN\\,518054\\, CN\\,\\nNo. of nights: 1\\nConfirmation: 12345",
+  ].join("\n");
+
+  it("a one-night hotel booking with date-only times is a Stay named after the hotel", () => {
+    const r = parse(`${booking}\nDTSTART;VALUE=DATE:20260204\nDTEND;VALUE=DATE:20260205`);
+    const s = r.entries[0].entry as Stay;
+    expect(s.kind).toBe("stay");
+    expect(s.place).toBe("EXAMPLE HOTEL SHENZHEN");
+    expect(s.city).toBe("SHENZHEN");
+    expect(s.start).toBe("2026-02-04");
+    expect(s.end).toBe("2026-02-05");
+  });
+
+  it("a timed hotel booking is also a Stay", () => {
+    const r = parse(`${booking}\nDTSTART:20260204T150000\nDTEND:20260205T120000`);
+    const s = r.entries[0].entry as Stay;
+    expect(s.kind).toBe("stay");
+    expect(s.end).toBe("2026-02-05");
+  });
+
+  it("takes the end from No. of nights when DTEND does not help", () => {
+    const r = parse(`${booking.replace("nights: 1", "nights: 3")}\nDTSTART;VALUE=DATE:20260204`);
+    expect((r.entries[0].entry as Stay).end).toBe("2026-02-07");
+  });
+
+  it("skips trailing postcode and country code when finding the city", () => {
+    const r = parse("SUMMARY:Dinner\nLOCATION:Some Place\\, 1 High St\\, Cork\\, T12 AB34\\, IE\nDTSTART:20260204T190000\nDTEND:20260204T210000");
+    const e = r.entries[0].entry as JEvent;
+    expect(e.venue).toBe("Some Place");
+    expect(e.city).toBe("Cork");
+  });
+
+  it("a plain event with only a Hotel: line is not turned into a stay", () => {
+    const r = parse("SUMMARY:Chat\nDESCRIPTION:Hotel: lobby bar\nDTSTART:20260204T190000\nDTEND:20260204T200000");
+    expect(r.entries[0].entry.kind).toBe("event");
+  });
+});
