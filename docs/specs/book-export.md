@@ -145,7 +145,7 @@ Storage
 
 Each package is tested and committed on one branch (`feat/book-export`), in order.
 
-- [ ] **WP0 Spike.** Produce a 100 page PDF with `expo-print` from realistic data and about 30 resampled photos on the real device. Check page size, font embedding, memory and time. Output: a short decision note on whether `expo-print` is good enough or a PDF library is needed.
+- [ ] **WP0 Spike.** *Harness built and desktop baseline done; device run pending. See `docs/specs/book-export-wp0-note.md`.* Produce a 100 page PDF with `expo-print` from realistic data and about 30 resampled photos on the real device. Check page size, font embedding, memory and time. Output: a short decision note on whether `expo-print` is good enough or a PDF library is needed.
 - [x] **WP1 `BookModel` and query.** Build the model from a date range and filters over the existing feed query, including both chapter modes, exclusions and the sources list. Pure functions, unit tested with fixture data from the existing importers. *Built in* `src/lib/journal/book/` (`types.ts`, `build.ts`) with the feed predicates shared in `src/lib/journal/feedFilter.ts`. Sections list entries by id; WP2 fills `blocks`. The generation date is an input, so the same data and definition always give the same model.
 - [ ] **WP2 Block mapping.** Event type to block mapping from section 7, including transport and event tables, ratings, reflections, participants.
 - [ ] **WP3 Markdown renderer.** `book.md` plus `media/` and the zip package.

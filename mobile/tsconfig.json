@@ -49,6 +49,12 @@
       ],
       "@chronicle/journal/sources/exif/*": [
         "../src/lib/journal/sources/exif/*"
+      ],
+      "@chronicle/journal/book": [
+        "../src/lib/journal/book"
+      ],
+      "@chronicle/journal/book/*": [
+        "../src/lib/journal/book/*"
       ]
     }
   },

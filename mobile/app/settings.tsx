@@ -499,6 +499,17 @@ export default function SettingsScreen() {
       </Pressable>
 
       <Pressable
+        style={[styles.card, { flexDirection: "row", alignItems: "center", marginBottom: spacing.xl }]}
+        onPress={() => router.push("/book-spike" as any)}
+      >
+        <Ionicons name="book-outline" size={18} color={colors.accent} style={{ marginRight: spacing.md }} />
+        <Text style={{ ...styles.resetHint, color: colors.textSecondary, flex: 1, marginBottom: 0, textAlign: "left" }}>
+          Book export spike · test PDF generation on this device
+        </Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+      </Pressable>
+
+      <Pressable
         style={[styles.resetBtn, exporting && styles.resetBtnDisabled, { borderColor: colors.border, marginBottom: spacing.sm }]}
         onPress={handleExport}
         disabled={exporting}

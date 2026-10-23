@@ -22,6 +22,7 @@ module.exports = function (api) {
             "@chronicle/journal/bookCoverProvider": "../src/lib/journal/bookCoverProvider",
             "@chronicle/journal/artistImageProvider": "../src/lib/journal/artistImageProvider",
             "@chronicle/journal/sources/exif": "../src/lib/journal/sources/exif",
+            "@chronicle/journal/book": "../src/lib/journal/book",
           },
           extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
         },
