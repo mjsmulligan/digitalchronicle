@@ -44,6 +44,14 @@ describe("parseFlight", () => {
     expect(f.warnings).toEqual([]);
   });
 
+  it("reads a bare code after the place name in location (\"Dublin DUB\")", () => {
+    const f = parseFlight({ summary: "Flight to Stuttgart (EW 2775)", location: "Dublin DUB" })!;
+    expect(f.from.code).toBe("DUB");
+    expect(f.to.code).toBe("STR");
+    expect(f.flightNumber).toBe("EW2775");
+    expect(f.warnings).toEqual([]);
+  });
+
   it("reads the departure airport from a plain airport name in location", () => {
     const f = parseFlight({ summary: "Flight to Faro (FR 123)", location: "Dublin Airport, Dublin" })!;
     expect(f.from.code).toBe("DUB");
