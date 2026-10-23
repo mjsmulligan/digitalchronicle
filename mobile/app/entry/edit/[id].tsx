@@ -23,6 +23,7 @@ import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, st
 import {
   uid,
   view,
+  entryTitle,
   CATEGORY_LABEL,
   type Entry,
   type Leg,
@@ -609,6 +610,45 @@ function BookForm({
 
 // ── screen ────────────────────────────────────────────────────────────────────
 
+/**
+ * Fields that can sensibly move across kinds when the user changes an entry's type,
+ * so switching does not blank the form. Uses the overridden view, so edits made earlier
+ * carry over. Anything with no equivalent in the new kind is dropped (the original entry
+ * stays recoverable from Hidden Entries).
+ */
+function seedFor(entry: Entry, kind: EditableKind): Record<string, unknown> {
+  const v = view(entry) as Record<string, any>;
+  const title: string =
+    v.kind === "leg" ? entryTitle(entry)
+    : v.kind === "stay" ? v.place
+    : v.kind === "event" ? v.artist
+    : v.kind === "episode" ? v.showTitle
+    : v.title;
+  const seed: Record<string, unknown> = { start: v.start };
+  switch (kind) {
+    case "stay":
+      Object.assign(seed, { place: (v.kind === "event" && v.venue) || title, city: v.city, end: v.end });
+      break;
+    case "event":
+      Object.assign(seed, { category: "gathering", artist: title, venue: "", city: v.city ?? "", country: v.country });
+      break;
+    case "film":
+      Object.assign(seed, { title, year: v.year });
+      break;
+    case "book":
+      Object.assign(seed, { title, author: v.author ?? "", year: v.year });
+      break;
+    case "episode":
+      Object.assign(seed, { showTitle: title });
+      break;
+    case "leg":
+      Object.assign(seed, { mode: "air", from: "", to: "" });
+      break;
+  }
+  for (const k of Object.keys(seed)) if (seed[k] === undefined || seed[k] === null) delete seed[k];
+  return seed;
+}
+
 export default function EditEntryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -743,6 +783,9 @@ export default function EditEntryScreen() {
           ...(entry.reflection               ? { reflection: entry.reflection } : {}),
           ...(entry.review                   ? { review:     entry.review    } : {}),
           ...(entry.overrides                ? { overrides:  entry.overrides } : {}),
+          // Keep what the source originally said, so it can still be traced after a type change
+          ...(entry.raw                      ? { raw:        entry.raw       } : {}),
+          ...(entry.sourceRef                ? { sourceRef:  entry.sourceRef } : {}),
         };
 
         let newEntry: Entry | null = null;
@@ -835,13 +878,14 @@ export default function EditEntryScreen() {
       dedupeKey: entry.dedupeKey,
       createdAt: entry.createdAt,
     };
-    // Construct a minimal valid entry of the new kind so form initialises cleanly
-    if (selectedKind === "leg")     return { ...blankBase, kind: "leg", mode: "air", from: "", to: "" } as Leg;
-    if (selectedKind === "stay")    return { ...blankBase, kind: "stay", place: "" } as Stay;
-    if (selectedKind === "event")   return { ...blankBase, kind: "event", category: "gathering", artist: "", venue: "", city: "" } as JEvent;
-    if (selectedKind === "film")    return { ...blankBase, kind: "film", title: "" } as Film;
-    if (selectedKind === "episode") return { ...blankBase, kind: "episode", showTitle: "" } as Episode;
-    if (selectedKind === "book")    return { ...blankBase, kind: "book", title: "", author: "" } as Book;
+    // A minimal valid entry of the new kind, filled with whatever carries over from the old one
+    const seed = seedFor(entry, selectedKind);
+    if (selectedKind === "leg")     return { ...blankBase, kind: "leg", mode: "air", from: "", to: "", ...seed } as Leg;
+    if (selectedKind === "stay")    return { ...blankBase, kind: "stay", place: "", ...seed } as Stay;
+    if (selectedKind === "event")   return { ...blankBase, kind: "event", category: "gathering", artist: "", venue: "", city: "", ...seed } as JEvent;
+    if (selectedKind === "film")    return { ...blankBase, kind: "film", title: "", ...seed } as Film;
+    if (selectedKind === "episode") return { ...blankBase, kind: "episode", showTitle: "", ...seed } as Episode;
+    if (selectedKind === "book")    return { ...blankBase, kind: "book", title: "", author: "", ...seed } as Book;
     return entry;
   }, [selectedKind, entry]);
 
@@ -879,7 +923,8 @@ export default function EditEntryScreen() {
               style={[styles.chip, selectedKind === k && styles.chipActive]}
               onPress={() => {
                 setSelectedKind(k);
-                setFieldPatch({});
+                // Seed the patch too, so saving without touching the form keeps the carried-over fields.
+                setFieldPatch(k === entry.kind ? {} : seedFor(entry, k));
               }}
             >
               <KindIcon kind={k} size={13} color={selectedKind === k ? colors.accentSubtle : colors.textSecondary} accessibilityLabel="" />
