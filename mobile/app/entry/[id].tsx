@@ -132,6 +132,60 @@ function Divider({ styles }: { styles: Pick<DetailStyles, "divider"> }) {
   return <View style={styles.divider} />;
 }
 
+type RawStyles = DetailStyles & {
+  rawToggle: StyleProp<ViewStyle>;
+  rawBox: StyleProp<ViewStyle>;
+  rawRow: StyleProp<ViewStyle>;
+  rawKey: StyleProp<TextStyle>;
+  rawValue: StyleProp<TextStyle>;
+};
+
+function rawDisplay(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "(empty)";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+}
+
+/**
+ * The source record exactly as the importer stored it, so a bad field (a flight
+ * with no From/To, say) can be traced back to what the source actually said.
+ * Collapsed by default; text is selectable so it can be copied.
+ */
+function RawImportData({ raw, styles, color }: { raw?: Record<string, unknown>; styles: RawStyles; color: string }) {
+  const [open, setOpen] = useState(false);
+  const keys = raw ? Object.keys(raw) : [];
+  return (
+    <View>
+      <Divider styles={styles} />
+      <Pressable
+        style={styles.rawToggle}
+        onPress={() => setOpen((o) => !o)}
+        accessibilityRole="button"
+        accessibilityLabel="Raw import data"
+        accessibilityState={{ expanded: open }}
+      >
+        <Text style={styles.fieldLabel}>Raw import data</Text>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={14} color={color} />
+      </Pressable>
+      {open && (
+        <View style={styles.rawBox}>
+          {keys.length === 0 ? (
+            <Text style={styles.rawValue}>No raw data was kept for this entry.</Text>
+          ) : (
+            keys.map((k) => (
+              <View key={k} style={styles.rawRow}>
+                <Text style={styles.rawKey} selectable>{k}</Text>
+                <Text style={styles.rawValue} selectable>{rawDisplay(raw![k])}</Text>
+              </View>
+            ))
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── per-kind detail blocks ────────────────────────────────────────────────────
 
 function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; iconColors: IconColors }) {
@@ -482,6 +536,11 @@ export default function EntryDetailScreen() {
     },
     sourceFieldRow: { flexDirection: "row", alignItems: "center", paddingVertical: 5, gap: spacing.base },
     sourceValue:    { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, justifyContent: "flex-end" },
+    rawToggle: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
+    rawBox:    { paddingBottom: spacing.sm, gap: spacing.sm },
+    rawRow:    { gap: 2 },
+    rawKey:    { ...text.smMd, fontFamily: fonts.mono, color: colors.textTertiary, fontWeight: "600" },
+    rawValue:  { ...text.sm, fontFamily: fonts.mono, color: colors.textDim },
 
     notFound:     { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
     notFoundText: { ...text.lg, color: colors.textTertiary },
@@ -816,6 +875,7 @@ export default function EntryDetailScreen() {
             {s.sourceRef && <Field label="Ref" value={s.sourceRef} styles={styles} />}
           </View>
         ))}
+        <RawImportData raw={entry.raw} styles={styles} color={colors.textMuted} />
       </View>
     </>
   );
