@@ -8,8 +8,8 @@
  * Division of work between packages:
  *  - WP1 (build.ts) selects entries and groups them into chapters and sections.
  *    Sections list their entries by id in `entryIds`.
- *  - WP2 maps each entry to `blocks` (tables, quotes, reflections and so on).
- *    Until then `blocks` is empty.
+ *  - WP2 (blocks.ts) maps each section's entries to `blocks` (tables, quotes,
+ *    reflections and so on).
  */
 import type { FeedKind } from "../feedFilter";
 
@@ -83,7 +83,22 @@ export type TableRow = {
 
 export type Block =
   | { type: "heading"; level: 1 | 2 | 3 | 4; text: string }
-  | { type: "dateLine"; date: string; time?: string }
+  | {
+      type: "dateLine";
+      /** First day, "YYYY-MM-DD". */
+      date: string;
+      /** Last day when the item spans days (a stay, or consecutive days in one place). */
+      endDate?: string;
+      /** Local time "HH:mm" when the entry has one. */
+      time?: string;
+      /** Framing such as "Day 3 of the journey" inside a trip section. */
+      label?: string;
+      /**
+       * Set when the source knows the date only loosely. Renderers show just the month
+       * or year, or nothing for "unknown", rather than inventing a day.
+       */
+      precision?: "month" | "year" | "unknown";
+    }
   | { type: "paragraph"; text: string; italic?: boolean }
   | { type: "quote"; text: string; attribution?: string }
   | { type: "table"; caption?: string; columns: string[]; rows: TableRow[] }
@@ -101,7 +116,7 @@ export interface BookSection {
   trip?: TripRef;
   /** Entry ids in print order. */
   entryIds: string[];
-  /** Filled by WP2. */
+  /** Print blocks for this section, in order (see blocks.ts). */
   blocks: Block[];
 }
 

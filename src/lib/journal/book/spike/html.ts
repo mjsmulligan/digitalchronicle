@@ -10,7 +10,7 @@
  *
  * Pure: no React Native, no DOM, no clock. Runs on device and in Node.
  */
-import { entryDay } from "./../build";
+import { entryDay } from "../common";
 import { view, type Entry, type JournalData } from "../../types";
 import type { BookModel, PageSize } from "../types";
 

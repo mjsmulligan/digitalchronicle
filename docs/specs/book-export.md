@@ -86,15 +86,24 @@ Back matter
 | Event type | Treatment |
 |---|---|
 | Flight and train legs | Table, one row per leg, one icon per leg (plane or train), columns: date/time, from, to, identifier (flight number or train code), connection note. Consecutive legs of one travel day sit in one table. Mirrors the transport table style already used in the journal. |
-| Stays | Row with hotel icon: place, check-in and check-out, nights (computed). |
+| Stays | Table with a hotel icon per row: place, check-in, check-out, nights (computed). Separate from the transport table, which holds legs only. |
 | Place entries (photo source) | Short dated line: city, with the place container grouping consecutive days. |
-| Concerts, football, other venue events | Table rows: date, event, venue, with whom, rating. Matches the concerts and football table style. |
+| Concerts, football, other venue events | Table rows: date, event, venue, with whom, rating. Matches the concerts and football table style. Applies to concert and activity events that have a venue and no review or reflection. Anything with text, or with no venue, is a short narrative entry so the text stays attached to its event. Columns that are empty in every row are dropped. |
 | Books, films and similar | Title, creator, date, rating, then the source review quoted with attribution to the source, then the user's reflection in italics if present. |
 | Reflection (user text) | Italic paragraph under the entry. |
 | Participants | "With: Name, Name". Names only, no roles. |
-| Rating | Single number, shown as stars or "n/10", one style per book. |
+| Rating | Single number printed as "n/10" (for example "7.5/10"). Stars are deferred, because the glyph depends on the font chosen for the PDF. |
 | Unknown or placeholder legs | Print what exists. Never invent mode or details. A leg with unknown mode uses a neutral icon. |
 | Conflicts the user has not resolved | Print the stored value, no conflict markers. |
+
+Other rules from the WP2 build
+- Legs on one day share one table. A leg that starts where the previous leg in the table ended gets the note "Connects at <place>". The table has no date column because the date line above it carries the date.
+- Text on a leg, stay or table row (a reflection, or a source review) prints under the table. With several legs in one table it does not say which leg it belongs to. Fix later if it matters in practice.
+- Consecutive days at one place (photo source) read as one visit with a date range. A second place on the same day shares the first one's date line.
+- Inside a trip, each narrative entry's date line carries "Day N of the journey". Table rows have their own date column and get no label.
+- A year chapter opens a trip section with the trip name, dates and rating, then the trip's reflection. A trip chapter (trip mode) leaves the name out because the chapter title is the trip. A trip that crosses New Year prints its rating and reflection once, in the last year.
+- A loosely dated entry (month or year precision) carries that precision so a renderer shows just the month or year rather than inventing a day.
+- Series containers are not printed yet.
 
 Not exported: "new" indicators, source icons, dismissed or hidden entries, staging state, raw source IDs.
 
@@ -147,7 +156,7 @@ Each package is tested and committed on one branch (`feat/book-export`), in orde
 
 - [ ] **WP0 Spike.** *Harness built and desktop baseline done; device run pending. See `docs/specs/book-export-wp0-note.md`.* Produce a 100 page PDF with `expo-print` from realistic data and about 30 resampled photos on the real device. Check page size, font embedding, memory and time. Output: a short decision note on whether `expo-print` is good enough or a PDF library is needed.
 - [x] **WP1 `BookModel` and query.** Build the model from a date range and filters over the existing feed query, including both chapter modes, exclusions and the sources list. Pure functions, unit tested with fixture data from the existing importers. *Built in* `src/lib/journal/book/` (`types.ts`, `build.ts`) with the feed predicates shared in `src/lib/journal/feedFilter.ts`. Sections list entries by id; WP2 fills `blocks`. The generation date is an input, so the same data and definition always give the same model.
-- [ ] **WP2 Block mapping.** Event type to block mapping from section 7, including transport and event tables, ratings, reflections, participants.
+- [x] **WP2 Block mapping.** Event type to block mapping from section 7, including transport and event tables, ratings, reflections, participants. *Built in* `src/lib/journal/book/blocks.ts`; `buildBookModel` now fills every section's `blocks`.
 - [ ] **WP3 Markdown renderer.** `book.md` plus `media/` and the zip package.
 - [ ] **WP4 Photos.** Vault media selection, resampling for both outputs, caching, memory limits, EXIF ordering.
 - [ ] **WP5 PDF renderer.** Implement the renderer WP0 selected: title page, colophon, contents, page numbers, chapter breaks, A4 and A5.

@@ -367,9 +367,10 @@ describe("model shape", () => {
     expect(bare.meta.language).toBe("en");
   });
 
-  test("blocks are empty until WP2 and the model is plain JSON", () => {
+  test("every section has blocks and the model is plain JSON", () => {
     const m = buildBookModel(data, def(), OPTS);
-    for (const c of m.chapters) for (const s of c.sections) expect(s.blocks).toEqual([]);
+    for (const c of m.chapters)
+      for (const s of c.sections) expect(s.blocks.length).toBeGreaterThan(0);
     expect(JSON.parse(JSON.stringify(m))).toEqual(m);
   });
 

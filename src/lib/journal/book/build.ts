@@ -9,6 +9,8 @@
  * left empty here and sections carry `entryIds`.
  */
 import { entryHasPerson, matchesFilter } from "../feedFilter";
+import { buildSectionBlocks } from "./blocks";
+import { entryDay, sourceDisplayName } from "./common";
 import { view, type Entry, type JournalData, type Trip } from "../types";
 import type {
   BookChapter,
@@ -18,11 +20,6 @@ import type {
   BuildOptions,
   TripRef,
 } from "./types";
-
-/** Local calendar day of an entry, after user overrides. */
-export function entryDay(e: Entry): string {
-  return view(e).start.slice(0, 10);
-}
 
 /** Same journal-visible set the feed uses: not hidden, and only accepted place entries. */
 function visibleEntries(data: JournalData): Entry[] {
@@ -68,23 +65,6 @@ export function selectBookEntries(data: JournalData, def: BookDefinition): Entry
       return true;
     })
     .sort(compareEntries);
-}
-
-// Display names for the colophon ("Compiled by Chronicle from: ...").
-// Unlisted connector ids fall back to the id itself. "manual" is not a source.
-const SOURCE_NAMES: Record<string, string> = {
-  icalendar: "Calendar",
-  viaduct: "viaduct.world",
-  setlistfm: "setlist.fm",
-  goodreads: "Goodreads",
-  letterboxd: "Letterboxd",
-  netflix: "Netflix",
-  "photo-library": "Photo library",
-  generic: "CSV import",
-};
-
-export function sourceDisplayName(id: string): string {
-  return SOURCE_NAMES[id] ?? id;
 }
 
 /** Sorted display names of every source that contributed to these entries. */
@@ -278,6 +258,22 @@ export function buildBookModel(
     def.chapterMode === "trip"
       ? buildTripChapters(entries, tripById)
       : buildYearChapters(entries, tripById);
+
+  // WP2: fill each section's print blocks from its entries.
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const ctx = { people: data.people, places: data.localityPlaces ?? [], trips: data.trips };
+  for (const chapter of chapters) {
+    for (const section of chapter.sections) {
+      const sectionEntries = section.entryIds.map((id) => byId.get(id)!);
+      section.blocks = buildSectionBlocks(
+        section.kind,
+        section.trip,
+        chapter.kind,
+        sectionEntries,
+        ctx,
+      );
+    }
+  }
 
   return {
     meta: {
