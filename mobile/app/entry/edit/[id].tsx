@@ -627,7 +627,8 @@ function seedFor(entry: Entry, kind: EditableKind): Record<string, unknown> {
   const seed: Record<string, unknown> = { start: v.start };
   switch (kind) {
     case "stay":
-      Object.assign(seed, { place: (v.kind === "event" && v.venue) || title, city: v.city, end: v.end });
+      // The calendar importer also makes a stay's place from the event title, so do the same.
+      Object.assign(seed, { place: title, city: v.city, end: v.end });
       break;
     case "event":
       Object.assign(seed, { category: "gathering", artist: title, venue: "", city: v.city ?? "", country: v.country });
