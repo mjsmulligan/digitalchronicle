@@ -6,13 +6,11 @@
  * is a plain object the spike screen shows and the user can share back.
  */
 import { Platform } from "react-native";
-import { Asset } from "expo-asset";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as MediaLibrary from "expo-media-library/legacy";
 import * as Print from "expo-print";
-import { Lora_400Regular, Lora_400Regular_Italic, Lora_700Bold } from "@expo-google-fonts/lora";
-import { Fraunces_600SemiBold } from "@expo-google-fonts/fraunces";
+import { loadBookFonts } from "./bookFonts";
 import { buildBookModel } from "@chronicle/journal/book";
 import {
   PAGE_PX,
@@ -69,28 +67,6 @@ export interface SpikeResult {
 }
 
 const now = () => Date.now();
-
-async function assetBase64(moduleId: number): Promise<string> {
-  const asset = Asset.fromModule(moduleId);
-  await asset.downloadAsync();
-  const uri = asset.localUri ?? asset.uri;
-  return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-}
-
-async function loadFonts(): Promise<SpikeFont[]> {
-  const [lora, loraItalic, loraBold, fraunces] = await Promise.all([
-    assetBase64(Lora_400Regular),
-    assetBase64(Lora_400Regular_Italic),
-    assetBase64(Lora_700Bold),
-    assetBase64(Fraunces_600SemiBold),
-  ]);
-  return [
-    { family: "Lora", weight: 400, style: "normal", base64: lora },
-    { family: "Lora", weight: 400, style: "italic", base64: loraItalic },
-    { family: "Lora", weight: 700, style: "normal", base64: loraBold },
-    { family: "Fraunces", weight: 600, style: "normal", base64: fraunces },
-  ];
-}
 
 /** Most recent library photos, resampled one at a time to bound memory. */
 async function loadPhotos(
@@ -155,7 +131,7 @@ export async function runSpike(config: SpikeConfig): Promise<SpikeResult> {
   };
   try {
     let t = now();
-    const fonts = await loadFonts();
+    const fonts = await loadBookFonts();
     ms.fonts = now() - t;
 
     t = now();
