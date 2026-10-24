@@ -44,6 +44,14 @@ describe("parseFlight", () => {
     expect(f.warnings).toEqual([]);
   });
 
+  it("reads a bare code after the place name in location (\"Dublin DUB\")", () => {
+    const f = parseFlight({ summary: "Flight to Stuttgart (EW 2775)", location: "Dublin DUB" })!;
+    expect(f.from.code).toBe("DUB");
+    expect(f.to.code).toBe("STR");
+    expect(f.flightNumber).toBe("EW2775");
+    expect(f.warnings).toEqual([]);
+  });
+
   it("reads the departure airport from a plain airport name in location", () => {
     const f = parseFlight({ summary: "Flight to Faro (FR 123)", location: "Dublin Airport, Dublin" })!;
     expect(f.from.code).toBe("DUB");
@@ -150,12 +158,14 @@ describe("icalendar connector: flights end to end", () => {
     expect(r.entries[0].warnings).toEqual([]);
   });
 
-  it("an unresolved flight keeps ??? and shows the place name", () => {
+  it("an unresolved flight stores the place name directly and emits a warning", () => {
+    // "Flight to Paris" — origin unknown, destination name extracted but ambiguous.
+    // from/to now carry the best available text rather than "???".
     const r = parse(["DTSTART:20261015T060000Z", "DTEND:20261015T090000Z", "SUMMARY:Flight to Paris"].join("\r\n"));
     const leg = r.entries[0].entry as Leg;
-    expect(leg.from).toBe("???");
-    expect(leg.to).toBe("???");
-    expect(leg.toName).toBe("Paris");
+    expect(leg.from).toBe("");       // origin unknown → empty string
+    expect(leg.to).toBe("Paris");    // destination name stored directly in `to`
+    expect(leg.toName).toBeUndefined(); // no longer needed as a separate field
     expect(r.entries[0].warnings.length).toBeGreaterThan(0);
   });
 });

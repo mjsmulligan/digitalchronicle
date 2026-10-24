@@ -5,56 +5,8 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@chronicle/journal/types": [
-        "../src/lib/journal/types"
-      ],
-      "@chronicle/journal/storage": [
-        "../src/lib/journal/storage"
-      ],
-      "@chronicle/journal/db": [
-        "../src/lib/journal/db"
-      ],
-      "@chronicle/journal/staging": [
-        "../src/lib/journal/staging"
-      ],
-      "@chronicle/journal/import": [
-        "../src/lib/journal/import"
-      ],
-      "@chronicle/journal/connectors/*": [
-        "../src/lib/journal/connectors/*"
-      ],
-      "@chronicle/journal/contacts": [
-        "../src/lib/journal/contacts"
-      ],
-      "@chronicle/journal/evaluation": [
-        "../src/lib/journal/evaluation"
-      ],
-      "@chronicle/journal/merge": [
-        "../src/lib/journal/merge"
-      ],
-      "@chronicle/journal/artwork": [
-        "../src/lib/journal/artwork"
-      ],
-      "@chronicle/journal/artworkEnrichment": [
-        "../src/lib/journal/artworkEnrichment"
-      ],
-      "@chronicle/journal/artworkProvider": [
-        "../src/lib/journal/artworkProvider"
-      ],
-      "@chronicle/journal/bookCoverProvider": [
-        "../src/lib/journal/bookCoverProvider"
-      ],
-      "@chronicle/journal/artistImageProvider": [
-        "../src/lib/journal/artistImageProvider"
-      ],
-      "@chronicle/journal/sources/exif/*": [
-        "../src/lib/journal/sources/exif/*"
-      ],
-      "@chronicle/journal/book": [
-        "../src/lib/journal/book"
-      ],
-      "@chronicle/journal/book/*": [
-        "../src/lib/journal/book/*"
+      "@chronicle/journal/*": [
+        "../src/lib/journal/*"
       ]
     }
   },

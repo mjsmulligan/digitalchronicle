@@ -8,21 +8,11 @@ module.exports = function (api) {
         {
           root: ["./src"],
           alias: {
-            "@chronicle/journal/types": "../src/lib/journal/types",
-            "@chronicle/journal/storage": "../src/lib/journal/storage",
-            "@chronicle/journal/db": "../src/lib/journal/db",
-            "@chronicle/journal/staging": "../src/lib/journal/staging",
-            "@chronicle/journal/import": "../src/lib/journal/import",
-            "@chronicle/journal/connectors": "../src/lib/journal/connectors",
-            "@chronicle/journal/contacts": "../src/lib/journal/contacts",
-            "@chronicle/journal/merge": "../src/lib/journal/merge",
-            "@chronicle/journal/artwork": "../src/lib/journal/artwork",
-            "@chronicle/journal/artworkProvider": "../src/lib/journal/artworkProvider",
-            "@chronicle/journal/artworkEnrichment": "../src/lib/journal/artworkEnrichment",
-            "@chronicle/journal/bookCoverProvider": "../src/lib/journal/bookCoverProvider",
-            "@chronicle/journal/artistImageProvider": "../src/lib/journal/artistImageProvider",
-            "@chronicle/journal/sources/exif": "../src/lib/journal/sources/exif",
-            "@chronicle/journal/book": "../src/lib/journal/book",
+            // One prefix alias covers every module under src/lib/journal
+            // (types, db, airports, evaluation, connectors/*, sources/exif/*, ...).
+            // Do not list modules individually: a missing entry breaks the
+            // release bundle with "Unable to resolve module".
+            "@chronicle/journal": "../src/lib/journal",
           },
           extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
         },

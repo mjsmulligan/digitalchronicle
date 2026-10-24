@@ -17,12 +17,15 @@ import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
-import { view, CATEGORY_LABEL, entryTitle, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { TripPicker } from "../../src/components/TripPicker";
+import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { resolveAirportText } from "@chronicle/journal/airports";
 import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { SourceMark } from "../../src/components/SourceMark";
+import { sourceLabel } from "@chronicle/journal/connectors/registry";
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -97,19 +100,6 @@ function modeLabel(mode: Leg["mode"]): string {
   return mode === "air" ? "Flight" : mode === "rail" ? "Train" : "Drive";
 }
 
-function sourceLabel(source?: string): string {
-  const map: Record<string, string> = {
-    letterboxd:       "Letterboxd",
-    netflix:          "Netflix",
-    goodreads:        "Goodreads",
-    viaduct:          "Viaduct",
-    "setlist.fm":     "Setlist.fm",
-    "photo-library":  "Photo library",
-    manual:           "Manual",
-  };
-  return source ? (map[source] ?? source) : "Unknown";
-}
-
 // ── shared prop types ─────────────────────────────────────────────────────────
 
 type DetailStyles = {
@@ -142,14 +132,80 @@ function Divider({ styles }: { styles: Pick<DetailStyles, "divider"> }) {
   return <View style={styles.divider} />;
 }
 
+type RawStyles = DetailStyles & {
+  rawToggle: StyleProp<ViewStyle>;
+  rawBox: StyleProp<ViewStyle>;
+  rawRow: StyleProp<ViewStyle>;
+  rawKey: StyleProp<TextStyle>;
+  rawValue: StyleProp<TextStyle>;
+};
+
+function rawDisplay(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "(empty)";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+}
+
+/**
+ * The source record exactly as the importer stored it, so a bad field (a flight
+ * with no From/To, say) can be traced back to what the source actually said.
+ * Collapsed by default; text is selectable so it can be copied.
+ */
+function RawImportData({ raw, styles, color }: { raw?: Record<string, unknown>; styles: RawStyles; color: string }) {
+  const [open, setOpen] = useState(false);
+  const keys = raw ? Object.keys(raw) : [];
+  return (
+    <View>
+      <Divider styles={styles} />
+      <Pressable
+        style={styles.rawToggle}
+        onPress={() => setOpen((o) => !o)}
+        accessibilityRole="button"
+        accessibilityLabel="Raw import data"
+        accessibilityState={{ expanded: open }}
+      >
+        <Text style={styles.fieldLabel}>Raw import data</Text>
+        <Ionicons name={open ? "chevron-up" : "chevron-down"} size={14} color={color} />
+      </Pressable>
+      {open && (
+        <View style={styles.rawBox}>
+          {keys.length === 0 ? (
+            <Text style={styles.rawValue}>No raw data was kept for this entry.</Text>
+          ) : (
+            keys.map((k) => (
+              <View key={k} style={styles.rawRow}>
+                <Text style={styles.rawKey} selectable>{k}</Text>
+                <Text style={styles.rawValue} selectable>{rawDisplay(raw![k])}</Text>
+              </View>
+            ))
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // ── per-kind detail blocks ────────────────────────────────────────────────────
 
 function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; iconColors: IconColors }) {
   const v = view(e);
   if (v.kind !== "leg") return null;
+  // "Dublin (DUB)" when the city name differs from the raw code; just the label otherwise.
+  // Empty codes (unknown origin/destination) show "–".
+  const locLabel = (code: string, name?: string) => {
+    const label = name ?? locationLabel(code);
+    if (!label) return "–";
+    // Show the IATA code only for multi-airport cities (LHR vs LGW, CDG vs ORY).
+    // Single-airport cities like Dublin don't need the code alongside the city name.
+    const isMultiAirport = label !== code
+      && /^[A-Z]{3}$/.test(code)
+      && (resolveAirportText(label).candidates?.length ?? 0) > 1;
+    return isMultiAirport ? `${label} (${code})` : label;
+  };
   return (
     <>
-      <Text style={styles.title}>{v.fromName ?? v.from} {"→"} {v.toName ?? v.to}</Text>
+      <Text style={styles.title}>{v.fromName ?? (locationLabel(v.from) || "–")} {"→"} {v.toName ?? (locationLabel(v.to) || "–")}</Text>
       <View style={styles.subtitleRow}>
         <KindIcon kind="leg" subkind={v.mode} size={15} color={iconColors.secondary} />
         <Text style={styles.subtitle}>{modeLabel(v.mode)}</Text>
@@ -157,8 +213,8 @@ function LegDetail({ e, styles, iconColors }: { e: Leg; styles: DetailStyles; ic
       <Divider styles={styles} />
       <Field label="Date" value={fmt(v.start)} styles={styles} />
       {v.end && <Field label="Arrival" value={fmt(v.end)} styles={styles} />}
-      <Field label="From" value={v.fromName ? `${v.fromName} (${v.from})` : v.from} styles={styles} />
-      <Field label="To" value={v.toName ? `${v.toName} (${v.to})` : v.to} styles={styles} />
+      <Field label="From" value={locLabel(v.from, v.fromName)} styles={styles} />
+      <Field label="To"   value={locLabel(v.to,   v.toName)}   styles={styles} />
       <Field label="Flight" value={v.flightNumber} styles={styles} />
       <Field label="Aircraft" value={v.aircraft} styles={styles} />
       <Field label="Operator" value={v.operator} styles={styles} />
@@ -412,6 +468,7 @@ export default function EntryDetailScreen() {
   const [mergeVisible, setMergeVisible] = useState(false);
   const [mergeSaving, setMergeSaving] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
+  const [tripPickerVisible, setTripPickerVisible] = useState(false);
   const { width: screenW, height: screenH } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -479,6 +536,11 @@ export default function EntryDetailScreen() {
     },
     sourceFieldRow: { flexDirection: "row", alignItems: "center", paddingVertical: 5, gap: spacing.base },
     sourceValue:    { flexDirection: "row", alignItems: "center", gap: 6, flex: 1, justifyContent: "flex-end" },
+    rawToggle: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
+    rawBox:    { paddingBottom: spacing.sm, gap: spacing.sm },
+    rawRow:    { gap: 2 },
+    rawKey:    { ...text.smMd, fontFamily: fonts.mono, color: colors.textTertiary, fontWeight: "600" },
+    rawValue:  { ...text.sm, fontFamily: fonts.mono, color: colors.textDim },
 
     notFound:     { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
     notFoundText: { ...text.lg, color: colors.textTertiary },
@@ -665,6 +727,17 @@ export default function EntryDetailScreen() {
     .map((pid) => journal.people.find((p) => p.id === pid)?.name ?? pid)
     .join(", ");
 
+  const linkedTrip = journal.trips.find((t) => t.id === entry.tripId);
+
+  const handleTripConfirm = async (id: string | undefined) => {
+    try {
+      await saveUserEdit({ ...entry, tripId: id });
+    } catch (err) {
+      dialog.alert("Could not save", String(err));
+    }
+    setTripPickerVisible(false);
+  };
+
   const reflection = entry.reflection ?? (entry as any).journal;
   const reflectionLocked = isLocked(entry, "reflection");
   const ratingLocked = isLocked(entry, "rating");
@@ -764,6 +837,22 @@ export default function EntryDetailScreen() {
         </View>
       </Pressable>
 
+      {/* Trip — always visible; tap to assign/change/unlink */}
+      <Pressable
+        style={({ pressed }) => [styles.metaCard, pressed && { opacity: 0.7 }]}
+        onPress={() => setTripPickerVisible(true)}
+      >
+        <View style={styles.sourceFieldRow}>
+          <Text style={styles.fieldLabel}>Trip</Text>
+          <View style={[styles.sourceValue, { gap: 4 }]}>
+            <Text style={[styles.fieldValue, !linkedTrip && { color: colors.textMuted }]} numberOfLines={1}>
+              {linkedTrip?.title ?? "Add to trip…"}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+          </View>
+        </View>
+      </Pressable>
+
       {/* Source */}
       <View style={styles.metaCard}>
         <View style={styles.sourceFieldRow}>
@@ -786,6 +875,7 @@ export default function EntryDetailScreen() {
             {s.sourceRef && <Field label="Ref" value={s.sourceRef} styles={styles} />}
           </View>
         ))}
+        <RawImportData raw={entry.raw} styles={styles} color={colors.textMuted} />
       </View>
     </>
   );
@@ -911,6 +1001,13 @@ export default function EntryDetailScreen() {
       people={journal.people}
       onConfirm={handleParticipantsConfirm}
       onDismiss={() => setPickerVisible(false)}
+    />
+    <TripPicker
+      visible={tripPickerVisible}
+      selectedId={entry.tripId}
+      trips={journal.trips}
+      onConfirm={handleTripConfirm}
+      onDismiss={() => setTripPickerVisible(false)}
     />
     <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>

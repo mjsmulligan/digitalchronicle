@@ -64,6 +64,7 @@ function parseViaduct(text: string): ParseResult {
         "Train number",
         "Service",
         "train_code",
+        "line_number",
       ]),
       seat: pick(r, ["Seat", "Coach/Seat"]),
       reflection: pick(r, ["Notes", "Note"]) || undefined,

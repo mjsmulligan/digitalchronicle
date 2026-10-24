@@ -204,12 +204,13 @@ describe("icalendar connector", () => {
       expect(leg.flightNumber).toBe("BA123");
     });
 
-    it("'Flight to Paris' → Leg with ??? placeholders and warning", () => {
+    it("'Flight to Paris' → Leg with place name in to and warning", () => {
+      // Ambiguous destination: place name is preserved in `to`, origin unknown → "".
       const { entries } = parseFlight("Flight to Paris");
       const leg = entries[0].entry as Leg;
       expect(leg.kind).toBe("leg");
-      expect(leg.from).toBe("???");
-      expect(leg.to).toBe("???");
+      expect(leg.from).toBe("");       // origin unknown
+      expect(leg.to).toBe("Paris");   // place name stored directly
       expect(entries[0].warnings.length).toBeGreaterThan(0);
     });
 
@@ -269,24 +270,28 @@ describe("icalendar connector", () => {
       expect(leg.to).toBe("Paris");
     });
 
-    it("'ICE123 Hamburg → Berlin' → Leg with trainNumber", () => {
+    it("'ICE123 Hamburg → Berlin' → Leg with trainNumber; service number stripped from from", () => {
+      // The improved extractor strips the service-number prefix from the origin side.
       const { entries } = parseTrain("ICE123 Hamburg → Berlin");
       const leg = entries[0].entry as Leg;
       expect(leg.kind).toBe("leg");
       expect(leg.mode).toBe("rail");
-      expect(leg.from).toBe("ICE123 Hamburg");
+      expect(leg.from).toBe("Hamburg"); // service number stripped
       expect(leg.to).toBe("Berlin");
       expect(leg.trainNumber).toBeDefined();
     });
 
-    it("'Train to Cork' → Leg with ??? placeholders and warning", () => {
+    it("'Train to Cork' → Leg with destination captured and origin warning", () => {
+      // Destination-only: "Train to Cork" now captures "Cork" as `to`
+      // and emits a warning about the unknown origin (not "no station names").
       const { entries } = parseTrain("Train to Cork");
       const leg = entries[0].entry as Leg;
       expect(leg.kind).toBe("leg");
       expect(leg.mode).toBe("rail");
-      expect(leg.from).toBe("???");
+      expect(leg.from).toBe("");     // origin unknown → empty string
+      expect(leg.to).toBe("Cork");  // destination captured
       expect(entries[0].warnings.length).toBeGreaterThan(0);
-      expect(entries[0].warnings[0]).toMatch(/station names/i);
+      expect(entries[0].warnings[0]).toMatch(/origin/i);
     });
 
     it("train does not set flightNumber", () => {
@@ -335,5 +340,54 @@ describe("icalendar connector", () => {
       if (r instanceof Promise) throw new Error("sync expected");
       expect(r.entries[0].entry.dedupeKey).toBe("event|2026-06-01|test event");
     });
+  });
+});
+
+describe("icalendar connector: hotel bookings and addresses", () => {
+  const ics = (extra: string) =>
+    ["BEGIN:VCALENDAR", "VERSION:2.0", "BEGIN:VEVENT", "UID:a@test", ...extra.split("\n"), "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+  const parse = (extra: string) => {
+    const r = connector.parse({ name: "h.ics", text: ics(extra) });
+    if (r instanceof Promise) throw new Error("sync expected");
+    return r;
+  };
+  const booking = [
+    "SUMMARY:EXAMPLE HOTEL SHENZHEN\\, 04 February\\, 2026 – 05 February\\, 2026\\, DOE Jane Ms",
+    "LOCATION:HAI DE SAN DAO\\, HOU HAI BIN RD\\,SHENZHEN\\,518054\\, CN\\,",
+    "DESCRIPTION:Hotel: EXAMPLE HOTEL SHENZHEN\\nAddress: HAI DE SAN DAO\\, HOU HAI BIN RD\\,SHENZHEN\\,518054\\, CN\\,\\nNo. of nights: 1\\nConfirmation: 12345",
+  ].join("\n");
+
+  it("a one-night hotel booking with date-only times is a Stay named after the hotel", () => {
+    const r = parse(`${booking}\nDTSTART;VALUE=DATE:20260204\nDTEND;VALUE=DATE:20260205`);
+    const s = r.entries[0].entry as Stay;
+    expect(s.kind).toBe("stay");
+    expect(s.place).toBe("EXAMPLE HOTEL SHENZHEN");
+    expect(s.city).toBe("SHENZHEN");
+    expect(s.start).toBe("2026-02-04");
+    expect(s.end).toBe("2026-02-05");
+  });
+
+  it("a timed hotel booking is also a Stay", () => {
+    const r = parse(`${booking}\nDTSTART:20260204T150000\nDTEND:20260205T120000`);
+    const s = r.entries[0].entry as Stay;
+    expect(s.kind).toBe("stay");
+    expect(s.end).toBe("2026-02-05");
+  });
+
+  it("takes the end from No. of nights when DTEND does not help", () => {
+    const r = parse(`${booking.replace("nights: 1", "nights: 3")}\nDTSTART;VALUE=DATE:20260204`);
+    expect((r.entries[0].entry as Stay).end).toBe("2026-02-07");
+  });
+
+  it("skips trailing postcode and country code when finding the city", () => {
+    const r = parse("SUMMARY:Dinner\nLOCATION:Some Place\\, 1 High St\\, Cork\\, T12 AB34\\, IE\nDTSTART:20260204T190000\nDTEND:20260204T210000");
+    const e = r.entries[0].entry as JEvent;
+    expect(e.venue).toBe("Some Place");
+    expect(e.city).toBe("Cork");
+  });
+
+  it("a plain event with only a Hotel: line is not turned into a stay", () => {
+    const r = parse("SUMMARY:Chat\nDESCRIPTION:Hotel: lobby bar\nDTSTART:20260204T190000\nDTEND:20260204T200000");
+    expect(r.entries[0].entry.kind).toBe("event");
   });
 });

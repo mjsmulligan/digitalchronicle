@@ -8,7 +8,9 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "
 import { useDialog, Dialog } from "../../src/components/Dialog";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
-import { entryTitle, view, type Entry, type Trip, type Leg } from "@chronicle/journal/types";
+import { entryTitle, view, type Entry, type Trip, type Leg, type Stay, type Person } from "@chronicle/journal/types";
+import { PersonAvatar } from "../../src/components/PersonAvatar";
+import { TripPicker } from "../../src/components/TripPicker";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
 import { EntryRow } from "../../src/components/EntryRow";
@@ -46,10 +48,6 @@ function groupByDay(entries: Entry[]): TripDayGroup[] {
   return [...map.entries()].map(([iso, items]) => ({ iso, items }));
 }
 
-const PURPOSE_KIND: Record<string, string> = {
-  leisure: "leisure", work: "work", family: "family",
-};
-
 // ── data ──────────────────────────────────────────────────────────────────────
 
 interface TripDayGroup {
@@ -76,7 +74,6 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     },
     headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 },
     tripDateRange: { ...textScale.sm, color: colors.textTertiary, fontFamily: fonts.mono, flex: 1 },
-    purposeIconWrap: { marginLeft: spacingScale.sm },
     tripTitle: {
       fontSize: 22,
       fontFamily: fonts.serifBold,
@@ -89,6 +86,24 @@ function createStyles(colors: ThemeColors, fonts: ThemeFonts) {
     tripMetaDot:  { ...textScale.smMd, color: colors.textMuted },
     tripMetaSuggested: { ...textScale.smMd, color: colors.accentSoft, fontWeight: "600" },
     tripNotes: { ...textScale.md, color: colors.textSecondary, marginTop: 10 },
+
+    // Participants strip
+    participantsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacingScale.sm,
+      marginTop: spacingScale.sm,
+      flexWrap: "wrap",
+    },
+    participantsAvatars: {
+      flexDirection: "row",
+      gap: 3,
+    },
+    participantsText: {
+      ...textScale.sm,
+      color: colors.textSecondary,
+      flex: 1,
+    },
 
     // Per-type entry breakdown
     statRow: {
@@ -325,6 +340,7 @@ export default function TripDetailScreen() {
 
   const [addingAll, setAddingAll] = useState(false);
   const [addingId,  setAddingId]  = useState<string | null>(null);
+  const [mergePickerVisible, setMergePickerVisible] = useState(false);
   const dialog = useDialog();
 
   const trip = useMemo<Trip | undefined>(
@@ -338,6 +354,28 @@ export default function TripDetailScreen() {
       .filter((e) => e.tripId === trip.id)
       .sort(compareEntriesChronological);
   }, [journal, trip]);
+
+  const participants = useMemo<Person[]>(() => {
+    if (!trip) return [];
+    const seen = new Set<string>();
+    const ids: string[] = [];
+    for (const e of entries) {
+      for (const pid of e.participants ?? []) {
+        if (!seen.has(pid)) { seen.add(pid); ids.push(pid); }
+      }
+    }
+    return ids
+      .map((pid) => journal.people.find((p) => p.id === pid))
+      .filter((p): p is Person => p !== undefined);
+  }, [entries, journal.people, trip]);
+
+  const uniqueCities = useMemo<number>(() => {
+    const cities = entries
+      .filter((e) => e.kind === "stay")
+      .map((e) => (e as Stay).city)
+      .filter(Boolean);
+    return new Set(cities).size;
+  }, [entries]);
 
   const suggestions = useMemo<Entry[]>(() => {
     if (!trip) return [];
@@ -415,6 +453,43 @@ export default function TripDetailScreen() {
           router.replace("/(tabs)/trips");
         } catch (err) {
           dialog.alert("Failed to dissolve trip", String(err));
+        }
+      }
+    );
+  };
+
+  const mergeTrip = (otherId: string | undefined) => {
+    setMergePickerVisible(false);
+    if (!otherId || !trip) return;
+    const other = journal.trips.find((t) => t.id === otherId);
+    if (!other) return;
+    dialog.confirm(
+      `Merge "${other.title}" into "${trip.title}"?`,
+      `All entries from "${other.title}" will move here. Its trip record will be removed. This cannot be undone.`,
+      "Merge",
+      async () => {
+        try {
+          // Re-link all of the other trip's entries to this trip
+          const otherEntries = allEntries(journal).filter((e) => e.tripId === other.id);
+          const byStore = new Map<string, Entry[]>();
+          for (const e of otherEntries) {
+            const s = storeFor(e);
+            if (!byStore.has(s)) byStore.set(s, []);
+            byStore.get(s)!.push(e);
+          }
+          for (const [store, items] of byStore) {
+            await putMany(store, items.map((e) => ({ ...e, tripId: trip.id })));
+          }
+          // Expand this trip's date range to cover the other trip
+          const newStart = trip.start < other.start ? trip.start : other.start;
+          const newEnd   = trip.end   > other.end   ? trip.end   : other.end;
+          if (newStart !== trip.start || newEnd !== trip.end) {
+            await putMany("trips", [{ ...trip, start: newStart, end: newEnd }]);
+          }
+          // Delete the other trip
+          await removeMany("trips", [other.id]);
+        } catch (err) {
+          dialog.alert("Merge failed", String(err));
         }
       }
     );
@@ -510,6 +585,13 @@ export default function TripDetailScreen() {
                     <Ionicons name="trash-outline" size={22} color={colors.textMuted} />
                   </Pressable>
                   <Pressable
+                    onPress={() => setMergePickerVisible(true)}
+                    style={{ padding: 8 }}
+                    accessibilityLabel="Merge with another trip"
+                  >
+                    <Ionicons name="git-merge-outline" size={22} color={colors.textMuted} />
+                  </Pressable>
+                  <Pressable
                     onPress={() => router.push(`/trip/edit/${trip.id}`)}
                     style={{ padding: 8 }}
                     accessibilityLabel="Edit trip"
@@ -523,33 +605,38 @@ export default function TripDetailScreen() {
           {/* Trip summary card */}
           {(() => {
             const headerStats: { kind: string; subkind?: string; count: number }[] = [
-              { kind: "leg",   subkind: "air",  count: entries.filter((e) => e.kind === "leg"   && (e as Leg).mode === "air").length  },
-              { kind: "leg",   subkind: "rail", count: entries.filter((e) => e.kind === "leg"   && (e as Leg).mode === "rail").length },
-              { kind: "stay",                   count: entries.filter((e) => e.kind === "stay").length  },
-              { kind: "event",                  count: entries.filter((e) => e.kind === "event").length },
+              { kind: "leg",     subkind: "air",  count: entries.filter((e) => e.kind === "leg"     && (e as Leg).mode === "air").length  },
+              { kind: "leg",     subkind: "rail", count: entries.filter((e) => e.kind === "leg"     && (e as Leg).mode === "rail").length },
+              { kind: "stay",                     count: entries.filter((e) => e.kind === "stay").length    },
+              { kind: "event",                    count: entries.filter((e) => e.kind === "event").length   },
+              { kind: "film",                     count: entries.filter((e) => e.kind === "film").length    },
+              { kind: "book",                     count: entries.filter((e) => e.kind === "book").length    },
+              { kind: "episode",                  count: entries.filter((e) => e.kind === "episode").length },
             ].filter((s) => s.count > 0);
+
+            const participantNames = participants.slice(0, 3).map((p) => p.name.split(" ")[0]);
+            const participantOverflow = participants.length > 3 ? ` +${participants.length - 3}` : "";
+
             return (
               <View style={styles.headerCard}>
                 <View style={styles.headerTop}>
                   <Text style={styles.tripDateRange}>
                     {fmt(trip.start)} {"→"} {fmt(trip.end)}
                   </Text>
-                  {trip.purpose && (
-                    <View style={styles.purposeIconWrap}>
-                      <KindIcon
-                        kind={PURPOSE_KIND[trip.purpose] ?? "location"}
-                        size={18}
-                        color={colors.textSecondary}
-                        accessibilityLabel=""
-                      />
-                    </View>
-                  )}
                 </View>
                 <Text style={styles.tripTitle}>{trip.title}</Text>
                 <View style={styles.tripMeta}>
                   <Text style={styles.tripMetaText}>
                     {n} {n === 1 ? "night" : "nights"}
                   </Text>
+                  {uniqueCities > 0 && (
+                    <>
+                      <Text style={styles.tripMetaDot}>{"·"}</Text>
+                      <Text style={styles.tripMetaText}>
+                        {uniqueCities} {uniqueCities === 1 ? "city" : "cities"}
+                      </Text>
+                    </>
+                  )}
                   <Text style={styles.tripMetaDot}>{"·"}</Text>
                   <Text style={styles.tripMetaText}>
                     {entries.length} {entries.length === 1 ? "entry" : "entries"}
@@ -579,6 +666,18 @@ export default function TripDetailScreen() {
                     ))}
                   </View>
                 )}
+                {participants.length > 0 && (
+                  <View style={styles.participantsRow}>
+                    <View style={styles.participantsAvatars}>
+                      {participants.slice(0, 5).map((p) => (
+                        <PersonAvatar key={p.id} person={p} size={22} colors={colors} fonts={fonts} />
+                      ))}
+                    </View>
+                    <Text style={styles.participantsText} numberOfLines={1}>
+                      {participantNames.join(", ")}{participantOverflow}
+                    </Text>
+                  </View>
+                )}
                 {trip.rating !== undefined && (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
                     <StarRating rating={trip.rating} color={colors.star} size={14} />
@@ -602,6 +701,15 @@ export default function TripDetailScreen() {
         ) : null
       }
       contentContainerStyle={styles.content}
+    />
+    <TripPicker
+      visible={mergePickerVisible}
+      selectedId={undefined}
+      trips={journal.trips.filter((t) => t.id !== trip.id)}
+      onConfirm={mergeTrip}
+      onDismiss={() => setMergePickerVisible(false)}
+      title="Merge with…"
+      hideNoTrip
     />
     <Dialog {...dialog.props} onDismiss={dialog.dismiss} />
     </>

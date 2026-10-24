@@ -53,10 +53,13 @@ import { makeSyncPrefsStorage } from "../src/lib/syncPrefsStorage";
 import { makeGoodreadsSource } from "../src/lib/goodreadsSource";
 import { makeCalendarSource } from "../src/lib/calendarSource";
 import { makePhotoSource } from "../src/lib/exif/photoSource";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as FileSystem from "expo-file-system";
 
 const ENRICH_STALE_MS = 6 * 60 * 60 * 1000; // 6 hours
-const LAST_ENRICHED_KEY = "lastEnrichedAt";
+// expo-file-system is already a listed dependency; we persist the timestamp
+// as a plain text file rather than using @react-native-async-storage/async-storage
+// to avoid adding a new native dependency just for one timestamp.
+const LAST_ENRICHED_PATH = (FileSystem.documentDirectory ?? "") + "lastEnrichedAt.txt";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -166,13 +169,13 @@ function RootLayoutInner() {
           // cache this avoids hundreds of serial SQLite reads that cost time for
           // zero network output. On-demand resolution in PosterCard handles any
           // stragglers that arrive between runs.
-          const lastEnriched = await AsyncStorage.getItem(LAST_ENRICHED_KEY);
+          const lastEnriched = await FileSystem.readAsStringAsync(LAST_ENRICHED_PATH, { encoding: FileSystem.EncodingType.UTF8 }).catch(() => null);
           const enrichIsStale =
             !lastEnriched ||
             Date.now() - new Date(lastEnriched).getTime() > ENRICH_STALE_MS;
           if (enrichIsStale) {
             enrichAll(allEntries(getState()))
-              .then(() => AsyncStorage.setItem(LAST_ENRICHED_KEY, new Date().toISOString()))
+              .then(() => FileSystem.writeAsStringAsync(LAST_ENRICHED_PATH, new Date().toISOString(), { encoding: FileSystem.EncodingType.UTF8 }))
               .catch((e) => console.warn("[Chronicle] enrichAll failed:", e));
           }
         } catch (artworkErr) {

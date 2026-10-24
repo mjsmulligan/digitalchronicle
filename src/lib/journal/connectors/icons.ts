@@ -138,6 +138,15 @@ export const SOURCE_MARKS: Record<string, SourceMarkDef> = {
   // Iarnród Éireann / Irish Rail — double-diamond hexagon mark, traced from official SVG.
   // Outer silhouette of the five-triangle logo (viewBox 1–499 × 1–333), normalised to 24×24.
   "irish-rail": { type: "text", label: "IE", bg: "#3e6f15", fg: "#ffffff" },
+
+  // ── Additional rail operators ─────────────────────────────────────────────
+  "abellio":          { type: "text", label: "AB",  bg: "#003E7E", fg: "#ffffff" },
+  "bls":              { type: "text", label: "BLS", bg: "#C8202F", fg: "#ffffff" },
+  "trenord":          { type: "text", label: "TN",  bg: "#006633", fg: "#ffffff" },
+  "vr-finland":       { type: "text", label: "VR",  bg: "#00A551", fg: "#ffffff" },
+  "national-express": { type: "text", label: "NX",  bg: "#003399", fg: "#ffffff" },
+  "jungfraubahn":     { type: "text", label: "JB",  bg: "#C8202F", fg: "#ffffff" },
+  "zentralbahn":      { type: "text", label: "ZB",  bg: "#003082", fg: "#ffffff" },
 };
 
 // ── Operator name aliases ─────────────────────────────────────────────────────
@@ -273,12 +282,56 @@ const OPERATOR_ALIASES: Record<string, string> = {
   "sn": "brussels-airlines",
   // National Rail
   "national rail": "national-rail",
+  // National Express
+  "national express": "national-express",
+  "national express group": "national-express",
   // Irish Rail / Iarnród Éireann
   "irish rail": "irish-rail",
   "iarnród éireann": "irish-rail",
   "iarnrod eireann": "irish-rail",
   "dart": "irish-rail",
   "commuter rail ireland": "irish-rail",
+  // SNCF full name + regional franchises
+  "société nationale des chemins de fer français": "sncf",
+  "societe nationale des chemins de fer francais": "sncf",
+  "nomad - région normandie": "sncf",
+  "nomad région normandie": "sncf",
+  "nomad normandie": "sncf",
+  // SBB full German name
+  "schweizerische bundesbahnen": "sbb",
+  // DB Regio
+  "db regio": "db-fernverkehr",
+  "db regio ag": "db-fernverkehr",
+  // Abellio
+  "abellio": "abellio",
+  "abellio rail": "abellio",
+  // BLS
+  "bls ag": "bls",
+  "bls": "bls",
+  // Trenord
+  "trenord": "trenord",
+  // VR (Finnish Railways)
+  "vr-yhtymä": "vr-finland",
+  "vr yhtyma": "vr-finland",
+  "vr yhtymä": "vr-finland",
+  "vr group": "vr-finland",
+  // Jungfraubahnen group (Swiss mountain railways)
+  "jungfraubahnen": "jungfraubahn",
+  "jungfrau railways": "jungfraubahn",
+  "wengernalpbahn": "jungfraubahn",
+  "berner-oberland-bahnen": "jungfraubahn",
+  "berner oberland bahnen": "jungfraubahn",
+  "montreux-berner oberland-bahn": "jungfraubahn",
+  "montreux berner oberland bahn": "jungfraubahn",
+  // Zentralbahn
+  "zentralbahn": "zentralbahn",
+  // Regional German operators — use DB branding as closest match
+  "bayrische regiobahn": "db-fernverkehr",
+  "bayerische oberlandbahn": "db-fernverkehr",
+  "regionalverkehre start deutschland": "db-fernverkehr",
+  "sweg südwestdeutsche landesverkehrs gmbh": "db-fernverkehr",
+  "sweg": "db-fernverkehr",
+  "bodensee-oberschwaben-bahn": "db-fernverkehr",
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
