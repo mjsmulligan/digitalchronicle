@@ -180,6 +180,29 @@ export async function markSourceChecked(
   await storage.set(`lastError_${id}`, null);
 }
 
+/**
+ * Forget every source's check history after the journal database is reset.
+ *
+ * Sources keep their progress (lastCheckedAt, lastError) in the prefs file, not in
+ * the database, so a reset leaves them believing they are up to date: the calendar
+ * would only re-read the last week and every source would wait out the 6-hour
+ * throttle. Clearing the history makes the next check a first-time read.
+ *
+ * Connections and settings are kept (connected calendars, the Goodreads user, the
+ * per-source and master auto-check switches). The photo scan marker is left alone on
+ * purpose: the startup photo check is capped, so rewinding it would import part of
+ * the library and then skip the rest. A manual scan from the Sources page has no cap.
+ */
+export async function resetSourceProgress(
+  storage: SyncStorage = requireStorage(),
+  sources: SourceDef[] = _registry
+): Promise<void> {
+  for (const source of sources) {
+    await storage.set(`lastCheckedAt_${source.id}`, null);
+    await storage.set(`lastError_${source.id}`, null);
+  }
+}
+
 export async function setSourceAutoCheck(
   id: string,
   enabled: boolean,

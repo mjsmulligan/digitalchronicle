@@ -8,6 +8,8 @@ import { describe, test, expect, beforeEach } from "vitest";
 import {
   runConnectedSources,
   markSourceChecked,
+  resetSourceProgress,
+  registerSource,
   setDefaultStorage,
   _resetRegistry,
   SIX_HOURS_MS,
@@ -185,6 +187,55 @@ describe("runConnectedSources", () => {
     const stored = await storage.get("lastCheckedAt_s");
     expect(stored).not.toBeNull();
     expect(Math.abs(Date.now() - new Date(stored!).getTime())).toBeLessThan(5000);
+  });
+
+});
+
+describe("resetSourceProgress", () => {
+
+  test("clears lastCheckedAt and lastError for every registered source", async () => {
+    registerSource(makeSource("a"));
+    registerSource(makeSource("b"));
+    storage.seed("lastCheckedAt_a", new Date().toISOString());
+    storage.seed("lastError_a", "Error: Permission needed");
+    storage.seed("lastCheckedAt_b", new Date().toISOString());
+
+    await resetSourceProgress(storage);
+
+    expect(await storage.get("lastCheckedAt_a")).toBeNull();
+    expect(await storage.get("lastError_a")).toBeNull();
+    expect(await storage.get("lastCheckedAt_b")).toBeNull();
+  });
+
+  test("keeps the auto-check switches and unrelated keys", async () => {
+    registerSource(makeSource("a"));
+    storage.seed("autoCheck_a", "false");
+    storage.seed("autoCheckMasterEnabled", "false");
+    storage.seed("photoLibraryScanMarker", "kept");
+    storage.seed("lastCheckedAt_a", new Date().toISOString());
+
+    await resetSourceProgress(storage);
+
+    expect(await storage.get("autoCheck_a")).toBe("false");
+    expect(await storage.get("autoCheckMasterEnabled")).toBe("false");
+    expect(await storage.get("photoLibraryScanMarker")).toBe("kept");
+  });
+
+  test("a source checked just before the reset runs again straight away, past the 6-hour throttle", async () => {
+    const src = makeSource("a");
+    registerSource(src);
+    storage.seed("lastCheckedAt_a", new Date().toISOString());
+
+    await runConnectedSources(undefined, storage);
+    expect(src.calls).toBe(0); // throttled, as before the fix
+
+    await resetSourceProgress(storage);
+    await runConnectedSources(undefined, storage);
+    expect(src.calls).toBe(1);
+  });
+
+  test("does nothing when no sources are registered", async () => {
+    await expect(resetSourceProgress(storage)).resolves.toBeUndefined();
   });
 
 });
