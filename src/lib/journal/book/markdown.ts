@@ -9,6 +9,7 @@
  * blockquotes with attribution; reflections are italic paragraphs.
  */
 import { formatDay } from "./blocks";
+import { dateLineText } from "./dateLine";
 import type { Block, BookModel } from "./types";
 
 export interface MarkdownMedia {
@@ -44,21 +45,6 @@ const ICON_LABELS: Record<string, string> = {
   hotel: "Stay",
 };
 
-const MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
-
 function iconLabel(icon: string): string {
   return ICON_LABELS[icon] ?? icon.charAt(0).toUpperCase() + icon.slice(1);
 }
@@ -88,22 +74,6 @@ function lines(text: string): string[] {
 function cell(text: string): string {
   const c = escapeInline(text.replace(/\s*\n\s*/g, " ").trim());
   return c === "" ? " " : c;
-}
-
-function dateText(b: Extract<Block, { type: "dateLine" }>): string | undefined {
-  let text: string;
-  if (b.precision === "unknown") return b.label ? escapeInline(b.label) : undefined;
-  if (b.precision === "year") {
-    text = b.date.slice(0, 4);
-  } else if (b.precision === "month") {
-    text = `${MONTH_NAMES[Number(b.date.slice(5, 7)) - 1]} ${b.date.slice(0, 4)}`;
-  } else {
-    text = formatDay(b.date);
-    if (b.endDate && b.endDate !== b.date) text += ` to ${formatDay(b.endDate)}`;
-    if (b.time) text += `, ${b.time}`;
-  }
-  if (b.label) text += ` · ${b.label}`;
-  return escapeInline(text);
 }
 
 export function renderMarkdown(model: BookModel, opts: MarkdownOptions = {}): MarkdownResult {
@@ -157,8 +127,8 @@ export function renderMarkdown(model: BookModel, opts: MarkdownOptions = {}): Ma
         return;
       }
       case "dateLine": {
-        const t = dateText(b);
-        if (t) para(`**${t}**`);
+        const t = dateLineText(b);
+        if (t) para(`**${escapeInline(t)}**`);
         return;
       }
       case "paragraph": {
