@@ -294,6 +294,63 @@ describe("icalendar connector", () => {
       expect(entries[0].warnings[0]).toMatch(/origin/i);
     });
 
+    describe("origin from LOCATION when the title has only a destination", () => {
+      function parseTrainAt(summary: string, location?: string) {
+        const ics = [
+          "BEGIN:VCALENDAR",
+          "BEGIN:VEVENT",
+          "DTSTART;TZID=Europe/Dublin:20260920T171500",
+          "DTEND;TZID=Europe/Dublin:20260920T181500",
+          `SUMMARY:${summary}`,
+          ...(location ? [`LOCATION:${location}`] : []),
+          "END:VEVENT",
+          "END:VCALENDAR",
+        ].join("\n");
+        const r = connector.parse({ name: "device-calendar.ics", text: ics });
+        if (r instanceof Promise) throw new Error("sync expected");
+        return r.entries[0];
+      }
+
+      it("'Train to Köln/Bonn Flughafen' at 'Leverkusen Mitte' → From and To both set, no warning", () => {
+        const e = parseTrainAt("Train to Köln/Bonn Flughafen", "Leverkusen Mitte");
+        const leg = e.entry as Leg;
+        expect(leg.mode).toBe("rail");
+        expect(leg.from).toBe("Leverkusen Mitte");
+        expect(leg.to).toBe("Köln/Bonn Flughafen");
+        expect(e.warnings).toHaveLength(0);
+      });
+
+      it("uses only the first part of a full address", () => {
+        const leg = parseTrainAt("Train to Cork", "Heuston Station, Dublin 8, Ireland").entry as Leg;
+        expect(leg.from).toBe("Heuston Station");
+        expect(leg.to).toBe("Cork");
+      });
+
+      it("does not use LOCATION when it just repeats the destination", () => {
+        const e = parseTrainAt("Train to Cork", "Cork");
+        expect((e.entry as Leg).from).toBe("");
+        expect(e.warnings[0]).toMatch(/origin/i);
+      });
+
+      it("keeps the origin from the title when both are present", () => {
+        const leg = parseTrainAt("Train London to Edinburgh", "Somewhere Else").entry as Leg;
+        expect(leg.from).toBe("London");
+      });
+
+      it("without a LOCATION, still warns about the unknown origin", () => {
+        const e = parseTrainAt("Train to Cork");
+        expect((e.entry as Leg).from).toBe("");
+        expect(e.warnings[0]).toMatch(/origin/i);
+      });
+
+      it("does not guess an origin when the title has no destination either", () => {
+        const e = parseTrainAt("Train", "Leverkusen Mitte");
+        const leg = e.entry as Leg;
+        expect(leg.from).toBe("");
+        expect(leg.to).toBe("");
+      });
+    });
+
     it("train does not set flightNumber", () => {
       const { entries } = parseTrain("Train London → Edinburgh");
       const leg = entries[0].entry as Leg;

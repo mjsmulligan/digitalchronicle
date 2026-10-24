@@ -11,7 +11,8 @@
  *     against the bundled airport table (see flights.ts).
  *   - ATTENDEE/ORGANIZER display names are kept as free-text `companions`; matching them
  *     to people happens at import time (peopleMatch.ts).
- *   - Summary contains "train"/"rail"/"eurostar"/etc. → Leg (mode: rail)
+ *   - Summary contains "train"/"rail"/"eurostar"/etc. → Leg (mode: rail). When the title
+ *     gives only a destination ("Train to X"), LOCATION is used as the origin.
  *   - All-day single-day or timed event → JEvent
  *   - Events with RRULE (recurring) → skipped, warning emitted
  *
@@ -212,6 +213,15 @@ function extractTrainFromTo(summary: string): { from: string; to: string } | nul
   return null;
 }
 
+/**
+ * Departure station from a LOCATION value: the first comma-separated part, so
+ * "Heuston Station, Dublin 8, Ireland" gives "Heuston Station" and a bare
+ * "Leverkusen Mitte" is used as is. Empty when there is no location.
+ */
+function originFromLocation(location: string): string {
+  return location.split(",")[0]?.trim() ?? "";
+}
+
 interface TransportInfo {
   mode: "air" | "rail";
   /** IATA code, free-text place name, or "" when unknown. Never "???". */
@@ -249,17 +259,25 @@ function detectTransport(summary: string, location: string, description: string 
   if (TRAIN_KW_RE.test(summary) || TRAIN_NUM_RE.test(summary)) {
     const fromTo = extractTrainFromTo(summary);
     const numMatch = TRAIN_NUM_RE.exec(summary);
+    const to = fromTo?.to ?? "";
+    // Calendar events built from booking emails ("Train to Köln/Bonn Flughafen") carry
+    // the destination in the title and the departure station in LOCATION. Use it as the
+    // origin only when the title gave none and a destination is known, and never when it
+    // just repeats the destination.
+    let from = fromTo?.from ?? "";
+    if (!from && to) {
+      const locOrigin = originFromLocation(location);
+      if (locOrigin && locOrigin.toLowerCase() !== to.toLowerCase()) from = locOrigin;
+    }
     // Warn only when we have no destination at all (partial matches with a known
     // destination are still useful — the user just needs to fill in the origin).
-    const missingDest = !fromTo?.to;
-    const missingFrom = !fromTo?.from;
     const warnings: string[] = [];
-    if (missingDest) warnings.push("No station names found — fill in From/To before confirming");
-    else if (missingFrom) warnings.push("Origin station unknown — fill in From before confirming");
+    if (!to) warnings.push("No station names found — fill in From/To before confirming");
+    else if (!from) warnings.push("Origin station unknown — fill in From before confirming");
     return {
       mode: "rail",
-      from: fromTo?.from ?? "",
-      to:   fromTo?.to   ?? "",
+      from,
+      to,
       serviceNumber: numMatch ? numMatch[0].replace(/\s+/, "") : undefined,
       warnings,
     };
