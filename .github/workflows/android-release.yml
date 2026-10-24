@@ -24,6 +24,9 @@ jobs:
 
     env:
       HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      # TMDB poster lookups. Expo inlines EXPO_PUBLIC_* values when Metro bundles the JS, so
+      # this must be set for the Gradle build. Either secret name works.
+      EXPO_PUBLIC_TMDB_API_KEY: ${{ secrets.EXPO_PUBLIC_TMDB_API_KEY || secrets.TMDB_API_KEY }}
 
     steps:
       - name: Check out repository
@@ -62,6 +65,12 @@ jobs:
           else
             echo "::warning::No ANDROID_KEYSTORE_BASE64 secret found. Building a release APK signed with the DEBUG key."
             echo "Signed with the debug key (no release keystore secret configured)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Note poster key
+        run: |
+          if [ -z "$EXPO_PUBLIC_TMDB_API_KEY" ]; then
+            echo "::warning::No TMDB key (secret EXPO_PUBLIC_TMDB_API_KEY or TMDB_API_KEY). The app will build without film and TV posters."
           fi
 
       - name: Prebuild Android native project (Expo)
