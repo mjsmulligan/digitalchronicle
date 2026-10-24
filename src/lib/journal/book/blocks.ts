@@ -213,7 +213,7 @@ function eventRow(raw: JEvent, ctx: BlockContext): TableRow {
   };
 }
 
-function placeName(e: PlaceEntry, ctx: BlockContext): { name: string; detail: string } {
+export function placeName(e: PlaceEntry, ctx: BlockContext): { name: string; detail: string } {
   const place = ctx.places.find((p) => p.id === e.placeId);
   if (place) {
     return {
