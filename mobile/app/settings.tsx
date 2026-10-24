@@ -12,7 +12,7 @@ import { clearAll, allEntries, allHiddenEntries, markAllReviewed, useJournal } f
 import { useTheme, THEMES } from "../src/components/ThemeProvider";
 import { useHomePrefs } from "../src/lib/useHomePrefs";
 import { getPosterFetchEnabled, setPosterFetchEnabled, getBookCoverFetchEnabled, setBookCoverFetchEnabled } from "../src/lib/posterPrefs";
-import { getMasterAutoCheck, setMasterAutoCheck } from "../src/lib/connectedSources";
+import { getMasterAutoCheck, setMasterAutoCheck, resetSourceProgress } from "../src/lib/connectedSources";
 import { setFetchPostersEnabled, setFetchBookCoversEnabled } from "@chronicle/journal/artworkEnrichment";
 import { artworkStorage } from "@chronicle/journal/artwork";
 
@@ -271,6 +271,13 @@ export default function SettingsScreen() {
         setClearing(true);
         try {
           await clearAll();
+          // Connected sources track their progress outside the database, so tell them
+          // the journal is empty and their next check should re-read everything.
+          try {
+            await resetSourceProgress();
+          } catch (e) {
+            console.warn("Failed to reset source progress", e);
+          }
         } finally {
           setClearing(false);
         }
