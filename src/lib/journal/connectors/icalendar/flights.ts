@@ -154,12 +154,15 @@ function routeIn(text: string): Route {
   return {};
 }
 
-/** LOCATION is the departure airport on generated flight events. */
+/** LOCATION is the departure airport on generated flight events: "Dublin Airport (DUB)", "Dublin DUB" or a plain airport name. */
 function originFromLocation(location: string): FlightEndpoint | undefined {
   const text = location.trim();
   if (!text) return undefined;
   const parenthesised = /\(([A-Z]{3})\)/.exec(text);
   if (parenthesised && isAirportCode(parenthesised[1])) return { code: parenthesised[1] };
+  // A bare code beside the place name: "Dublin DUB" (Google Calendar's generated flights).
+  const [bare] = codesIn(text);
+  if (bare) return { code: bare };
   const r = resolveAirportText(text.split(",")[0]);
   return r.code ? { code: r.code } : undefined;
 }
