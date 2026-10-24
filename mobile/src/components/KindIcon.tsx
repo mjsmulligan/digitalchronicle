@@ -28,7 +28,7 @@ function resolveIcon(kind: string, subkind?: string): { name: IoniconName; label
       if (subkind === "milestone")   return { name: "trophy",          label: "Milestone" };
       if (subkind === "gathering")   return { name: "chatbubbles-outline", label: "Gathering" };
       if (subkind === "memory")      return { name: "heart-outline",   label: "Memory" };
-      if (subkind === "activity")    return { name: "bicycle-outline", label: "Activity" };
+      if (subkind === "activity")    return { name: "compass-outline", label: "Activity" };
       return                                { name: "calendar-outline", label: "Event" };
     // Trip purpose
     case "leisure": return { name: "sunny",     label: "Leisure" };
