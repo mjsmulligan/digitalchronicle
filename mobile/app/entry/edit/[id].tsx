@@ -721,6 +721,35 @@ export default function EditEntryScreen() {
     notFoundText: { ...text.lg, color: colors.textTertiary },
   }), [colors, fonts, spacing, radius]);
 
+  // NOTE: every hook must run before the early returns below. A cross-kind save hides the
+  // original entry, so this screen re-renders with `entry` undefined; a hook placed after
+  // those returns made React throw "rendered fewer hooks" and crash the app.
+  // Build a default "empty" version of the selected kind's edit fields so
+  // the sub-form is properly initialised when switching kinds.
+  const syntheticEntry = useMemo(() => {
+    if (!entry || selectedKind === entry.kind) return entry;
+    const blankBase = {
+      id: entry.id,
+      source: "manual" as const,
+      tier: 1 as Tier,
+      start: entry.start,
+      dedupeKey: entry.dedupeKey,
+      createdAt: entry.createdAt,
+    };
+    // A minimal valid entry of the new kind, filled with whatever carries over from the old one
+    const seed = seedFor(entry, selectedKind);
+    if (selectedKind === "leg")     return { ...blankBase, kind: "leg", mode: "air", from: "", to: "", ...seed } as Leg;
+    if (selectedKind === "stay")    return { ...blankBase, kind: "stay", place: "", ...seed } as Stay;
+    if (selectedKind === "event")   return { ...blankBase, kind: "event", category: "gathering", artist: "", venue: "", city: "", ...seed } as JEvent;
+    if (selectedKind === "film")    return { ...blankBase, kind: "film", title: "", ...seed } as Film;
+    if (selectedKind === "episode") return { ...blankBase, kind: "episode", showTitle: "", ...seed } as Episode;
+    if (selectedKind === "book")    return { ...blankBase, kind: "book", title: "", author: "", ...seed } as Book;
+    return entry;
+  }, [selectedKind, entry]);
+
+  // Saved and navigating away: the original is now hidden, so show nothing instead of "not found".
+  if (!entry && saving) return null;
+
   if (!entry) {
     return (
       <View style={styles.notFound}>
@@ -783,7 +812,8 @@ export default function EditEntryScreen() {
           ...(entry.rating    !== undefined ? { rating:     entry.rating    } : {}),
           ...(entry.reflection               ? { reflection: entry.reflection } : {}),
           ...(entry.review                   ? { review:     entry.review    } : {}),
-          ...(entry.overrides                ? { overrides:  entry.overrides } : {}),
+          // Overrides are not copied: seedFor() already applied them, and keys from the old kind
+          // would shadow what the user enters for the new one.
           // Keep what the source originally said, so it can still be traced after a type change
           ...(entry.raw                      ? { raw:        entry.raw       } : {}),
           ...(entry.sourceRef                ? { sourceRef:  entry.sourceRef } : {}),
@@ -866,29 +896,6 @@ export default function EditEntryScreen() {
       setSaving(false);
     }
   };
-
-  // Build a default "empty" version of the selected kind's edit fields so
-  // the sub-form is properly initialised when switching kinds.
-  const syntheticEntry = useMemo(() => {
-    if (selectedKind === entry.kind) return entry;
-    const blankBase = {
-      id: entry.id,
-      source: "manual" as const,
-      tier: 1 as Tier,
-      start: entry.start,
-      dedupeKey: entry.dedupeKey,
-      createdAt: entry.createdAt,
-    };
-    // A minimal valid entry of the new kind, filled with whatever carries over from the old one
-    const seed = seedFor(entry, selectedKind);
-    if (selectedKind === "leg")     return { ...blankBase, kind: "leg", mode: "air", from: "", to: "", ...seed } as Leg;
-    if (selectedKind === "stay")    return { ...blankBase, kind: "stay", place: "", ...seed } as Stay;
-    if (selectedKind === "event")   return { ...blankBase, kind: "event", category: "gathering", artist: "", venue: "", city: "", ...seed } as JEvent;
-    if (selectedKind === "film")    return { ...blankBase, kind: "film", title: "", ...seed } as Film;
-    if (selectedKind === "episode") return { ...blankBase, kind: "episode", showTitle: "", ...seed } as Episode;
-    if (selectedKind === "book")    return { ...blankBase, kind: "book", title: "", author: "", ...seed } as Book;
-    return entry;
-  }, [selectedKind, entry]);
 
   return (
     <>
