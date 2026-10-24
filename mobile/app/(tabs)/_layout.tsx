@@ -18,8 +18,17 @@ function HeaderRight({
   pendingCount: number;
 }) {
   const { colors } = useTheme();
+  const onFeed = usePathname() === "/";
   return (
     <View style={{ flexDirection: "row", gap: 4, marginRight: 8 }}>
+      {/* Book export (docs/specs/book-export.md): feed only */}
+      {onFeed && (
+        <Link href="/books" push asChild>
+          <Pressable style={{ padding: 8 }} accessibilityLabel="Make a book">
+            <Ionicons name="book-outline" size={22} color={colors.accentSoft} />
+          </Pressable>
+        </Link>
+      )}
       {/* Sources — covers file imports + photo library suggestions */}
       <Link href="/sources" push asChild>
         <Pressable style={{ padding: 8 }}>
