@@ -12,6 +12,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
 
+    env:
+      # TMDB poster lookups. Expo inlines EXPO_PUBLIC_* values when Metro bundles the JS, so
+      # this must be set for the Gradle build. Either secret name works.
+      EXPO_PUBLIC_TMDB_API_KEY: ${{ secrets.EXPO_PUBLIC_TMDB_API_KEY || secrets.TMDB_API_KEY }}
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -38,6 +43,12 @@ jobs:
       # versions the generated project asks for.
       - name: Accept Android SDK licences
         run: yes | sdkmanager --licenses > /dev/null || true
+
+      - name: Note poster key
+        run: |
+          if [ -z "$EXPO_PUBLIC_TMDB_API_KEY" ]; then
+            echo "::warning::No TMDB key (secret EXPO_PUBLIC_TMDB_API_KEY or TMDB_API_KEY). The app will build without film and TV posters."
+          fi
 
       - name: Prebuild Android native project (Expo)
         working-directory: mobile

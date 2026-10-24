@@ -251,7 +251,7 @@ export class TmdbProvider implements ArtworkProvider {
     if (source === "tmdb") {
       // Direct TMDB id — use the movie/tv details endpoint
       const endpoint = mediaType === "movie" ? "movie" : "tv";
-      const params = new URLSearchParams({ api_key: this.apiKey, language: "en-US" });
+      const params = new URLSearchParams({ language: "en-US" });
       try {
         const data = await this.fetchJson<TmdbMovieDetail | TmdbTvDetail>(
           `${TMDB_BASE}/${endpoint}/${id}?${params}`,
