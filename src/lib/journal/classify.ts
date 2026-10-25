@@ -31,11 +31,11 @@ export function buildDedupeIndex(entries: Iterable<Entry>): Map<string, Entry> {
 const NOT_SOURCE_FIELDS = new Set([
   "id", "source", "dedupeKey", "createdAt", "sourceRef", "sourceLocked",
   "importId", "importNotes", "unreviewed", "hidden",
-  "overrides", "reflection", "participants", "tripId", "seriesId", "additionalSources",
+  "overrides", "reflection", "participants", "tripId", "seriesId", "additionalSources", "absorbed", "fieldSources",
 ]);
 
 /** Order-independent JSON, so two equal objects compare equal whatever their key order. */
-function stable(v: unknown): string {
+export function stable(v: unknown): string {
   return JSON.stringify(v, (_k, val) =>
     val && typeof val === "object" && !Array.isArray(val)
       ? Object.fromEntries(Object.entries(val as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
@@ -56,6 +56,8 @@ export function hasSourceChanges(incoming: Entry, existing: Entry): boolean {
   for (const key of Object.keys(inc)) {
     if (NOT_SOURCE_FIELDS.has(key) || overridden.has(key)) continue;
     if (inc[key] === undefined) continue;
+    // A field another row filled in (see fieldSources) is not contradicted by a blank here.
+    if (existing.fieldSources?.[key] !== undefined && (inc[key] === "" || inc[key] === null)) continue;
     if (stable(inc[key]) !== stable(old[key])) return true;
   }
   return false;

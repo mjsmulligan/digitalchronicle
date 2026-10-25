@@ -92,6 +92,14 @@ interface Base {
   /** Extra sources absorbed when two entries were merged. */
   additionalSources?: Array<{ source: string; sourceRef?: string }>;
   /**
+   * Rows an import folded into this entry (same key, other source or another row of
+   * the same file), kept so a wrong auto-merge can be split again (merge spec 4.8).
+   * At most MAX_ABSORBED, oldest dropped first. Never set by a manual merge.
+   */
+  absorbed?: Array<{ source: string; sourceRef?: string; entry: Entry }>;
+  /** For each field filled from another row: the `sourceRef` (or source id) it came from. */
+  fieldSources?: Record<string, string>;
+  /**
    * Soft-delete flag. When `true` the entry is excluded from all normal views
    * and helpers (allEntries, feeds, trip linking, etc.) but remains in the
    * database so it can be restored from Settings → Hidden Entries.

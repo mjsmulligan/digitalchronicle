@@ -145,15 +145,172 @@ describe("importFile: re-import", () => {
     expect(res.skipped.inFile).toBe(1);
     expect(legs()).toHaveLength(4);
   });
+});
 
-  test("a match from a different source is skipped for now, whichever source it is", async () => {
+// ─── enrich and same-file duplicates ─────────────────────────────────────────
+
+describe("importFile: enrich", () => {
+  const ENRICH_FIELDS = { operator: undefined, seat: undefined, trainNumber: undefined };
+
+  /** Stored legs as another source (a calendar) left them: reviewed, with gaps and user data. */
+  async function seedOtherSource() {
     await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
-    // The stored copies came from another source (the merge spec adds enrich in WP3).
-    await putMany("legs", legs().map((l) => ({ ...l, source: "other" })));
+    const seeded = legs().map((l, i) => {
+      const { unreviewed: _u, importNotes: _n, ...rest } = l;
+      return {
+        ...rest, ...ENRICH_FIELDS, source: "icalendar", sourceRef: `cal.ics#row${i + 1}`, reflection: undefined,
+        ...(i === 0 ? { reflection: "Best train of the trip", tripId: "trip1", participants: ["p1"], overrides: { from: "Berlin" } as Leg["overrides"] } : {}),
+      } as Leg;
+    });
+    await putMany("legs", seeded);
+    return seeded;
+  }
+
+  test("a second source fills the gaps, keeps the base source, and records itself", async () => {
+    const seeded = await seedOtherSource();
     const res = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(res.added).toBe(0);
+    expect(res.updated).toBe(4);
+    expect(legs()).toHaveLength(4);
+
+    for (const before of seeded) {
+      const after = legs().find((l) => l.id === before.id)!;
+      expect(after.source).toBe("icalendar");
+      expect(after.sourceRef).toBe(before.sourceRef);
+      expect(after.operator).toBeTruthy();
+      expect(after.trainNumber).toBeTruthy();
+      expect(after.unreviewed).toBe("updated");
+      expect(after.importId).toBe(res.run!.id);
+      expect(after.additionalSources).toHaveLength(1);
+      expect(after.additionalSources![0].source).toBe("viaduct");
+      expect(after.additionalSources![0].sourceRef).toMatch(/^sample\.csv#row\d+$/);
+      expect(after.absorbed).toHaveLength(1);
+      expect(after.absorbed![0].entry.source).toBe("viaduct");
+      expect(after.fieldSources!.operator).toBe(after.additionalSources![0].sourceRef);
+    }
+  });
+
+  test("the user's id, reflection, trip, participants and overrides survive", async () => {
+    const [first] = await seedOtherSource();
+    await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    const after = legs().find((l) => l.id === first.id)!;
+    expect(after.reflection).toBe("Best train of the trip");
+    expect(after.tripId).toBe("trip1");
+    expect(after.participants).toEqual(["p1"]);
+    expect(after.overrides).toEqual({ from: "Berlin" });
+  });
+
+  test("a value the base already has is never overwritten", async () => {
+    await seedOtherSource();
+    await putMany("legs", legs().map((l) => ({ ...l, operator: "My operator" })));
+    await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(legs().every((l) => l.operator === "My operator")).toBe(true);
+    // ...while the gaps next to it were still filled
+    expect(legs().every((l) => !!l.trainNumber)).toBe(true);
+  });
+
+  test("importing the same file again changes nothing", async () => {
+    await seedOtherSource();
+    await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    const snapshot = JSON.stringify(legs());
+    const again = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(again.run).toBeUndefined();
+    expect(again.skipped.duplicate).toBe(4);
+    expect(JSON.stringify(legs())).toBe(snapshot);
+  });
+
+  test("an entry that is still new stays new", async () => {
+    const seeded = await seedOtherSource();
+    await putMany("legs", seeded.map((l) => ({ ...l, unreviewed: "new" as const, importId: "earlier-run" })));
+    await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(legs().every((l) => l.unreviewed === "new")).toBe(true);
+  });
+
+  test("undoing the import puts the entries back as they were", async () => {
+    const seeded = await seedOtherSource();
+    const res = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    expect(res.run!.replaced).toHaveLength(4);
+    const { undoRun } = await import("../db");
+    expect(await undoRun(res.run!.id)).toEqual({ hidden: 0, restored: 4, kept: 0 });
+    for (const before of seeded) {
+      const after = legs().find((l) => l.id === before.id)!;
+      expect(after.operator).toBeUndefined();
+      expect(after.additionalSources).toBeUndefined();
+      expect(after.absorbed).toBeUndefined();
+    }
+  });
+
+  test("a later refresh from the base's own source keeps what another source filled in", async () => {
+    await seedOtherSource();
+    await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
+    // The calendar now reports a new end time for the first leg.
+    const first = legs()[0];
+    const changed = { ...first, end: "2026-05-17T12:00" } as Leg;
+    await putMany("legs", [changed]);
+    const { refreshFromSource } = await import("../merge");
+    const incoming = { ...first, end: "2026-05-17T13:30", operator: undefined, trainNumber: undefined, seat: undefined } as Leg;
+    const refreshed = refreshFromSource(changed, incoming);
+    expect(refreshed.end).toBe("2026-05-17T13:30");
+    expect(refreshed.operator).toBe(first.operator);
+    expect(refreshed.trainNumber).toBe(first.trainNumber);
+    expect(refreshed.additionalSources).toEqual(first.additionalSources);
+    expect(refreshed.fieldSources).toEqual(first.fieldSources);
+  });
+});
+
+describe("importFile: same key twice in one file", () => {
+  const header = "Date,Origin,Destination,Departure time,Arrival time,Operator,Train number,Seat,Notes";
+  const csv = [
+    header,
+    "2026-05-17,Berlin Hbf,Hamburg Hbf,09:34,11:20,DB,ICE 703,,",
+    "2026-05-17,Berlin Hbf,Hamburg Hbf,09:34,11:20,DB,ICE 703,Coach 5 / 61,",
+  ].join("\n");
+
+  test("the rows become one entry with both source references, and still count as inFile", async () => {
+    const res = await importFile("dup.csv", csv, { forced: "viaduct" });
+    expect(res.added).toBe(1);
+    expect(res.skipped.inFile).toBe(1);
+    expect(legs()).toHaveLength(1);
+    const leg = legs()[0];
+    expect(leg.seat).toBe("Coach 5 / 61"); // the gap the first row left
+    expect(leg.additionalSources).toHaveLength(1);
+    expect(leg.additionalSources![0].sourceRef).not.toBe(leg.sourceRef);
+    expect(leg.absorbed).toHaveLength(1);
+    expect(leg.fieldSources!.seat).toBe(leg.additionalSources![0].sourceRef);
+  });
+
+  test("where the rows disagree the first row's value is kept", async () => {
+    const conflicting = [header, "2026-05-17,Berlin Hbf,Hamburg Hbf,09:34,11:20,DB,ICE 703,Coach 1,", "2026-05-17,Berlin Hbf,Hamburg Hbf,09:34,11:20,DB,ICE 703,Coach 9,"].join("\n");
+    await importFile("dup.csv", conflicting, { forced: "viaduct" });
+    expect(legs()[0].seat).toBe("Coach 1");
+    expect(legs()[0].absorbed).toHaveLength(1);
+  });
+
+  test("importing the same file again is a no-op", async () => {
+    await importFile("dup.csv", csv, { forced: "viaduct" });
+    const snapshot = JSON.stringify(legs());
+    const again = await importFile("dup.csv", csv, { forced: "viaduct" });
+    expect(again.run).toBeUndefined();
+    expect(JSON.stringify(legs())).toBe(snapshot);
+  });
+
+  test("a third row is absorbed too, and only the last five are kept", async () => {
+    const rows = [header];
+    for (let i = 0; i < 8; i++) rows.push(`2026-05-17,Berlin Hbf,Hamburg Hbf,09:34,11:20,DB,ICE 703,Coach ${i},`);
+    const res = await importFile("many.csv", rows.join("\n"), { forced: "viaduct" });
+    expect(res.added).toBe(1);
+    expect(res.skipped.inFile).toBe(7);
+    expect(legs()[0].additionalSources).toHaveLength(7);
+    expect(legs()[0].absorbed).toHaveLength(5);
+  });
+
+  test("a hidden entry stays hidden, and its later rows are not merged anywhere", async () => {
+    await importFile("dup.csv", csv, { forced: "viaduct" });
+    await hideMany("legs", [legs()[0].id]);
+    const res = await importFile("dup.csv", csv, { forced: "viaduct" });
     expect(res.run).toBeUndefined();
-    expect(res.skipped.duplicate).toBe(4);
-    expect(legs().every((l) => l.source === "other")).toBe(true);
+    expect(res.skipped.removed).toBe(1);
+    expect(allHiddenEntries(getState())).toHaveLength(1);
   });
 });
 
