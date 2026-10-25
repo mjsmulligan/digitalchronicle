@@ -3,7 +3,7 @@
 **Status:** Draft v0.1 (25 Oct 2026). Decisions 1 to 3 in section 9 are confirmed by the user. The rest are proposed and marked as such.
 **Location:** `docs/specs/merge-dedup.md`
 **Branching:** one feature branch, `feat/merge-dedup`, one commit per work package, merged to main at milestones (same working mode as `sources-page.md`).
-**Platform focus:** shared engine in `src/lib/journal/`, mobile UI first. Web is affected only through the shared engine (section 8).
+**Platform focus:** shared engine in `src/lib/journal/`, mobile only for UI. Web gets no new work and will be dropped later (section 8).
 
 ---
 
@@ -51,7 +51,7 @@ Deduplication and merging in Chronicle grew organically and have three problems:
 ### Non-goals
 - Automatic merging of near matches.
 - Two-way sync with any source.
-- A web UI for merge (see section 8).
+- Any web work (see section 8).
 - Data migrations. The app is not live, so dev data can be reset and re-imported.
 
 ---
@@ -147,7 +147,7 @@ Two exported functions, same module, same field rules.
 - `base` keeps its `id`, `source`, `sourceRef` and `kind`. Nothing is forced to `manual`.
 - Fill gaps: any field empty on `base` (undefined, null, empty string or empty array) and present on `other` is copied, limited to the kind's `editableFields` plus `end`, `startTz`, `endTz`, `startUTC`, `endUTC`. Fields that differ and are not empty on both sides keep `base`'s value (conflicts are not stored).
 - `reflection`: concatenated when both exist, de-duplicated if identical, separator as today.
-- `review`: `base`'s wins. If `other` has a different review it is kept (see open question Q2).
+- `review`: `base`'s wins. `other`'s review is dropped when both have one (decision 10). Two sources with different reviews of the same entry is a rare edge case.
 - `rating`: `base`'s wins, else `other`'s, honouring `sourceLocked`. Fix the misleading comment.
 - `overrides`: union, `base` wins on collision. `participants`: union. `tripId`, `seriesId`: `base` wins, else `other`'s.
 - `additionalSources`: `base`'s existing, plus `other.source` and its own `additionalSources`, de-duplicated by source and `sourceRef`. The check compares against `base.source` only, and `source` is never overwritten.
@@ -247,7 +247,7 @@ Each WP is one commit unless it genuinely needs more. Do one at a time, then sto
 
 ## 8. Web impact
 
-Tier removal and the new classification are in the shared engine, so web imports change behaviour too (an unchanged re-import is still a no-op, a second source now enriches). `src/routes/import.tsx` copy mentioning the `tier` column is updated in WP1. A web merge and duplicates UI is out of scope for this spec (Q3).
+Web is not a focus and will be dropped completely at a later point. This spec adds no web UI and no web-specific work. The shared engine changes still affect web imports (tier removal, enrich), so while web exists keep it compiling and `bun run test` green. The only web edit is the minimal copy fix for the removed `tier` column in `src/routes/import.tsx` (WP1). Do not spend effort on web behaviour beyond that.
 
 ---
 
@@ -264,6 +264,8 @@ Tier removal and the new classification are in the shared engine, so web imports
 | 7 | 25 Oct 2026 | No data migration: the app is not live, dev data is reset and re-imported. | Proposed |
 | 8 | 25 Oct 2026 | Same-day same-key rows (same file or different sources) are merged into one entry with both source references. No occurrence suffix. | Confirmed |
 | 9 | 25 Oct 2026 | A final work package adds splitting a merged entry back into two events when the auto-merge was wrong. Auto-merges therefore record `absorbed` snapshots and per-field provenance (`fieldSources`). | Confirmed (WP) / Proposed (mechanism) |
+| 10 | 25 Oct 2026 | When two sources both have a review, keep the first and drop the other. | Confirmed |
+| 11 | 25 Oct 2026 | No web work in this spec. Web support will be dropped later. | Confirmed |
 
 ---
 
@@ -271,8 +273,8 @@ Tier removal and the new classification are in the shared engine, so web imports
 
 - **Q1: resolved.** Same-day collisions are merged with both source references (decision 8).
 - **Q5: keeping a split row split.** After a split, an incoming row with the original key would match the original entry again. Options: (a) store a hash of the split row's source fields on both entries (`separateRows`) and have `classify()` check it before the key lookup, so that row routes to the new entry; (b) give the new entry its own key with a suffix and keep a list of keys to route by row content. Recommendation: (a), with the hash built from the row's key fields plus `raw`.
-- **Q2: two different reviews.** When `base` and `other` both have a source review and they differ, keep only `base`'s, or keep both (for example `review` plus `additionalReviews`)? Recommendation: keep `base`'s and store `other`'s on `additionalSources[n].review`.
-- **Q3: web merge UI.** Does web get a merge and duplicates UI, or stay as import-only? Recommendation: out of scope until mobile settles.
+- **Q2: resolved.** Keep the first review, drop the other (decision 10).
+- **Q3: resolved.** No web work. Web support will be dropped completely later (decision 11).
 - **Q4: merging across kinds.** Same-kind only is proposed. Is there a real case for merging a leg into a stay or an event into a place entry? Recommendation: no.
 
 ---
