@@ -788,7 +788,6 @@ export default function EditEntryScreen() {
         }
         const updated = {
           ...entry,
-          source: "manual",
           overrides: Object.keys(newOverrides).length ? newOverrides : undefined,
           // Also apply non-override fields that belong on the entry directly
           ...(fieldPatch.start !== undefined ? { start: String(fieldPatch.start) } : {}),

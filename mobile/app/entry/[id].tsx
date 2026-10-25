@@ -658,11 +658,7 @@ export default function EntryDetailScreen() {
         setMergeVisible(false);
         try {
           const merged = mergeEntries(entry, other);
-          const updated = {
-            ...merged,
-            source: "manual" as const,
-          };
-          await saveUserEdit(updated as Entry);
+          await saveUserEdit(merged as Entry);
           await hideMany(storeFor(other), [other.id]);
         } catch (err) {
           dialog.alert("Merge failed", String(err));
