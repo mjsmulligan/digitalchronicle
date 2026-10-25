@@ -3,7 +3,7 @@
  * Logic moved verbatim from parsers.ts — no behaviour change.
  */
 import { uid } from "../../types";
-import type { JEvent, Leg, Stay, EventCategory, Tier } from "../../types";
+import type { JEvent, Leg, Stay, EventCategory } from "../../types";
 import { timezoneFor } from "../../geo";
 import { localToUTC } from "../../tz";
 import type { Connector, ParseResult } from "../types";
@@ -64,15 +64,13 @@ function parseGeneric(text: string): ParseResult {
       return out.errors.push(`Row ${sourceRow}: unreadable start/date`);
     const endRaw = pick(r, ["end", "checkout", "arrival", "enddate"]);
     const end = endRaw ? (normDate(endRaw) ?? undefined) : undefined;
-    const tierN = Number(pick(r, ["tier"]));
-    const tier = (tierN === 2 || tierN === 3 ? tierN : 3) as Tier;
+    // A legacy "tier" column in older files is ignored: sources have no precedence.
     const purpose = purposeFrom(r);
     const companions = companionsFrom(r);
     const raw = r;
     const base = {
       id: uid(),
       source: "generic",
-      tier,
       start,
       end,
       createdAt: now(),
@@ -169,7 +167,6 @@ export const connector: Connector = {
   id: "generic",
   label: "Generic / cleaned CSV or JSON",
   kind: "file",
-  tier: 3,
   accepts: [".csv", ".json", ".txt"],
   // No sniff — generic is always the fallback in detectConnector.
   parse({ text }) {

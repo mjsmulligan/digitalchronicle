@@ -9,7 +9,6 @@ describe("letterboxd connector", () => {
     expect(connector.id).toBe("letterboxd");
     expect(connector.label).toBe("Letterboxd diary / reviews");
     expect(connector.kind).toBe("file");
-    expect(connector.tier).toBe(2);
     expect(connector.accepts).toContain(".csv");
   });
 
@@ -21,13 +20,12 @@ describe("letterboxd connector", () => {
       expect(r.entries).toHaveLength(3);
     });
 
-    it("produces Film entries with correct source and tier", () => {
+    it("produces Film entries with correct source", () => {
       const r = connector.parse({ name: "diary.csv", text: diaryText });
       if (r instanceof Promise) throw new Error("expected sync parse");
       for (const { entry } of r.entries) {
         expect(entry.kind).toBe("film");
         expect(entry.source).toBe("letterboxd");
-        expect(entry.tier).toBe(2);
         expect(entry.datePrecision).toBe("day");
       }
     });

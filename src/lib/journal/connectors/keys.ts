@@ -1,9 +1,9 @@
 /**
  * Deduplication key builders.
  *
- * All keys are source-agnostic so that the tier system can arbitrate when the
- * same entry arrives from two different connectors (e.g. a setlist.fm import
- * and a generic CSV both recording the same concert).
+ * All keys are source-agnostic so that classify() can recognise the same entry
+ * arriving from two different connectors (e.g. a setlist.fm import and a
+ * generic CSV both recording the same concert).
  *
  * Format:
  *   leg:   leg|<date>|<FROM>|<TO>

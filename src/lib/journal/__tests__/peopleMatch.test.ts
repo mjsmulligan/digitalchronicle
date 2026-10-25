@@ -19,7 +19,7 @@ const index = buildPeopleIndex(people);
 
 function event(over: Partial<JEvent> = {}): JEvent {
   return {
-    id: "e1", source: "icalendar", tier: 3, createdAt: "2026-01-01T00:00:00Z",
+    id: "e1", source: "icalendar", createdAt: "2026-01-01T00:00:00Z",
     kind: "event", category: "gathering", artist: "Dinner", venue: "", city: "",
     start: "2026-03-01T19:00", dedupeKey: "event|2026-03-01|dinner",
     ...over,

@@ -17,8 +17,8 @@
  *   Tags          → ignored for now
  *
  * Merge workflow — import diary.csv first, then reviews.csv. The reviews file
- * shares the same dedup keys, so each entry hits the "supersedes" path in
- * commitBatch which already preserves `old.reflection ?? new.reflection`.
+ * shares the same dedup keys, so each entry hits the "refresh" path in
+ * importFile which already preserves `old.reflection ?? new.reflection`.
  * No special merge logic is needed here.
  */
 import { uid } from "../../types";
@@ -88,7 +88,6 @@ function parseLetterboxd(text: string): ParseResult {
       id: uid(),
       kind: "film",
       source: "letterboxd",
-      tier: 2,
       start: watchedDate,
       datePrecision: "day",
       title,
@@ -115,7 +114,6 @@ export const connector: Connector = {
   id: "letterboxd",
   label: "Letterboxd diary / reviews",
   kind: "file",
-  tier: 2,
   accepts: [".csv"],
   sniff(name, head) {
     const n = name.toLowerCase();

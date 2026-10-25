@@ -8,7 +8,6 @@ describe("icalendar connector", () => {
     expect(connector.id).toBe("icalendar");
     expect(connector.label).toBe("iCalendar (.ics)");
     expect(connector.kind).toBe("file");
-    expect(connector.tier).toBe(3);
     expect(connector.accepts).toContain(".ics");
   });
 
@@ -43,10 +42,9 @@ describe("icalendar connector", () => {
       expect(r.errors[0]).toMatch(/recurring/i);
     });
 
-    it("all entries have source=icalendar and tier=3", () => {
+    it("all entries have source=icalendar", () => {
       for (const { entry } of r.entries) {
         expect(entry.source).toBe("icalendar");
-        expect(entry.tier).toBe(3);
       }
     });
 

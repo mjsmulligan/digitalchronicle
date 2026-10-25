@@ -16,7 +16,7 @@
  *   - All-day single-day or timed event → JEvent
  *   - Events with RRULE (recurring) → skipped, warning emitted
  *
- * Tier 3: calendar files are secondary evidence — confirm or enrich in staging.
+ * Calendar files are secondary evidence: imported entries are flagged for review in the feed.
  */
 import { uid } from "../../types";
 import type { JEvent, Stay, Leg, EventCategory } from "../../types";
@@ -398,7 +398,6 @@ function parseIcs(text: string): ParseResult {
     const base = {
       id: uid(),
       source: SOURCE,
-      tier: 3 as const,
       createdAt: now(),
       review: description,
       // Free-text names from the invite. Matching them to people happens at import.
@@ -522,7 +521,6 @@ export const connector: Connector = {
   id: "icalendar",
   label: "iCalendar (.ics)",
   kind: "file",
-  tier: 3,
   accepts: [".ics"],
 
   sniff(name, head) {

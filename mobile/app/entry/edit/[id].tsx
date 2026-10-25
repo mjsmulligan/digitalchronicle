@@ -2,7 +2,7 @@
  * Edit entry screen.
  *
  * WP-E1  — field editing for legs (and other kinds).
- *           Same-kind edits write to `overrides` and promote entry to tier 1.
+ *           Same-kind edits write to `overrides`, which always win over source fields.
  * WP-E2  — kind selector at the top; cross-kind change creates a new entry
  *           with shared Base fields and deletes the original.
  */
@@ -34,7 +34,6 @@ import {
   type Book,
   type Mode,
   type EventCategory,
-  type Tier,
   type AnyOverrides,
 } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, spacing as themeSpacing, radius as themeRadius } from "../../../src/components/ThemeProvider";
@@ -731,7 +730,6 @@ export default function EditEntryScreen() {
     const blankBase = {
       id: entry.id,
       source: "manual" as const,
-      tier: 1 as Tier,
       start: entry.start,
       dedupeKey: entry.dedupeKey,
       createdAt: entry.createdAt,
@@ -790,7 +788,6 @@ export default function EditEntryScreen() {
         }
         const updated = {
           ...entry,
-          tier: 1 as Tier,
           source: "manual",
           overrides: Object.keys(newOverrides).length ? newOverrides : undefined,
           // Also apply non-override fields that belong on the entry directly
@@ -802,7 +799,6 @@ export default function EditEntryScreen() {
         const base = {
           id: uid(),
           source: "manual" as const,
-          tier: 1 as Tier,
           start: (fieldPatch.start as string) ?? entry.start,
           tripId: entry.tripId,
           participants: entry.participants,

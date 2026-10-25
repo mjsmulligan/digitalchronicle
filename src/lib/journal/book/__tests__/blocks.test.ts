@@ -331,7 +331,6 @@ describe("place entries", () => {
       id,
       kind: "place-entry",
       source: "photo-library",
-      tier: 2,
       createdAt: "",
       placeId: "pl-london",
       localityKey: "gb:london",

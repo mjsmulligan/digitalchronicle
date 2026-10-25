@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { mergeEntries } from "../merge";
 import type { Film } from "../types";
 
-const base = { id: "a", kind: "film" as const, source: "letterboxd", tier: 2 as const, start: "2023-01-01", dedupeKey: "film|foo|2023|2023-01-01", title: "Foo", createdAt: "2023-01-01T00:00:00Z" };
+const base = { id: "a", kind: "film" as const, source: "letterboxd", start: "2023-01-01", dedupeKey: "film|foo|2023|2023-01-01", title: "Foo", createdAt: "2023-01-01T00:00:00Z" };
 
 test("mergeEntries: concatenates both reflections", () => {
   const winner = { ...base, reflection: "my note" } as Film;

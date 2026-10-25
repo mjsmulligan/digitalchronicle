@@ -7,7 +7,6 @@ describe("viaduct connector", () => {
     expect(connector.id).toBe("viaduct");
     expect(connector.label).toBe("Viaduct rail CSV");
     expect(connector.kind).toBe("file");
-    expect(connector.tier).toBe(2);
     expect(connector.accepts).toContain(".csv");
   });
 
@@ -25,7 +24,6 @@ describe("viaduct connector", () => {
       expect(entry.kind).toBe("leg");
       expect((entry as { mode: string }).mode).toBe("rail");
       expect(entry.source).toBe("viaduct");
-      expect(entry.tier).toBe(2);
     }
   });
 

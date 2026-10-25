@@ -167,8 +167,8 @@ function hasJournalPlaces(data: Partial<JournalData>): boolean {
  * Recomputes Leg and Stay dedupeKeys from source-namespaced format
  * (e.g. "viaduct|leg|...") to source-agnostic format ("leg|...").
  * No-op on subsequent boots once all keys are already in the new format.
- * If the key change reveals true duplicates, the higher-precedence record
- * (lower tier, then reflection present, then earlier createdAt) is kept.
+ * If the key change reveals true duplicates, the record with a reflection is
+ * kept, then the one created earlier.
  */
 async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
   const legs = (data.legs ?? []) as Leg[];
@@ -192,12 +192,11 @@ async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
   );
 
   // If two records now share a key, keep the better one
-  function pick<T extends { id: string; tier: number; reflection?: string; createdAt: string }>(
+  function pick<T extends { id: string; reflection?: string; createdAt: string }>(
     items: T[],
   ): { keep: T; discard: T[] } {
     if (items.length === 1) return { keep: items[0], discard: [] };
     const sorted = [...items].sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier; // lower tier = higher precedence
       const aHasRef = !!a.reflection;
       const bHasRef = !!b.reflection;
       if (aHasRef !== bHasRef) return aHasRef ? -1 : 1;
@@ -251,8 +250,7 @@ async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
  * (e.g. "setlistfm|event|...") to source-agnostic format ("event|...").
  * No-op on subsequent boots once all keys already start with "event|".
  * If the key change reveals true duplicates (same date+artist from two sources),
- * the higher-precedence record (lower tier, then reflection present, then
- * earlier createdAt) is kept.
+ * the record with a reflection is kept, then the one created earlier.
  */
 async function migrateEventKeys(data: Partial<State>): Promise<void> {
   const events = (data.events ?? []) as JEvent[];
@@ -271,12 +269,11 @@ async function migrateEventKeys(data: Partial<State>): Promise<void> {
       : e,
   );
 
-  function pickBest<T extends { id: string; tier: number; reflection?: string; createdAt: string }>(
+  function pickBest<T extends { id: string; reflection?: string; createdAt: string }>(
     items: T[],
   ): { keep: T; discard: T[] } {
     if (items.length === 1) return { keep: items[0], discard: [] };
     const sorted = [...items].sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier;
       const aHasRef = !!a.reflection;
       const bHasRef = !!b.reflection;
       if (aHasRef !== bHasRef) return aHasRef ? -1 : 1;
@@ -574,7 +571,7 @@ export async function markAllReviewed(): Promise<number> {
 
 /**
  * Has the user changed this replaced entry since the import? Compared with the
- * snapshot taken before the import: a supersede keeps `overrides`, `reflection`,
+ * snapshot taken before the import: a refresh keeps `overrides`, `reflection`,
  * `participants`, `tripId` and (unless the source locks it) `rating`, so any
  * difference there is the user's. A cleared flag alone (a plain "Keep") is not an edit.
  */

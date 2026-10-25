@@ -25,7 +25,6 @@ Adding a new source means touching only that folder and `registry.ts`.
      id: "myservice",          // stored in IndexedDB as entry.source — never change this
      label: "My Service",      // shown in the UI dropdown
      kind: "file",             // "file" | "api"
-     tier: 2,                  // default precedence (1 manual > 2 primary > 3 secondary)
      accepts: [".csv"],        // file-input accept hints
 
      sniff(name, head) {

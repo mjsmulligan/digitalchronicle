@@ -116,7 +116,7 @@ describe("artworkKey", () => {
 
 function makeFilm(overrides: Partial<Film> = {}): Film {
   return {
-    id: uid(), kind: "film", source: "letterboxd", tier: 2,
+    id: uid(), kind: "film", source: "letterboxd",
     start: "2024-01-15", dedupeKey: "film|test|2024-01-15",
     title: "Dune", year: 2021, createdAt: new Date().toISOString(),
     ...overrides,
@@ -125,7 +125,7 @@ function makeFilm(overrides: Partial<Film> = {}): Film {
 
 function makeEpisode(overrides: Partial<Episode> = {}): Episode {
   return {
-    id: uid(), kind: "episode", source: "netflix", tier: 3,
+    id: uid(), kind: "episode", source: "netflix",
     start: "2024-01-15", dedupeKey: "episode|test||ep1|2024-01-15",
     showTitle: "Succession", season: "Season 4", episodeTitle: "Connor's Wedding",
     createdAt: new Date().toISOString(),
@@ -135,7 +135,7 @@ function makeEpisode(overrides: Partial<Episode> = {}): Episode {
 
 function makeEvent(category: JEvent["category"] = "concert"): JEvent {
   return {
-    id: uid(), kind: "event", source: "manual", tier: 1,
+    id: uid(), kind: "event", source: "manual",
     start: "2024-01-15", dedupeKey: "event|2024-01-15|radiohead",
     category, artist: "Radiohead", venue: "3Arena", city: "Dublin",
     createdAt: new Date().toISOString(),
@@ -144,7 +144,7 @@ function makeEvent(category: JEvent["category"] = "concert"): JEvent {
 
 function makeBook(): Book {
   return {
-    id: uid(), kind: "book", source: "goodreads", tier: 2,
+    id: uid(), kind: "book", source: "goodreads",
     start: "2024-01-15", dedupeKey: "book|dune|frank herbert|2024-01-15",
     title: "Dune", author: "Frank Herbert", createdAt: new Date().toISOString(),
   };
@@ -152,7 +152,7 @@ function makeBook(): Book {
 
 function makeLeg(): Leg {
   return {
-    id: uid(), kind: "leg", source: "viaduct", tier: 2,
+    id: uid(), kind: "leg", source: "viaduct",
     start: "2024-01-15", dedupeKey: "leg|2024-01-15|DUB|LHR",
     mode: "air", from: "DUB", to: "LHR", createdAt: new Date().toISOString(),
   };
@@ -262,7 +262,7 @@ describe("eventToArtworkKey", () => {
 
     it("stay", () => {
       const stay: Stay = {
-        id: uid(), kind: "stay", source: "viaduct", tier: 2,
+        id: uid(), kind: "stay", source: "viaduct",
         start: "2024-01-15", dedupeKey: "stay|2024-01-15|marriott",
         place: "Marriott", createdAt: new Date().toISOString(),
       };
@@ -276,7 +276,7 @@ describe("eventToArtworkKey", () => {
 describe("bookToArtworkKey", () => {
   it("returns book|normTitle|year for a book with year", () => {
     const book: Book = {
-      id: uid(), kind: "book", source: "goodreads", tier: 2,
+      id: uid(), kind: "book", source: "goodreads",
       start: "2024-01-15", dedupeKey: "book|dune|2024-01-15",
       title: "Dune", author: "Frank Herbert", year: 1965,
       createdAt: new Date().toISOString(),
@@ -286,7 +286,7 @@ describe("bookToArtworkKey", () => {
 
   it("returns book|normTitle| (empty year) for a book without year", () => {
     const book: Book = {
-      id: uid(), kind: "book", source: "goodreads", tier: 2,
+      id: uid(), kind: "book", source: "goodreads",
       start: "2024-01-15", dedupeKey: "book|dune|2024-01-15",
       title: "Dune", author: "Frank Herbert",
       createdAt: new Date().toISOString(),
@@ -296,7 +296,7 @@ describe("bookToArtworkKey", () => {
 
   it("strips accents from an accented title", () => {
     const book: Book = {
-      id: uid(), kind: "book", source: "goodreads", tier: 2,
+      id: uid(), kind: "book", source: "goodreads",
       start: "2024-05-01", dedupeKey: "b|2024-05-01",
       title: "Déjà Vu", author: "Some Author", year: 2000,
       createdAt: new Date().toISOString(),
@@ -306,7 +306,7 @@ describe("bookToArtworkKey", () => {
 
   it("strips leading 'The' article", () => {
     const book: Book = {
-      id: uid(), kind: "book", source: "goodreads", tier: 2,
+      id: uid(), kind: "book", source: "goodreads",
       start: "2024-05-01", dedupeKey: "b|2024-05-01",
       title: "The Name of the Wind", author: "Patrick Rothfuss", year: 2007,
       createdAt: new Date().toISOString(),

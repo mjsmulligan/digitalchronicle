@@ -7,7 +7,6 @@ describe("setlistfm connector", () => {
     expect(connector.id).toBe("setlistfm");
     expect(connector.label).toBe("setlist.fm JSON/CSV");
     expect(connector.kind).toBe("file");
-    expect(connector.tier).toBe(2);
     expect(connector.accepts).toContain(".json");
     expect(connector.accepts).toContain(".csv");
   });
@@ -26,7 +25,6 @@ describe("setlistfm connector", () => {
       expect(entry.kind).toBe("event");
       expect((entry as { category: string }).category).toBe("concert");
       expect(entry.source).toBe("setlistfm");
-      expect(entry.tier).toBe(2);
     }
   });
 

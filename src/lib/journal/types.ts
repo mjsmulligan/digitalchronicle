@@ -5,12 +5,10 @@ export { locationLabel } from "./geo";
 
 /**
  * Identifier for the import source that produced an entry.
- * "manual" is the only reserved value (highest-precedence sovereign edits).
+ * "manual" is the only reserved value (entries the user created themselves).
  * All other values are connector ids registered in connectors/registry.ts.
  */
 export type Source = string;
-/** 1 = user manual (sovereign), 2 = primary transit/attendance records, 3 = secondary order/calendar records */
-export type Tier = 1 | 2 | 3;
 export type Mode = "air" | "rail" | "road";
 
 export type Purpose = "work" | "family" | "leisure" | "other";
@@ -33,7 +31,6 @@ export type AnyOverrides = LegOverrides | StayOverrides | EventOverrides | FilmO
 interface Base {
   id: string;
   source: Source;
-  tier: Tier;
   /** Person IDs (from the people store) who were present at this entry.
    *  undefined / absent → the journal owner (isSelf person) is implicitly present.
    *  [] → self was explicitly removed; no participants. */
@@ -52,7 +49,7 @@ interface Base {
   endUTC?: string;
   tripId?: string;
   dedupeKey: string;
-  /** User's own prose reflection. Never overwritten by connectors or supersede. */
+  /** User's own prose reflection. Never overwritten by connectors or a refresh. */
   reflection?: string;
   /**
    * Source-supplied review text (e.g. a Letterboxd review, Goodreads review,
@@ -75,7 +72,7 @@ interface Base {
    * "unknown" — date is a best guess / cannot be determined
    */
   datePrecision?: "day" | "month" | "year" | "unknown";
-  /** Tier 1 manual overrides layered on top of source data */
+  /** Manual overrides layered on top of source data. They always win over source fields. */
   overrides?: AnyOverrides;
   createdAt: string;
   /**
@@ -166,7 +163,7 @@ export interface JEvent extends Base {
  * with a different dedupeKey (date differs).
  *
  * dedupeKey: `film|{normTitle}|{year}|{watchedDate}` — source-agnostic so that
- * Letterboxd (tier 2) supersedes Netflix (tier 3) for the same watch.
+ * Letterboxd and Netflix records of the same watch match.
  */
 export interface Film extends Base {
   kind: "film";

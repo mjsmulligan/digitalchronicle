@@ -112,7 +112,6 @@ export function makeSpikeJournal(opts: SpikeDataOptions): JournalData {
   const base = (start: string, key: string) => ({
     id: nextId(),
     source: "spike",
-    tier: 2 as const,
     start,
     dedupeKey: key,
     createdAt: "2026-10-22T00:00:00Z",

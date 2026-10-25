@@ -1,6 +1,6 @@
 import { locate, timezoneFor } from "./geo";
 import { localToUTC } from "./tz";
-import { uid, type Entry, type EventCategory, type JEvent, type Leg, type Purpose, type Source, type Stay, type Tier } from "./types";
+import { uid, type Entry, type EventCategory, type JEvent, type Leg, type Purpose, type Source, type Stay } from "./types";
 
 /** Attach timezone + UTC to a leg from its resolved origin/destination, in place. */
 function withTiming(leg: Leg): Leg {
@@ -143,7 +143,7 @@ export function parseViaduct(text: string): ParseResult {
       ? normDate(arrivalDate, arr) ?? undefined
       : arr ? normDate(arr.length > 8 ? arr : start.slice(0, 10), arr.length > 8 ? "" : arr) ?? undefined : undefined;
     const leg: Leg = {
-      id: uid(), kind: "leg", mode: "rail", source: "viaduct", tier: 2, start, end,
+      id: uid(), kind: "leg", mode: "rail", source: "viaduct", start, end,
       from, to, operator: pick(r, ["Operator", "Company"]), trainNumber: pick(r, ["Train", "Train number", "Service", "train_code"]),
       seat: pick(r, ["Seat", "Coach/Seat"]), reflection: pick(r, ["Notes", "Note"]) || undefined,
       dedupeKey: "", createdAt: now(),
@@ -190,7 +190,7 @@ export function parseSetlist(text: string): ParseResult {
     const city = pick(r, ["city", "City name"]);
     const tz = timezoneFor(city);
     const ev: JEvent = {
-      id: uid(), kind: "event", category: "concert", source: "setlistfm", tier: 2, start, artist,
+      id: uid(), kind: "event", category: "concert", source: "setlistfm", start, artist,
       venue: pick(r, ["venue", "Venue name"]) || "Unknown venue", city,
       country: pick(r, ["country"]) || undefined, tour: pick(r, ["tour"]) || undefined,
       setlist: songs.length ? songs : undefined, dedupeKey: "", createdAt: now(),
@@ -230,13 +230,11 @@ export function parseGeneric(text: string): ParseResult {
     if (!start) return out.errors.push(`Row ${sourceRow}: unreadable start/date`);
     const endRaw = pick(r, ["end", "checkout", "arrival", "enddate"]);
     const end = endRaw ? normDate(endRaw) ?? undefined : undefined;
-    const tierN = Number(pick(r, ["tier"]));
-    const tier = (tierN === 2 || tierN === 3 ? tierN : 3) as Tier;
     const purpose = purposeFrom(r);
     const companions = companionsFrom(r);
     const raw = r;
     const base = {
-      id: uid(), source: "generic" as Source, tier, start, end, createdAt: now(),
+      id: uid(), source: "generic" as Source, start, end, createdAt: now(),
       reflection: pick(r, ["notes", "note", "journal"]) || undefined, purpose, companions, raw,
     };
     if (["leg", "flight", "train", "rail", "air", "road", "drive", "bus"].includes(type)) {

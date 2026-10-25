@@ -16,9 +16,6 @@ describe("goodreads connector — metadata", () => {
     expect(connector.label).toBe("Goodreads library");
   });
 
-  it("is tier 2", () => {
-    expect(connector.tier).toBe(2);
-  });
 });
 
 describe("goodreads connector — parse", () => {
@@ -31,10 +28,9 @@ describe("goodreads connector — parse", () => {
     expect(result.entries).toHaveLength(5);
   });
 
-  it("produces entries with source 'goodreads' and tier 2", () => {
+  it("produces entries with source 'goodreads'", () => {
     const entry = result.entries[0].entry as Book;
     expect(entry.source).toBe("goodreads");
-    expect(entry.tier).toBe(2);
   });
 
   it("all entries have kind 'book'", () => {
