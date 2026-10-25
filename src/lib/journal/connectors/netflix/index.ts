@@ -32,6 +32,7 @@ import { uid } from "../../types";
 import type { Film, Episode } from "../../types";
 import type { Connector, ParseResult } from "../types";
 import { csvRows } from "../csv";
+import { episodeKey, filmKey } from "../keys";
 
 const now = () => new Date().toISOString();
 
@@ -137,19 +138,6 @@ function parseTitle(
   return { kind: "film", title: raw.trim() };
 }
 
-function filmDedupeKey(title: string, watchedDate: string): string {
-  return `film|${norm(title)}|${watchedDate}`;
-}
-
-function episodeDedupeKey(
-  showTitle: string,
-  season: string,
-  episodeTitle: string,
-  watchedDate: string,
-): string {
-  return `episode|${norm(showTitle)}|${norm(season)}|${norm(episodeTitle)}|${watchedDate}`;
-}
-
 /** Yield to the JS event loop so the UI can breathe between chunks. */
 function yieldToUI(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -211,11 +199,12 @@ async function parseNetflix(text: string): Promise<ParseResult> {
         start: watchedDate,
         datePrecision: "day",
         title: parsed.title,
-        dedupeKey: filmDedupeKey(parsed.title, watchedDate),
+        dedupeKey: "",
         sourceRef: `netflix:row:${sourceRow}`,
         createdAt: now(),
         raw: r as Record<string, unknown>,
       };
+      film.dedupeKey = filmKey(film);
       out.entries.push({ entry: film, warnings: [], sourceRow });
     } else {
       const ep: Episode = {
@@ -227,16 +216,12 @@ async function parseNetflix(text: string): Promise<ParseResult> {
         showTitle: parsed.showTitle,
         season: parsed.season,
         episodeTitle: parsed.episodeTitle,
-        dedupeKey: episodeDedupeKey(
-          parsed.showTitle,
-          parsed.season,
-          parsed.episodeTitle,
-          watchedDate,
-        ),
+        dedupeKey: "",
         sourceRef: `netflix:row:${sourceRow}`,
         createdAt: now(),
         raw: r as Record<string, unknown>,
       };
+      ep.dedupeKey = episodeKey(ep);
       out.entries.push({ entry: ep, warnings: [], sourceRow });
     }
   }

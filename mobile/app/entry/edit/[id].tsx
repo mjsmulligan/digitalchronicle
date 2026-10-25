@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor } from "@chronicle/journal/db";
+import { entryKey } from "@chronicle/journal/connectors/keys";
 import {
   uid,
   view,
@@ -801,7 +802,7 @@ export default function EditEntryScreen() {
           start: (fieldPatch.start as string) ?? entry.start,
           tripId: entry.tripId,
           participants: entry.participants,
-          dedupeKey: `${selectedKind}|manual|${uid()}`,
+          dedupeKey: "", // set from the new kind's fields below
           createdAt: new Date().toISOString(),
           // Preserve authored data across kind change (DM6)
           ...(entry.rating    !== undefined ? { rating:     entry.rating    } : {}),
@@ -877,6 +878,8 @@ export default function EditEntryScreen() {
         }
 
         if (newEntry) {
+          // A content key, so a later import of the same thing matches this entry.
+          newEntry = { ...newEntry, dedupeKey: entryKey(newEntry) } as Entry;
           await saveUserEdit(newEntry);
           await hideMany(storeFor(entry), [entry.id]);
           // Navigate to the new entry's detail

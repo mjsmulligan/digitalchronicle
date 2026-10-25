@@ -110,14 +110,14 @@ describe("goodreads connector — parse", () => {
     const entry = result.entries.find(
       ({ entry }) => (entry as Book).goodreadsId === "6101718",
     )!.entry as Book;
-    expect(entry.dedupeKey).toBe("book|the magicians|lev grossman|2026-09-09");
+    expect(entry.dedupeKey).toBe("book|the-magicians|lev-grossman|2026-09-09");
   });
 
   it("dedupeKey uses empty date when Date Read is blank", () => {
     const entry = result.entries.find(
       ({ entry }) => (entry as Book).goodreadsId === "14935",
     )!.entry as Book;
-    expect(entry.dedupeKey).toBe("book|sense and sensibility|jane austen|");
+    expect(entry.dedupeKey).toBe("book|sense-and-sensibility|jane-austen|");
   });
 
   it("no errors in fixture parse", () => {

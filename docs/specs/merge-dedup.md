@@ -129,8 +129,8 @@ An entry created by the user (`source: "manual"`) counts as a different source f
 ### 4.3 Keys (one module)
 
 - Extend `connectors/keys.ts` (it is load-bearing, keep the path) to be the only place keys are built. `KIND_REGISTRY[kind].buildKey`, every connector, `AddEntryDialog` and mobile edit call it. Delete the duplicated logic, not the file.
-- One `normaliseText(s)`: Unicode NFKD, strip diacritics, lowercase, replace `&` with `and`, drop punctuation, collapse whitespace to a single hyphen. Used for every text part of every key.
-- Keep the key shapes (`kind|date|...`). Dates remain the local date.
+- One `normaliseText(s)`: Unicode NFKD, strip accents from Latin letters only (so Cyrillic such as "й" and "ї" is left as written), fold `ß ø æ œ ł đ`, lowercase, replace `&` with `and`, turn hyphens, underscores and slashes into spaces, drop other punctuation, collapse whitespace to a single hyphen. Used for every text part of every key, including the from and to of a leg (then upper-cased).
+- Keep the key shapes (`kind|date|...`), with one exception: the film key drops the year (`film|<title>|<date>`). Letterboxd has a year, Netflix has none, so a key with a year could never match across them. Year is used by near-match (4.6) instead. Dates remain the local date.
 - Manual entries get a content key from the same builder, so a later import matches them.
 - Same-day collisions (4.5): keep the date-only key for matching across sources.
 
@@ -223,7 +223,7 @@ Each WP is one commit unless it genuinely needs more. Do one at a time, then sto
 
 ### Phase 2: keys
 
-- [ ] **WP2: one key module.** Section 4.3 and 4.5. `normaliseText`, a single builder per kind in `connectors/keys.ts`, `KIND_REGISTRY` and all connectors and entry-creation call sites use it, manual entries get content keys. Fix the Letterboxd `filmKey` divergence. No occurrence suffix: same-key rows are merged (4.5, delivered in WP3). *Done when:* table tests for each kind pass, including a Letterboxd and Netflix pair and a calendar and setlist.fm pair producing equal keys where intended; grep shows no key built outside the module; characterization snapshots reviewed and updated.
+- [x] **WP2: one key module.** Section 4.3 and 4.5. `normaliseText`, a single builder per kind in `connectors/keys.ts`, `KIND_REGISTRY` and all connectors and entry-creation call sites use it, manual entries get content keys. Fix the Letterboxd `filmKey` divergence. No occurrence suffix: same-key rows are merged (4.5, delivered in WP3). *Done when:* table tests for each kind pass, including a Letterboxd and Netflix pair and a calendar and setlist.fm pair producing equal keys where intended; grep shows no key built outside the module; characterization snapshots reviewed and updated.
 
 ### Phase 3: merge
 
@@ -277,9 +277,10 @@ Web is not a focus and will be dropped completely at a later point. This spec ad
 | 8 | 25 Oct 2026 | Same-day same-key rows (same file or different sources) are merged into one entry with both source references. No occurrence suffix. | Confirmed |
 | 9 | 25 Oct 2026 | A final work package adds splitting a merged entry back into two events when the auto-merge was wrong. Auto-merges therefore record `absorbed` snapshots and per-field provenance (`fieldSources`). | Confirmed (WP) / Proposed (mechanism) |
 | 10 | 25 Oct 2026 | When two sources both have a review, keep the first and drop the other. | Confirmed |
+| 11 | 25 Oct 2026 | No web work in this spec. Web support will be dropped later. | Confirmed |
 | 12 | 25 Oct 2026 | Keep a split row split with a hash stored on both entries (`separateRows`), checked before the key lookup. | Confirmed |
 | 13 | 25 Oct 2026 | Calendar items that are really stays should be recognised as stays. Calendar movies are deferred until the user has thought about them. Merge stays same-kind only. | Confirmed (stays, deferral) / Proposed (approach) |
-| 11 | 25 Oct 2026 | No web work in this spec. Web support will be dropped later. | Confirmed |
+| 14 | 25 Oct 2026 | The film key drops the year, so Letterboxd and Netflix records of the same watch get the same key. | Proposed (found during WP2) |
 
 ---
 
@@ -295,6 +296,7 @@ Web is not a focus and will be dropped completely at a later point. This spec ad
 
 ## 11. Progress log
 
+- 25 Oct 2026: WP2 done. `connectors/keys.ts` is now the only place keys are built: `normaliseText`, `legKey`, `stayKey`, `eventKey`, `filmKey`, `episodeKey`, `bookKey`, `placeEntryKey` and `entryKey` (dispatch by kind). `KIND_REGISTRY.buildKey` is `entryKey`; Letterboxd, Netflix, Goodreads, the web add-entry dialog, the exif staging service, the `db.ts` key migrations and mobile cross-kind edit all call it, and the duplicated local builders are gone (grep clean except the dead `parsers.ts`, the book-export spike data and the artwork cache keys, which are not dedupe keys). Manual entries created by cross-kind edit now get a content key instead of `kind|manual|uid`. Findings: (1) the film key lost its year, see decision 14; (2) accent stripping must be Latin-only or "Київ" becomes "киів" (caught by a test); (3) Goodreads keeps keying on the date read only (empty when unread), not the fallback date added. Key values changed for multi-word names (hyphenated now), so stored entries from before this commit no longer match new imports; no migration, per decision 7: reset and re-import dev data. Tests: new `keys.test.ts` (normaliser table, per-kind formats, registry equals `entryKey`, overrides never change a key, Letterboxd vs Netflix, calendar vs setlist.fm, accent-different stays); characterization snapshots changed only in `dedupeKey` values. Checks: `bun run test` green apart from the same two mobile-dependency suites; root `tsc` unchanged (same 5 existing errors); eslint shows no non-prettier errors in changed files. Mobile type-check not run (see WP1 note). Not checked on a device.
 - 25 Oct 2026: WP1 follow-up. WP1 was ticked while mobile edit (same-kind) and manual merge still forced `source: "manual"`, which the WP1 scope required to stop. Both removed: an edit keeps its original source and writes to `overrides`, a merge keeps the winner's source. Cross-kind conversion still creates a `manual` entry (a new entry the user made). Mobile type-check still not run.
 - 25 Oct 2026: WP1 done. `Tier`, `Base.tier` and `connector.tier` removed; `classify()` now returns `new`, `removed`, `batch-duplicate`, `refresh`, `enrich`, `duplicate` (with an exported `hasSourceChanges`); `enrich` is skipped and counted as duplicate until WP3. Mobile edit and merge no longer set `tier`. `db.ts` duplicate clean-up uses reflection then `createdAt`. Tests rewritten for refresh (a stale operator on the stored leg stands in for a changed source field) and enrich; characterization snapshots changed only by the removed `tier` lines. Note: the working tree already held most of the source edits, uncommitted, when WP1 started (author unknown); they were reviewed against this spec, then completed. The generic CSV fixture keeps its `tier` header on purpose, as the test that a legacy column is ignored. Checks: `bun run test` green apart from `connectedSources.test.ts` and `sourceRegistry.test.ts`, which cannot load here because `mobile/node_modules` is not installed (`expo/tsconfig.base` not found); root `tsc` has 5 errors, all in files this WP did not touch (StarRating, artworkProvider and its tests, bookCoverProvider test, exif-v2 test); mobile `npm run type-check` NOT run for the same reason, so run it on a machine with mobile dependencies before merging. Not checked on a device.
 - 25 Oct 2026: Q1 answered (merge same-key rows with both source references) and WP8 (split a merged entry) added. Section 4.5 rewritten, 4.8 added.

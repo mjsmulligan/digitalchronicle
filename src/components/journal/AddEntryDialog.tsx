@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { putMany, useJournal } from "@/lib/journal/db";
 import { CATEGORY_LABEL, uid, type EventCategory, type Entry, type Purpose } from "@/lib/journal/types";
-import { eventKey, legKey, stayKey } from "@/lib/journal/connectors/keys";
+import { entryKey } from "@/lib/journal/connectors/keys";
 import { timezoneFor } from "@/lib/journal/geo";
 import { localToUTC } from "@/lib/journal/tz";
 
@@ -53,7 +53,6 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
         startUTC: localToUTC(base.start, tz), dedupeKey: "",
       };
     } else if (kind === "book") {
-      const norm = (s: string) => s.toLowerCase().trim();
       e = {
         ...base, kind: "book", title: f.title || "Untitled", author: f.author || "",
         year: f.year ? parseInt(f.year) : undefined,
@@ -61,17 +60,16 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
         series: f.series || undefined,
         seriesNumber: f.seriesNumber ? parseFloat(f.seriesNumber) : undefined,
         dateStarted: f.dateStarted || undefined,
-        dedupeKey: `book|${norm(f.title || "")}|${norm(f.author || "")}|${date}`,
+        dedupeKey: "",
       };
     } else if (kind === "episode") {
-      const norm = (s: string) => s.toLowerCase().trim();
       e = {
         ...base, kind: "episode", showTitle: f.showTitle || "Unknown Show",
         season: f.season || undefined,
         episodeNumber: f.episodeNumber ? parseInt(f.episodeNumber) : undefined,
         episodeTitle: f.episodeTitle || undefined,
         rating: f.rating ? parseFloat(f.rating) * 2 : undefined,
-        dedupeKey: `episode|${norm(f.showTitle || "")}|${norm(f.season || "")}|${norm(f.episodeTitle || "")}|${date}`,
+        dedupeKey: "",
       };
     } else {
       const tz = timezoneFor(f.city || "");
@@ -81,9 +79,8 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
         startTz: tz, startUTC: localToUTC(base.start, tz), dedupeKey: "",
       };
     }
-    if (e.kind !== "book" && e.kind !== "episode") {
-      e.dedupeKey = e.kind === "leg" ? legKey(e) : e.kind === "stay" ? stayKey(e) : eventKey(e);
-    }
+    // One key builder for every kind, so an import of the same thing later matches this entry.
+    e.dedupeKey = entryKey(e);
     await putMany(e.kind === "leg" ? "legs" : e.kind === "stay" ? "stays" : e.kind === "book" ? "books" : e.kind === "episode" ? "episodes" : "events", [e]);
     setF({});
     setOpen(false);

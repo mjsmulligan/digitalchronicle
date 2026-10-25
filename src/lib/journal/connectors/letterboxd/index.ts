@@ -25,19 +25,13 @@ import { uid } from "../../types";
 import type { Film } from "../../types";
 import type { Connector, ParseResult } from "../types";
 import { csvRows } from "../csv";
+import { filmKey } from "../keys";
 
 const now = () => new Date().toISOString();
 
 /** Normalise title: trim and collapse internal whitespace. */
 function normTitle(s: string): string {
   return s.trim().replace(/\s+/g, " ");
-}
-
-/** Build source-agnostic film dedup key. */
-function filmKey(title: string, year: number | undefined, watchedDate: string): string {
-  const normT = title.toLowerCase().trim();
-  const yearPart = year ? `|${year}` : "";
-  return `film|${normT}${yearPart}|${watchedDate}`;
 }
 
 function parseLetterboxd(text: string): ParseResult {
@@ -96,10 +90,11 @@ function parseLetterboxd(text: string): ParseResult {
       rating,
       review,
       sourceRef: letterboxdUri || `letterboxd:row:${sourceRow}`,
-      dedupeKey: filmKey(title, year, watchedDate),
+      dedupeKey: "",
       createdAt: now(),
       raw: r as Record<string, unknown>,
     };
+    film.dedupeKey = filmKey(film);
 
     const w: string[] = [];
     if (!year) w.push("Release year unknown");
