@@ -162,7 +162,7 @@ export interface JEvent extends Base {
  * thing — there is no separate Film record. A rewatch is a separate Film entry
  * with a different dedupeKey (date differs).
  *
- * dedupeKey: `film|{normTitle}|{watchedDate}` (no year, built by filmKey in connectors/keys.ts) — source-agnostic so that
+ * dedupeKey: `film|{normTitle}|{watchedDate}` (no year, built by filmKey in connectors/keys.ts), source-agnostic so that
  * Letterboxd and Netflix records of the same watch match.
  */
 export interface Film extends Base {
