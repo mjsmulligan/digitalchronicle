@@ -154,7 +154,7 @@ describe("netflix connector", () => {
         ({ entry }) => entry.kind === "episode" && (entry as Episode).showTitle === "Bridgerton",
       );
       expect(bridgerton!.entry.dedupeKey).toBe(
-        "episode|bridgerton|season 4|a courtship|2026-06-01",
+        "episode|bridgerton|season-4|a-courtship|2026-06-01",
       );
     });
   });

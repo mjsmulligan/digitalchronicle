@@ -191,9 +191,9 @@ describe("eventKey (connectors/keys)", () => {
     );
   });
 
-  it("lowercases the artist name", () => {
+  it("normalises the artist name (case and spacing)", () => {
     expect(eventKey({ start: "2024-03-01", artist: "The National" })).toBe(
-      "event|2024-03-01|the national",
+      "event|2024-03-01|the-national",
     );
   });
 

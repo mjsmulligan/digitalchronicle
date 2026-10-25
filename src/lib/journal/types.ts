@@ -162,7 +162,7 @@ export interface JEvent extends Base {
  * thing — there is no separate Film record. A rewatch is a separate Film entry
  * with a different dedupeKey (date differs).
  *
- * dedupeKey: `film|{normTitle}|{year}|{watchedDate}` — source-agnostic so that
+ * dedupeKey: `film|{normTitle}|{watchedDate}` (no year, built by filmKey in connectors/keys.ts), source-agnostic so that
  * Letterboxd and Netflix records of the same watch match.
  */
 export interface Film extends Base {
@@ -179,7 +179,7 @@ export interface Film extends Base {
  * A single episode watch event. Series grouping is handled by `seriesId` (pointing
  * at a Series container), mirroring the way tripId links entries to a Trip.
  *
- * dedupeKey: `episode|{normShowTitle}|{normSeason}|{normEpTitle}|{watchedDate}`
+ * dedupeKey: `episode|{normShowTitle}|{normSeason}|{normEpTitle}|{watchedDate}` (episodeKey)
  */
 export interface Episode extends Base {
   kind: "episode";
@@ -213,7 +213,7 @@ export interface Series {
  * A book read event. `start` = Date Read (completion date — "when this happened").
  * An optional `dateStarted` can capture when reading began without overloading Base.end.
  *
- * dedupeKey: `book|{normTitle}|{normAuthor}|{dateRead}`
+ * dedupeKey: `book|{normTitle}|{normAuthor}|{dateRead}` (bookKey)
  */
 export interface Book extends Base {
   kind: "book";

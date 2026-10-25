@@ -71,7 +71,7 @@ describe("letterboxd connector", () => {
       const deadpool = r.entries.find(
         ({ entry }) => (entry as Film).title === "Deadpool & Wolverine",
       );
-      expect(deadpool!.entry.dedupeKey).toBe("film|deadpool & wolverine|2024|2024-08-11");
+      expect(deadpool!.entry.dedupeKey).toBe("film|deadpool-and-wolverine|2024-08-11");
     });
 
     it("sets sourceRef to the Letterboxd URI", () => {

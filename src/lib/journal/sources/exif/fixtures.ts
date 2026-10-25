@@ -24,6 +24,7 @@ import type { PhotoRecord, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoR
 // fakeLocalityResolver is declared later in the file — references below are fine
 import type { Place, PlaceEntry, PlaceBinMarker, PhotoEvidenceRef, JEvent } from "../../types";
 import { uid } from "../../types";
+import { placeEntryKey } from "../../connectors/keys";
 
 // ─── Low-level record factories ───────────────────────────────────────────────
 
@@ -408,7 +409,7 @@ export function makePlaceEntry(overrides: Partial<PlaceEntry> = {}): PlaceEntry 
     photoEvidence: overrides.photoEvidence ?? [],
     photoCount: overrides.photoCount ?? 2,
     status: overrides.status ?? "pending",
-    dedupeKey: overrides.dedupeKey ?? `place-entry|${overrides.localityKey ?? "gb:london"}|${localDay}`,
+    dedupeKey: overrides.dedupeKey ?? placeEntryKey({ localityKey: overrides.localityKey ?? "gb:london", localDay }),
     createdAt: overrides.createdAt ?? new Date().toISOString(),
     ...overrides,
   };

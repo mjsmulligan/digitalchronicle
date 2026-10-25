@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type Trip, type PlaceEntry } from "./types";
 import { KIND_REGISTRY } from "./kinds";
+import { eventKey, legKey, stayKey } from "./connectors/keys";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
 import type { StorageAdapter, Row } from "./storage";
@@ -182,12 +183,12 @@ async function migrateLegStayKeys(data: Partial<State>): Promise<void> {
   // Recompute keys for stale records
   const updatedLegs = legs.map((l) =>
     staleLegIds.has(l.id)
-      ? { ...l, dedupeKey: `leg|${l.start.slice(0, 10)}|${l.from.toUpperCase()}|${l.to.toUpperCase()}` }
+      ? { ...l, dedupeKey: legKey(l) }
       : l,
   );
   const updatedStays = stays.map((s) =>
     staleStayIds.has(s.id)
-      ? { ...s, dedupeKey: `stay|${s.start.slice(0, 10)}|${s.place.toLowerCase()}` }
+      ? { ...s, dedupeKey: stayKey(s) }
       : s,
   );
 
@@ -265,7 +266,7 @@ async function migrateEventKeys(data: Partial<State>): Promise<void> {
 
   const updatedEvents = events.map((e) =>
     staleIds.has(e.id)
-      ? { ...e, dedupeKey: `event|${e.start.slice(0, 10)}|${e.artist.toLowerCase()}` }
+      ? { ...e, dedupeKey: eventKey(e) }
       : e,
   );
 

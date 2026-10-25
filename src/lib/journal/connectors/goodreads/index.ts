@@ -19,7 +19,7 @@
  *   " (SeriesName, #N)" suffix stripped from clean title.
  *   N may be a decimal (e.g. 7.5 for a novella).
  *
- * Dedup key: `book|{normTitle}|{normAuthor}|{dateRead}`
+ * Dedup key: `bookKey()` in ../keys.ts, `book|{normTitle}|{normAuthor}|{dateRead}`
  *   dateRead is empty string when date is unknown (entries still imported,
  *   but collisions on same title/author will deduplicate).
  *
@@ -28,6 +28,7 @@ import { uid } from "../../types";
 import type { Book } from "../../types";
 import type { Connector, ParseResult } from "../types";
 import { csvRows } from "../csv";
+import { bookKey } from "../keys";
 
 const now = () => new Date().toISOString();
 
@@ -60,14 +61,6 @@ function parseTitle(raw: string): ParsedTitle {
     series: m[1].trim(),
     seriesNumber: parseFloat(m[2]),
   };
-}
-
-function norm(s: string): string {
-  return s.trim().toLowerCase();
-}
-
-function dedupeKey(normTitle: string, normAuthor: string, dateRead: string): string {
-  return `book|${normTitle}|${normAuthor}|${dateRead}`;
 }
 
 function parseGoodreads(text: string): ParseResult {
@@ -133,7 +126,8 @@ function parseGoodreads(text: string): ParseResult {
       ...(isbn13 && { isbn13 }),
       ...(series && { series }),
       ...(seriesNumber !== undefined && { seriesNumber }),
-      dedupeKey: dedupeKey(norm(title), norm(rawAuthor), dateRead ?? ""),
+      // Keyed on the date read only (empty when unread), not the fallback date added.
+      dedupeKey: bookKey({ title, author: rawAuthor, start: dateRead ?? "" }),
       sourceRef: `goodreads:row:${sourceRow}`,
       createdAt: now(),
       raw: { ...r, ...(isbn13 && { isbn13 }) } as Record<string, unknown>,

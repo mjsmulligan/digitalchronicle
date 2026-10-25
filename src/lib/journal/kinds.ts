@@ -1,5 +1,6 @@
 import { view, type Entry, type StoreName, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEntry } from "./types";
 import { locationLabel } from "./geo";
+import { entryKey } from "./connectors/keys";
 
 export type EntryCategory = "movement" | "presence" | "attendance" | "consumption";
 
@@ -20,8 +21,6 @@ export interface KindDef {
   editableFields: string[];
 }
 
-const normalise = (s: string) => s.toLowerCase().replace(/\s+/g, "-");
-
 export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
   leg: {
     store: "legs",
@@ -39,10 +38,7 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
       const ov = l.overrides as Record<string, unknown> | undefined;
       return !!(l.from || l.to || ov?.from || ov?.to);
     },
-    buildKey: (e) => {
-      const l = e as Leg;
-      return `leg|${l.start.slice(0, 10)}|${l.from.toUpperCase()}|${l.to.toUpperCase()}`;
-    },
+    buildKey: entryKey,
     editableFields: ["start", "end", "from", "to", "fromName", "toName", "mode", "flightNumber", "trainNumber", "operator", "seat"],
   },
 
@@ -62,10 +58,7 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
       const ov = s.overrides as Record<string, unknown> | undefined;
       return !!(s.place || ov?.place || s.city || ov?.city);
     },
-    buildKey: (e) => {
-      const s = e as Stay;
-      return `stay|${s.start.slice(0, 10)}|${s.place.toLowerCase()}`;
-    },
+    buildKey: entryKey,
     editableFields: ["start", "end", "place", "city", "notes"],
   },
 
@@ -85,10 +78,7 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
       return v.localDay;
     },
     hasPlace: (_e) => false,
-    buildKey: (e) => {
-      const p = e as PlaceEntry;
-      return `place-entry|${p.localityKey}|${p.localDay}`;
-    },
+    buildKey: entryKey,
     editableFields: [],
   },
 
@@ -108,10 +98,7 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
       const ov = j.overrides as Record<string, unknown> | undefined;
       return !!(j.city || ov?.city);
     },
-    buildKey: (e) => {
-      const j = e as JEvent;
-      return `event|${j.start.slice(0, 10)}|${normalise(j.artist)}`;
-    },
+    buildKey: entryKey,
     editableFields: ["start", "end", "artist", "venue", "city", "country", "category", "tour"],
   },
 
@@ -127,10 +114,7 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
       return v.title;
     },
     hasPlace: (_e) => false,
-    buildKey: (e) => {
-      const f = e as Film;
-      return `film|${normalise(f.title)}|${f.year ?? ""}|${f.start.slice(0, 10)}`;
-    },
+    buildKey: entryKey,
     editableFields: ["start", "title", "year", "director"],
   },
 
@@ -146,10 +130,7 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
       return v.showTitle;
     },
     hasPlace: (_e) => false,
-    buildKey: (e) => {
-      const ep = e as Episode;
-      return `episode|${normalise(ep.showTitle)}|${normalise(ep.season ?? "")}|${normalise(ep.episodeTitle ?? "")}|${ep.start.slice(0, 10)}`;
-    },
+    buildKey: entryKey,
     editableFields: ["start", "showTitle", "season", "episodeTitle", "episodeNumber"],
   },
 
@@ -165,10 +146,7 @@ export const KIND_REGISTRY: Record<Entry["kind"], KindDef> = {
       return v.title;
     },
     hasPlace: (_e) => false,
-    buildKey: (e) => {
-      const b = e as Book;
-      return `book|${normalise(b.title)}|${normalise(b.author)}|${b.start.slice(0, 10)}`;
-    },
+    buildKey: entryKey,
     editableFields: ["start", "title", "author", "year", "dateStarted"],
   },
 };

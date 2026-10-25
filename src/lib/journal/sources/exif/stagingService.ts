@@ -34,6 +34,7 @@ import type { LocalityKey } from "../../types";
 import type { Place, PlaceEntry, PlaceBinMarker, PhotoEvidenceRef, PlaceStatus } from "../../types";
 import { uid } from "../../types";
 import type { BuiltPlaceEntry, LocatedPhotoRecord } from "./types";
+import { placeEntryKey } from "../../connectors/keys";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -108,7 +109,7 @@ export function buildStagingPlan(
   const addedPlaceKeys = new Map<LocalityKey, Place>();
 
   for (const b of built) {
-    const dedupeKey = `place-entry|${b.localityKey}|${b.localDay}`;
+    const dedupeKey = placeEntryKey(b);
     const allPhotoIds = b.photos.map((p) => p.mediaId);
 
     // ── Rule 1: bin-match — all photos already covered by a marker ─────────
