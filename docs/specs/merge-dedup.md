@@ -46,6 +46,7 @@ Deduplication and merging in Chronicle grew organically and have three problems:
 - One merge policy used by import and by manual merge, with provenance kept.
 - Detect likely duplicates that exact keys miss, and let the user resolve them. Never auto-merge on a guess.
 - Manual merge is safe: same kind only, atomic, undoable.
+- An auto-merge that was wrong can be split back into two events.
 
 ### Non-goals
 - Automatic merging of near matches.
@@ -63,7 +64,7 @@ Findings from reading the code. Line numbers drift, search by name.
 - `connectors/keys.ts` builds `leg`, `stay` and `event` keys with `toLowerCase()` only. `KIND_REGISTRY[kind].buildKey` in `kinds.ts` repeats the same logic, and uses `normalise()` (lowercase, spaces to hyphens) for event, film, episode and book.
 - The Letterboxd connector has its own `filmKey` (lowercase and trim only), which differs from `KIND_REGISTRY.film.buildKey`.
 - `AddEntryDialog.tsx` builds book and episode keys inline. Mobile `entry/edit/[id].tsx` gives new entries `${kind}|manual|${uid()}`, which can never match an import.
-- Keys use the date only. Two same-route legs, or two same-artist events, on one day collapse into one (`batch-duplicate`, counted as `inFile`).
+- Keys use the date only. Two same-route legs, or two same-artist events, on one day collapse into one (`batch-duplicate`, counted as `inFile`), and the second row is dropped without trace. This stays, but the second row will be merged and recorded instead of dropped (section 4.5).
 
 **Classification** (`classify.ts`)
 - Statuses: `batch-duplicate`, `new`, `removed`, `supersedes`, `superseded`, `duplicate`. The last three are decided by comparing `entry.tier` with `match.tier`.
@@ -114,7 +115,7 @@ Findings from reading the code. Line numbers drift, search by name.
 
 | Status | Meaning | Import action |
 |---|---|---|
-| `batch-duplicate` | same key seen earlier in this file | skip, count as `inFile` |
+| `batch-duplicate` | same key seen earlier in this file | merge into the earlier planned entry (4.5), count as `inFile` |
 | `new` | no match in the journal | write, flag `new` |
 | `removed` | matches a hidden entry | skip, count as `removed` |
 | `refresh` | match from the same source (`entry.source === match.source`) and the source fields changed | replace source fields (4.4), flag `updated` |
@@ -154,7 +155,12 @@ Two exported functions, same module, same field rules.
 
 ### 4.5 Same-day collisions
 
-Two real entries can share a date-only key (two commutes on one route, two same-artist events). Within one file, rows with the same key but different `start` times, or different `raw` rows, are kept and get an occurrence suffix (`#2`, `#3`) in file order. Cross-source matching still uses the date-only key first, then falls back to near match (4.6). See open question Q1.
+Two real entries can share a date-only key (two commutes on one route, two same-artist events). Decision: they are treated as one entry and merged, with both source references kept. No occurrence suffix.
+
+- **Within one file:** a row whose key was already seen is not skipped. It is merged into the entry planned from the earlier row using `mergeEntries` (fill gaps only), and its `sourceRef` goes into `additionalSources`. It still counts as `inFile` in the import summary.
+- **Across files or sources:** the normal `refresh` / `enrich` path, same result.
+- **Same source twice:** `additionalSources` is de-duplicated by `source` plus `sourceRef`, not by `source` alone, so a second row from the same source is recorded.
+- **Undoing a wrong auto-merge:** every auto-merge keeps what is needed to split it again (section 4.8), delivered in the last work package.
 
 ### 4.6 Near-match detection
 
@@ -181,11 +187,20 @@ The user can mark a pair as "not a duplicate". Store `notDuplicateOf: string[]` 
 - The merged entry is saved through `saveUserEdit`, which clears the review flag. The base's `source`, `sourceRef` and `sourceLocked` are unchanged, so a later refresh from its own source still works.
 - Re-import of the loser's source row stays `removed` because the loser remains hidden and keeps its key.
 
+### 4.8 Splitting an auto-merge (last work package)
+
+An auto-merge (same-file duplicate row, `enrich`) can be wrong. The user can split the entry back into two.
+
+- **What is kept at merge time (WP3):** `absorbed: Array<{ source, sourceRef, entry }>` holds a snapshot of each incoming row folded into this entry (capped, oldest dropped after 5). `fieldSources: Record<string, string>` records, for every field filled from another row, the `sourceRef` it came from. This also gives per-field provenance.
+- **Split action:** on the entry detail, each absorbed source has "Split into a separate entry". It creates a new entry from the snapshot (new id, flagged `new`), removes the row from `additionalSources` and `absorbed`, and clears every field on the original that `fieldSources` attributes to that row. Trip link, participants, overrides and reflection stay with the original.
+- **Re-import must not re-merge a split row.** The split records a marker so classification routes that row to the new entry and never absorbs it again (mechanism in open question Q5).
+- The two entries are marked `notDuplicateOf` each other so near-match detection (4.6) stays quiet.
+
 ---
 
 ## 5. Data model changes
 
-On `Base` (all optional): `mergedFrom?: string[]`, `mergedInto?: { id: string; baseBefore: Entry }`, `possibleDuplicateOf?: string`, `notDuplicateOf?: string[]`. Removed: `tier`. Add the new fields to `backup` export and import and to the SQLite adapter's JSON column handling (check whether `tier` is a real column there and drop it).
+On `Base` (all optional): `mergedFrom?: string[]`, `mergedInto?: { id: string; baseBefore: Entry }`, `possibleDuplicateOf?: string`, `notDuplicateOf?: string[]`, `absorbed?: Array<{ source: string; sourceRef?: string; entry: Entry }>`, `fieldSources?: Record<string, string>`. Removed: `tier`. Add the new fields to `backup` export and import and to the SQLite adapter's JSON column handling (check whether `tier` is a real column there and drop it).
 
 ---
 
@@ -208,11 +223,11 @@ Each WP is one commit unless it genuinely needs more. Do one at a time, then sto
 
 ### Phase 2: keys
 
-- [ ] **WP2: one key module.** Section 4.3 and 4.5. `normaliseText`, a single builder per kind in `connectors/keys.ts`, `KIND_REGISTRY` and all connectors and entry-creation call sites use it, manual entries get content keys. Fix the Letterboxd `filmKey` divergence. Occurrence suffix for same-key rows within a file. *Done when:* table tests for each kind pass, including a Letterboxd and Netflix pair and a calendar and setlist.fm pair producing equal keys where intended; grep shows no key built outside the module; characterization snapshots reviewed and updated.
+- [ ] **WP2: one key module.** Section 4.3 and 4.5. `normaliseText`, a single builder per kind in `connectors/keys.ts`, `KIND_REGISTRY` and all connectors and entry-creation call sites use it, manual entries get content keys. Fix the Letterboxd `filmKey` divergence. No occurrence suffix: same-key rows are merged (4.5, delivered in WP3). *Done when:* table tests for each kind pass, including a Letterboxd and Netflix pair and a calendar and setlist.fm pair producing equal keys where intended; grep shows no key built outside the module; characterization snapshots reviewed and updated.
 
 ### Phase 3: merge
 
-- [ ] **WP3: unified merge and enrich on import.** Section 4.4. Extract `refreshFromSource` from `import.ts`, rewrite `mergeEntries` per the policy, populate `additionalSources` on `enrich`, make `enrich` real. Fix the rating comment and the `seriesId` cast. *Done when:* tests cover fill-gaps-only, conflicts keep base, provenance kept, idempotence, and an import of a second source adding `additionalSources` and flagging `updated` only when something changed; `evaluation-dm5` tests still pass.
+- [ ] **WP3: unified merge and enrich on import.** Section 4.4. Extract `refreshFromSource` from `import.ts`, rewrite `mergeEntries` per the policy, populate `additionalSources` on `enrich`, make `enrich` real. Same-file duplicate rows merge into the earlier row (4.5) instead of being skipped. Record `absorbed` snapshots and `fieldSources` on every auto-merge (4.8). Fix the rating comment and the `seriesId` cast. *Done when:* tests cover fill-gaps-only, conflicts keep base, provenance kept, idempotence, an import of a second source adding `additionalSources` and flagging `updated` only when something changed, two same-key rows in one file producing one entry with two source references, and `absorbed` and `fieldSources` being written; `evaluation-dm5` tests still pass.
 - [ ] **WP4: manual merge rework (mobile).** Section 4.7 and section 5 fields. Same-kind picker, atomic write, `mergedFrom`, `mergedInto` with snapshot, undo, no forced `source` or `tier`. *Done when:* tests cover atomic failure (nothing half applied), undo restores both entries exactly, a later refresh from the base's own source still works; checked on a device.
 
 ### Phase 4: near matches
@@ -223,6 +238,10 @@ Each WP is one commit unless it genuinely needs more. Do one at a time, then sto
 ### Phase 5: cleanup
 
 - [ ] **WP7: docs and cleanup.** Update `AGENTS.md` (replace the tier line), `connectors/README.md`, `import-guide.md`, `auto-import.md` (precedence notes and Q5), `BACKLOG.md`. Remove dead code left by WP1 to WP6. *Done when:* docs describe source-vs-source behaviour in section 4.2 terms; a final grep for `tier`, `superseded` and `supersedes` is clean.
+
+### Phase 6: undoing auto-merges
+
+- [ ] **WP8: split a merged entry.** Section 4.8. A "Split into a separate entry" action per absorbed source on the entry detail (mobile). Creates the new entry from the `absorbed` snapshot, clears the fields attributed to that row via `fieldSources`, updates `additionalSources`, sets `notDuplicateOf` both ways, and stops a re-import of that row from merging again (Q5). Depends on WP3 and WP4. *Done when:* tests cover a split after a same-file merge and after a cross-source enrich (original restored to its pre-merge fields, new entry matches the snapshot, trip link, participants, overrides and reflection stay on the original), re-importing the same file does not re-merge the split row, and splitting the last absorbed row leaves no empty `absorbed`; checked on a device.
 
 ---
 
@@ -243,12 +262,15 @@ Tier removal and the new classification are in the shared engine, so web imports
 | 5 | 25 Oct 2026 | Manual merge is same kind only, atomic and undoable, with the pre-merge snapshot stored on the hidden loser. | Proposed |
 | 6 | 25 Oct 2026 | Keep `connectors/keys.ts` as the single key module (load-bearing path), delete duplicated logic only. | Proposed |
 | 7 | 25 Oct 2026 | No data migration: the app is not live, dev data is reset and re-imported. | Proposed |
+| 8 | 25 Oct 2026 | Same-day same-key rows (same file or different sources) are merged into one entry with both source references. No occurrence suffix. | Confirmed |
+| 9 | 25 Oct 2026 | A final work package adds splitting a merged entry back into two events when the auto-merge was wrong. Auto-merges therefore record `absorbed` snapshots and per-field provenance (`fieldSources`). | Confirmed (WP) / Proposed (mechanism) |
 
 ---
 
 ## 10. Open questions
 
-- **Q1: same-day collisions.** Is the occurrence suffix (`#2`) for rows with the same key but different times the right fix, or should keys include the time when the source has one? Including time stops cross-source matching, because calendar entries often lack a time. Recommendation: suffix within a file only.
+- **Q1: resolved.** Same-day collisions are merged with both source references (decision 8).
+- **Q5: keeping a split row split.** After a split, an incoming row with the original key would match the original entry again. Options: (a) store a hash of the split row's source fields on both entries (`separateRows`) and have `classify()` check it before the key lookup, so that row routes to the new entry; (b) give the new entry its own key with a suffix and keep a list of keys to route by row content. Recommendation: (a), with the hash built from the row's key fields plus `raw`.
 - **Q2: two different reviews.** When `base` and `other` both have a source review and they differ, keep only `base`'s, or keep both (for example `review` plus `additionalReviews`)? Recommendation: keep `base`'s and store `other`'s on `additionalSources[n].review`.
 - **Q3: web merge UI.** Does web get a merge and duplicates UI, or stay as import-only? Recommendation: out of scope until mobile settles.
 - **Q4: merging across kinds.** Same-kind only is proposed. Is there a real case for merging a leg into a stay or an event into a place entry? Recommendation: no.
@@ -257,4 +279,5 @@ Tier removal and the new classification are in the shared engine, so web imports
 
 ## 11. Progress log
 
+- 25 Oct 2026: Q1 answered (merge same-key rows with both source references) and WP8 (split a merged entry) added. Section 4.5 rewritten, 4.8 added.
 - 25 Oct 2026: spec drafted from a read of `classify.ts`, `import.ts`, `merge.ts`, `evaluation.ts`, `kinds.ts`, `connectors/keys.ts` and the mobile entry screen. No code changed yet.
