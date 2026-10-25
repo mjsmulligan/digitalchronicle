@@ -3,9 +3,9 @@
  *
  * importFile() replaces the stage-then-commit gate: it parses a file, classifies
  * every record against the journal (hidden entries included), and writes the
- * ones that are new or refresh an existing entry from the same source straight
- * to the journal, flagged `unreviewed` so the feed can show them for review.
- * A match from a different source is skipped for now (the merge spec adds enrich).
+ * ones that are new, refresh an entry from the same source, or enrich an entry
+ * from another source straight to the journal, flagged `unreviewed` so the feed can
+ * show them for review. No source replaces another (docs/specs/merge-dedup.md).
  */
 import {
   allEntries, allHiddenEntries, getState, putMany, setCommitProgress, storeFor,
@@ -14,7 +14,8 @@ import { buildDedupeIndex, classify } from "./classify";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { enrichAll } from "./artworkEnrichment";
 import { loadStations } from "./geo";
-import { mergeEvaluation, sourceLocks } from "./evaluation";
+import { sourceLocks } from "./evaluation";
+import { enrichEntry, mergeEntries, refreshFromSource } from "./merge";
 import { buildPeopleIndex, withMatchedPeople } from "./peopleMatch";
 import {
   uid, type Entry, type ImportRun, type ImportSkipCounts, type Leg, type StoreName,
@@ -68,7 +69,7 @@ export function importFile(filename: string, text: string, opts: ImportOptions =
 interface PlannedWrite {
   store: StoreName;
   entry: Entry;
-  /** Prior version, for records that refresh an existing entry. */
+  /** Prior version, for records that refresh or enrich an existing entry. */
   before?: Entry;
 }
 
@@ -124,6 +125,22 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
   const plan: PlannedWrite[] = [];
   const seen = new Set<string>();
   const runId = uid();
+  const plannedByKey = new Map<string, PlannedWrite>();
+
+  /** Plan the write of an entry that changed an existing one, flagged for review. */
+  const addPlanned = (key: string, merged: Entry, old: Entry) => {
+    // An entry nobody has looked at yet stays "new"; a reviewed one becomes "updated".
+    const stillUnseen = old.unreviewed === "new";
+    const written: Entry = {
+      ...merged,
+      unreviewed: stillUnseen ? "new" : "updated",
+      importId: runId,
+      ...(stillUnseen && old.importNotes?.length ? { importNotes: old.importNotes } : {}),
+    };
+    const p: PlannedWrite = { store: storeFor(written), entry: written, before: old };
+    plan.push(p);
+    plannedByKey.set(key, p);
+  };
 
   for (let i = 0; i < parsed.entries.length; i++) {
     if (i > 0 && i % CLASSIFY_CHUNK === 0) await yieldToUi();
@@ -132,9 +149,24 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
     entry.sourceLocked = sourceLocks(entry);
     const c = classify(entry, existing, seen);
 
-    if (c.status === "batch-duplicate") { skipped.inFile++; continue; }
     if (c.status === "removed") { skipped.removed++; continue; }
-    if (c.status === "duplicate" || c.status === "enrich") { skipped.duplicate++; continue; }
+
+    // A second row with the same key in this file is the same thing seen twice: fold it
+    // into the entry the first row produced (or matched), keeping both source references.
+    if (c.status === "batch-duplicate") {
+      skipped.inFile++;
+      const row = withMatchedPeople(entry, peopleIndex);
+      const target = plannedByKey.get(entry.dedupeKey);
+      if (target) { target.entry = mergeEntries(target.entry, row, { absorb: true }); continue; }
+      const match = existing.get(entry.dedupeKey);
+      const old = match && !match.hidden ? byId.get(match.id) : undefined;
+      if (!old) continue;
+      const { entry: merged, changed } = enrichEntry(old, row);
+      if (changed) addPlanned(entry.dedupeKey, merged, old);
+      continue;
+    }
+
+    if (c.status === "duplicate") { skipped.duplicate++; continue; }
 
     if (c.status === "new") {
       const notes = [...(parsed.entries[i].warnings ?? [])];
@@ -149,34 +181,29 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
         importId: runId,
         ...(notes.length ? { importNotes: notes.slice(0, MAX_NOTES) } : {}),
       };
-      plan.push({ store: storeFor(written), entry: written });
+      const p: PlannedWrite = { store: storeFor(written), entry: written };
+      plan.push(p);
+      plannedByKey.set(entry.dedupeKey, p);
+      continue;
+    }
+
+    const old = c.matchId ? byId.get(c.matchId) : undefined;
+    if (!old) { skipped.duplicate++; continue; }
+
+    if (c.status === "enrich") {
+      // Another source describes the same thing: fill gaps and record the source. The
+      // entry is only touched (and flagged) when that changed something.
+      const { entry: merged, changed } = enrichEntry(old, withMatchedPeople(entry, peopleIndex));
+      if (!changed) { skipped.duplicate++; continue; }
+      addPlanned(entry.dedupeKey, merged, old);
       continue;
     }
 
     // refresh: the same source says something new. Keep the user's id, trip, series,
-    // overrides, reflection, participants and extra sources.
-    const old = c.matchId ? byId.get(c.matchId) : undefined;
-    if (!old) { skipped.duplicate++; continue; }
+    // overrides, reflection, participants, extra sources and anything another source filled in.
     // Keep the user's participants; if they have none, tag from the new source data.
     const incoming = old.participants === undefined ? withMatchedPeople(entry, peopleIndex) : entry;
-    const merged = mergeEvaluation(
-      {
-        ...incoming, id: old.id, tripId: old.tripId, overrides: old.overrides,
-        participants: old.participants ?? incoming.participants,
-        additionalSources: old.additionalSources,
-        ...("seriesId" in old ? { seriesId: (old as { seriesId?: string }).seriesId } : {}),
-      } as Entry,
-      old,
-    );
-    // An entry nobody has looked at yet stays "new"; a reviewed one becomes "updated".
-    const stillUnseen = old.unreviewed === "new";
-    const written: Entry = {
-      ...merged,
-      unreviewed: stillUnseen ? "new" : "updated",
-      importId: runId,
-      ...(stillUnseen && old.importNotes?.length ? { importNotes: old.importNotes } : {}),
-    };
-    plan.push({ store: storeFor(written), entry: written, before: old });
+    addPlanned(entry.dedupeKey, refreshFromSource(old, incoming), old);
   }
 
   const added = plan.filter((p) => !p.before).length;
