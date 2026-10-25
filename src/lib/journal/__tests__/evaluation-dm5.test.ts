@@ -6,7 +6,7 @@ import { mergeEvaluation, migrateEntryEvaluation } from "../evaluation";
 // mergeEvaluation
 // ---------------------------------------------------------------------------
 
-test("mergeEvaluation: user reflection survives supersede with source review", () => {
+test("mergeEvaluation: user reflection survives a refresh with source review", () => {
   const old = { reflection: "my personal note" } as Partial<Entry>;
   const incoming = { source: "letterboxd", review: "Stunning cinematography.", rating: 8.5 } as Partial<Entry>;
   const result = mergeEvaluation(incoming as Entry, old as Entry);

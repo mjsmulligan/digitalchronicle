@@ -13,7 +13,6 @@ function leg(from: string, to: string, date: string, extra: Partial<Leg> = {}): 
     kind:      "leg",
     mode:      "air",
     source:    "viaduct",
-    tier:      2,
     start:     `${date}T10:00`,
     from,
     to,
@@ -154,7 +153,7 @@ test("counts unlinked entries in the window for entryCount", () => {
     ],
     events: [
       {
-        id: "ev1", kind: "event", source: "setlistfm", tier: 2,
+        id: "ev1", kind: "event", source: "setlistfm",
         start: "2025-08-05", artist: "Band", category: "concert",
         venue: "Venue", city: "Barcelona",
         dedupeKey: "event|2025-08-05|band", createdAt: "2025-08-05T00:00:00Z",

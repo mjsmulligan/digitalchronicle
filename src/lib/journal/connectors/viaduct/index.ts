@@ -53,7 +53,6 @@ function parseViaduct(text: string): ParseResult {
       kind: "leg",
       mode: "rail",
       source: "viaduct",
-      tier: 2,
       start,
       end,
       from,
@@ -85,7 +84,6 @@ export const connector: Connector = {
   id: "viaduct",
   label: "Viaduct rail CSV",
   kind: "file",
-  tier: 2,
   accepts: [".csv"],
   sniff(name, head) {
     if (

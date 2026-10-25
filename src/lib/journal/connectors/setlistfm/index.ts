@@ -77,7 +77,6 @@ function parseSetlist(text: string): ParseResult {
       kind: "event",
       category: "concert",
       source: "setlistfm",
-      tier: 2,
       start,
       artist,
       venue: pick(r, ["venue", "Venue name"]) || "Unknown venue",
@@ -106,7 +105,6 @@ export const connector: Connector = {
   id: "setlistfm",
   label: "setlist.fm JSON/CSV",
   kind: "file",
-  tier: 2,
   accepts: [".json", ".csv"],
   sniff(name, head) {
     if (

@@ -179,7 +179,6 @@ export function buildStagingPlan(
       id: uid(),
       kind: "place-entry",
       source: "photo-library",
-      tier: 2,
       start: b.localDay,
       placeId: place.id,
       localityKey: b.localityKey,

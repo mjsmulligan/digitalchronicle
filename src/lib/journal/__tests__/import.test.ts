@@ -146,13 +146,14 @@ describe("importFile: re-import", () => {
     expect(legs()).toHaveLength(4);
   });
 
-  test("a lower precedence record over an existing one is skipped as duplicate", async () => {
+  test("a match from a different source is skipped for now, whichever source it is", async () => {
     await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
-    // Make the stored copy tier 1 (manual), so the tier 2 file is superseded.
-    await putMany("legs", legs().map((l) => ({ ...l, tier: 1 })));
+    // The stored copies came from another source (the merge spec adds enrich in WP3).
+    await putMany("legs", legs().map((l) => ({ ...l, source: "other" })));
     const res = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
     expect(res.run).toBeUndefined();
     expect(res.skipped.duplicate).toBe(4);
+    expect(legs().every((l) => l.source === "other")).toBe(true);
   });
 });
 
@@ -185,17 +186,19 @@ describe("importFile: removed", () => {
   });
 });
 
-// ─── supersedes ──────────────────────────────────────────────────────────────
+// ─── refresh ─────────────────────────────────────────────────────────────────
 
-describe("importFile: supersedes", () => {
-  async function seedLowerTier() {
+describe("importFile: refresh", () => {
+  const STALE = "Stale operator";
+
+  async function seedStaleSource() {
     await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
     const first = legs()[0] as Leg;
-    // The user has reviewed this entry, edited it and written a reflection; it
-    // came from a lower-precedence source (tier 3).
+    // The user has reviewed this entry, edited it and written a reflection, and
+    // the source has since changed a field (the operator), so a re-import refreshes it.
     const original: Leg = {
       ...first,
-      tier: 3,
+      operator: STALE,
       unreviewed: undefined,
       importNotes: undefined,
       reflection: "Best train of the trip",
@@ -205,13 +208,13 @@ describe("importFile: supersedes", () => {
     };
     delete original.unreviewed;
     delete original.importNotes;
-    // Mark the other legs reviewed so only the superseded one is of interest.
+    // Mark the other legs reviewed so only the refreshed one is of interest.
     await putMany("legs", [original, ...legs().slice(1).map((l) => { const { unreviewed: _u, ...r } = l; return r; })]);
     return original;
   }
 
   test("a reviewed entry becomes updated; id, trip, overrides, reflection and participants survive", async () => {
-    const original = await seedLowerTier();
+    const original = await seedStaleSource();
     const res = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
 
     expect(res.added).toBe(0);
@@ -222,7 +225,7 @@ describe("importFile: supersedes", () => {
     const after = legs().find((l) => l.id === original.id) as Leg;
     expect(after.unreviewed).toBe("updated");
     expect(after.importId).toBe(res.run!.id);
-    expect(after.tier).toBe(2);
+    expect(after.operator).not.toBe(STALE);
     expect(after.tripId).toBe("trip1");
     expect(after.overrides).toEqual(original.overrides);
     expect(after.reflection).toBe("Best train of the trip");
@@ -230,17 +233,17 @@ describe("importFile: supersedes", () => {
   });
 
   test("the prior version is snapshotted in run.replaced, and persisted", async () => {
-    const original = await seedLowerTier();
+    const original = await seedStaleSource();
     const res = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
     expect(res.run!.updated).toBe(1);
     expect(res.run!.replaced).toHaveLength(1);
     expect(res.run!.replaced[0].store).toBe("legs");
-    expect(res.run!.replaced[0].before).toMatchObject({ id: original.id, tier: 3, reflection: "Best train of the trip" });
+    expect(res.run!.replaced[0].before).toMatchObject({ id: original.id, reflection: "Best train of the trip" });
     expect(mem.rows<ImportRun>("importRuns").find((r) => r.id === res.run!.id)!.replaced).toHaveLength(1);
   });
 
   test("an entry that is still new stays new", async () => {
-    const original = await seedLowerTier();
+    const original = await seedStaleSource();
     await putMany("legs", [{ ...original, unreviewed: "new", importId: "earlier-run" }]);
     const res = await importFile("sample.csv", viaductCsv, { forced: "viaduct" });
     const after = legs().find((l) => l.id === original.id)!;
@@ -249,7 +252,7 @@ describe("importFile: supersedes", () => {
   });
 
   test("caps replaced snapshots at 500 but still writes every update", async () => {
-    // Reuse the chunk file shape: 520 rows, stored first at tier 3, then imported at tier 2.
+    // Reuse the chunk file shape: 520 rows, stored first with a stale operator, then refreshed.
     const rows = ["Date,Origin,Destination,Departure time,Arrival time,Operator,Train number,Seat,Notes"];
     for (let i = 0; i < 520; i++) {
       const d = new Date(Date.UTC(2019, 0, 1 + i)).toISOString().slice(0, 10);
@@ -257,7 +260,7 @@ describe("importFile: supersedes", () => {
     }
     const csv = rows.join("\n");
     await importFile("big.csv", csv, { forced: "viaduct" });
-    await putMany("legs", legs().map((l) => { const { unreviewed: _u, ...r } = l; return { ...r, tier: 3 }; }));
+    await putMany("legs", legs().map((l) => { const { unreviewed: _u, ...r } = l; return { ...r, operator: STALE }; }));
     const res = await importFile("big.csv", csv, { forced: "viaduct" });
     expect(res.updated).toBe(520);
     expect(res.run!.replaced).toHaveLength(500);
@@ -273,7 +276,7 @@ describe("importFile: suspected duplicate flights (5.3)", () => {
     "SUMMARY:Flight to Paris", "END:VEVENT", "END:VCALENDAR",
   ].join("\n");
   const existingLeg = (over: Partial<Leg> = {}): Leg => ({
-    id: "existing", kind: "leg", source: "viaduct", tier: 2, mode: "air", from: "DUB", to: "LHR",
+    id: "existing", kind: "leg", source: "viaduct", mode: "air", from: "DUB", to: "LHR",
     start: "2026-10-15T09:00", dedupeKey: "leg|2026-10-15|DUB|LHR", createdAt: "2026-10-01T00:00:00.000Z",
     ...over,
   });
@@ -387,7 +390,7 @@ describe("importFile: interrupted runs", () => {
       skipped: { duplicate: 0, inFile: 0, removed: 0 }, errors: [], replaced: [],
     };
     const written = (id: string, over: Partial<Entry> = {}): Leg => ({
-      id, kind: "leg", source: "viaduct", tier: 2, mode: "rail", from: "A", to: "B",
+      id, kind: "leg", source: "viaduct", mode: "rail", from: "A", to: "B",
       start: "2026-03-01T09:00", dedupeKey: `leg|${id}`, createdAt: "2026-03-01T10:00:00.000Z",
       unreviewed: "new", importId: "r1", ...over,
     } as Leg);

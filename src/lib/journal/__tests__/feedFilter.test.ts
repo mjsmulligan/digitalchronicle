@@ -5,7 +5,6 @@ import type { Entry, Person } from "../types";
 const base = {
   id: "x",
   source: "t",
-  tier: 2,
   start: "2026-01-01",
   dedupeKey: "k",
   createdAt: "",

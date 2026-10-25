@@ -26,7 +26,7 @@
  *        for season/episode (handles "Star Trek: Discovery", "Criminal: UK", etc.)
  *  6. No pattern matched → Film (can be corrected manually)
  *
- * Tier: 3 — automated play history; accurate date but no curation, rating, or intent.
+ * Automated play history: accurate date but no curation, rating, or intent.
  */
 import { uid } from "../../types";
 import type { Film, Episode } from "../../types";
@@ -208,7 +208,6 @@ async function parseNetflix(text: string): Promise<ParseResult> {
         id: uid(),
         kind: "film",
         source: "netflix",
-        tier: 3,
         start: watchedDate,
         datePrecision: "day",
         title: parsed.title,
@@ -223,7 +222,6 @@ async function parseNetflix(text: string): Promise<ParseResult> {
         id: uid(),
         kind: "episode",
         source: "netflix",
-        tier: 3,
         start: watchedDate,
         datePrecision: "day",
         showTitle: parsed.showTitle,
@@ -250,7 +248,6 @@ export const connector: Connector = {
   id: "netflix",
   label: "Netflix viewing history",
   kind: "file",
-  tier: 3,
   accepts: [".csv"],
   sniff(name, head) {
     const n = name.toLowerCase();

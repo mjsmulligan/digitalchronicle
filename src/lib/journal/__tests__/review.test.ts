@@ -56,11 +56,13 @@ const legs = () => getState().legs;
 const flagged = () => legs().filter((l) => l.unreviewed !== undefined);
 const importSample = () => importFile("sample.csv", viaductCsv, { forced: "viaduct" });
 
-/** A tier-3 copy of every leg, as left by a lower precedence source and already reviewed. */
-async function downgradeAndReview() {
+const STALE = "Stale operator";
+
+/** A copy of every leg whose operator is out of date at the source, already reviewed. A re-import refreshes it. */
+async function staleAndReview() {
   await putMany("legs", legs().map((l) => {
     const { unreviewed: _u, importNotes: _n, ...rest } = l;
-    return { ...rest, tier: 3 };
+    return { ...rest, operator: STALE };
   }));
 }
 
@@ -143,7 +145,7 @@ describe("markRunReviewed and markAllReviewed", () => {
 
   test("markAllReviewed writes in chunks of 100, across stores", async () => {
     const many: Leg[] = Array.from({ length: 250 }, (_, i) => ({
-      id: `l${i}`, kind: "leg", source: "viaduct", tier: 2, mode: "rail", from: "A", to: "B",
+      id: `l${i}`, kind: "leg", source: "viaduct", mode: "rail", from: "A", to: "B",
       start: "2026-03-01T09:00", dedupeKey: `leg|${i}`, createdAt: "2026-03-01T10:00:00.000Z",
       unreviewed: "new", importId: "r", importNotes: ["n"],
     } as Leg));
@@ -196,20 +198,20 @@ describe("undoRun", () => {
 
   test("restores replaced entries to their prior version", async () => {
     await importSample();
-    await downgradeAndReview();
-    const res = await importSample(); // tier 2 now supersedes all four
+    await staleAndReview();
+    const res = await importSample(); // the source now refreshes all four
     expect(res.updated).toBe(4);
-    expect(legs().every((l) => l.unreviewed === "updated" && l.tier === 2)).toBe(true);
+    expect(legs().every((l) => l.unreviewed === "updated" && l.operator !== STALE)).toBe(true);
 
     const out = await undoRun(res.run!.id);
     expect(out).toEqual({ hidden: 0, restored: 4, kept: 0 });
-    expect(legs().every((l) => l.tier === 3 && l.unreviewed === undefined)).toBe(true);
+    expect(legs().every((l) => l.operator === STALE && l.unreviewed === undefined)).toBe(true);
     expect(allEntries(getState())).toHaveLength(4);
   });
 
   test("a replaced entry the user edited after the import is kept as it is", async () => {
     await importSample();
-    await downgradeAndReview();
+    await staleAndReview();
     const res = await importSample();
     const [a, b, c] = legs();
     await saveUserEdit({ ...a, reflection: "Written after the update" });
@@ -219,15 +221,15 @@ describe("undoRun", () => {
     const out = await undoRun(res.run!.id);
     expect(out).toEqual({ hidden: 0, restored: 2, kept: 2 });
     const byId = new Map(legs().map((l) => [l.id, l]));
-    expect(byId.get(a.id)!.tier).toBe(2);
+    expect(byId.get(a.id)!.operator).not.toBe(STALE);
     expect(byId.get(a.id)!.reflection).toBe("Written after the update");
-    expect(byId.get(b.id)!.tier).toBe(2);
-    expect(byId.get(c.id)!.tier).toBe(3);
+    expect(byId.get(b.id)!.operator).not.toBe(STALE);
+    expect(byId.get(c.id)!.operator).toBe(STALE);
   });
 
   test("a replaced entry that was hidden afterwards stays hidden", async () => {
     await importSample();
-    await downgradeAndReview();
+    await staleAndReview();
     const res = await importSample();
     await hideMany("legs", [legs()[0].id]);
     const out = await undoRun(res.run!.id);
@@ -238,7 +240,7 @@ describe("undoRun", () => {
 
   test("a mix of new, replaced, edited and kept gives the right counts and data", async () => {
     await importSample();
-    await downgradeAndReview();
+    await staleAndReview();
     const extra = [
       "Date,Origin,Destination,Departure time,Arrival time,Operator,Train number,Seat,Notes",
       ...viaductCsv.trim().split("\n").slice(1),

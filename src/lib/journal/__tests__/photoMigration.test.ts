@@ -29,7 +29,6 @@ function makePlaceEntry(id: string, status: "pending" | "accepted" | "dismissed"
     id,
     kind: "place-entry",
     source: "photo-library",
-    tier: 2,
     start: "2025-07-05",
     placeId: "place-1",
     localityKey: "gb:london",

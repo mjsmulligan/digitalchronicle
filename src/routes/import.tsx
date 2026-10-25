@@ -212,7 +212,7 @@ function ImportPage() {
           </Button>
         </div>
         <p className="mt-4 text-xs text-muted-foreground">
-          Generic files need a <code className="font-mono">type</code> column: flight, train, road, stay, concert, gathering, birthday, wedding, milestone, memory... plus start, title, venue, city, people, notes, tier.
+          Generic files need a <code className="font-mono">type</code> column: flight, train, road, stay, concert, gathering, birthday, wedding, milestone, memory... plus start, title, venue, city, people, notes.
         </p>
       </div>
 

@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { TripPicker } from "../../src/components/TripPicker";
-import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry, type Tier } from "@chronicle/journal/types";
+import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "@chronicle/journal/types";
 import { resolveAirportText } from "@chronicle/journal/airports";
 import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
@@ -660,7 +660,6 @@ export default function EntryDetailScreen() {
           const merged = mergeEntries(entry, other);
           const updated = {
             ...merged,
-            tier: 1 as Tier,
             source: "manual" as const,
           };
           await saveUserEdit(updated as Entry);

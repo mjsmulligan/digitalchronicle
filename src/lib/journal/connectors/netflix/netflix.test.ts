@@ -8,7 +8,6 @@ describe("netflix connector", () => {
     expect(connector.id).toBe("netflix");
     expect(connector.label).toBe("Netflix viewing history");
     expect(connector.kind).toBe("file");
-    expect(connector.tier).toBe(3);
     expect(connector.accepts).toContain(".csv");
   });
 
@@ -18,11 +17,10 @@ describe("netflix connector", () => {
     expect(r.entries).toHaveLength(3);
   });
 
-  it("assigns correct source and tier to all entries", async () => {
+  it("assigns the correct source to all entries", async () => {
     const r = await connector.parse({ name: "NetflixViewingHistory.csv", text: sampleText });
     for (const { entry } of r.entries) {
       expect(entry.source).toBe("netflix");
-      expect(entry.tier).toBe(3);
       expect(entry.datePrecision).toBe("day");
     }
   });

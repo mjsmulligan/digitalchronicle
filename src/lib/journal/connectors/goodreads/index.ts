@@ -23,7 +23,6 @@
  *   dateRead is empty string when date is unknown (entries still imported,
  *   but collisions on same title/author will deduplicate).
  *
- * Tier: 2 — primary reading record; curated by the user on Goodreads.
  */
 import { uid } from "../../types";
 import type { Book } from "../../types";
@@ -123,7 +122,6 @@ function parseGoodreads(text: string): ParseResult {
       id: uid(),
       kind: "book",
       source: "goodreads",
-      tier: 2,
       start: startDate,
       datePrecision,
       title,
@@ -151,7 +149,6 @@ export const connector: Connector = {
   id: "goodreads",
   label: "Goodreads library",
   kind: "file",
-  tier: 2,
   accepts: [".csv"],
   sniff(name, head) {
     const n = name.toLowerCase();

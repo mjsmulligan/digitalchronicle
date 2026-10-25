@@ -250,7 +250,6 @@ describe("selection", () => {
       id,
       kind: "place-entry",
       source: "photo-library",
-      tier: 2,
       createdAt: "",
       placeId: "pl1",
       localityKey: "gb:london",

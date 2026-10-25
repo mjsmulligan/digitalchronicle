@@ -7,14 +7,14 @@
  * entry the user hid.
  */
 import { describe, test, expect, beforeEach } from "vitest";
-import { classify, buildDedupeIndex } from "../classify";
+import { classify, buildDedupeIndex, hasSourceChanges } from "../classify";
 import { importFile } from "../import";
 import {
   setAdapter, initJournal, getState, allEntries, allHiddenEntries,
   hideMany, unhideMany, putMany, storeFor,
 } from "../db";
 import type { StorageAdapter, Row } from "../storage";
-import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type Leg, type Tier } from "../types";
+import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type Leg } from "../types";
 import viaductCsv from "../connectors/viaduct/fixtures/sample.csv?raw";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -23,13 +23,13 @@ let n = 0;
 const leg = (over: Partial<Leg> = {}): Leg => {
   n += 1;
   return {
-    id: `leg${n}`, kind: "leg", source: "viaduct", tier: 2, mode: "rail",
+    id: `leg${n}`, kind: "leg", source: "viaduct", mode: "rail",
     from: "A", to: "B", start: "2026-03-01T09:00",
     dedupeKey: "leg|2026-03-01|A|B", createdAt: "2026-03-01T10:00:00.000Z",
     ...over,
   };
 };
-const incoming = (tier: Tier, key = "leg|2026-03-01|A|B") => leg({ id: `in${tier}`, tier, dedupeKey: key });
+const incoming = (over: Partial<Leg> = {}) => leg({ id: "incoming", ...over });
 const classifyOne = (entry: Entry, existing: Entry[]) =>
   classify(entry, buildDedupeIndex(existing), new Set());
 
@@ -37,38 +37,38 @@ const classifyOne = (entry: Entry, existing: Entry[]) =>
 
 describe("classify", () => {
   test("new when nothing matches", () => {
-    expect(classifyOne(incoming(2), [])).toEqual({ status: "new" });
-    expect(classifyOne(incoming(2), [leg({ dedupeKey: "leg|other" })])).toEqual({ status: "new" });
+    expect(classifyOne(incoming(), [])).toEqual({ status: "new" });
+    expect(classifyOne(incoming(), [leg({ dedupeKey: "leg|other" })])).toEqual({ status: "new" });
   });
 
-  test("duplicate for the same tier, with the match id", () => {
-    const existing = leg({ tier: 2 });
-    expect(classifyOne(incoming(2), [existing])).toEqual({ status: "duplicate", matchId: existing.id });
+  test("duplicate when the same source says the same thing, with the match id", () => {
+    const existing = leg();
+    expect(classifyOne(incoming(), [existing])).toEqual({ status: "duplicate", matchId: existing.id });
   });
 
-  test("supersedes when the incoming tier number is lower (higher precedence)", () => {
-    const existing = leg({ tier: 3 });
-    expect(classifyOne(incoming(2), [existing])).toEqual({ status: "supersedes", matchId: existing.id });
+  test("refresh when the same source changed a source field", () => {
+    const existing = leg({ operator: "DB" });
+    expect(classifyOne(incoming({ operator: "SNCF" }), [existing])).toEqual({ status: "refresh", matchId: existing.id });
   });
 
-  test("superseded when the incoming tier number is higher (lower precedence)", () => {
-    const existing = leg({ tier: 2 });
-    expect(classifyOne(incoming(3), [existing])).toEqual({ status: "superseded", matchId: existing.id });
+  test("enrich when the match came from a different source, whatever it holds", () => {
+    const existing = leg({ source: "icalendar" });
+    expect(classifyOne(incoming(), [existing])).toEqual({ status: "enrich", matchId: existing.id });
+    expect(classifyOne(incoming({ operator: "SNCF" }), [leg({ source: "manual" })]).status).toBe("enrich");
   });
 
   test("batch-duplicate for a key seen earlier in the same file", () => {
     const seen = new Set<string>();
     const index = buildDedupeIndex([]);
-    expect(classify(incoming(2), index, seen)).toEqual({ status: "new" });
-    expect(classify(incoming(2), index, seen)).toEqual({ status: "batch-duplicate" });
+    expect(classify(incoming(), index, seen)).toEqual({ status: "new" });
+    expect(classify(incoming(), index, seen)).toEqual({ status: "batch-duplicate" });
   });
 
-  test("removed when the match is hidden, whatever the tier", () => {
-    for (const hiddenTier of [1, 2, 3] as Tier[]) {
-      for (const incomingTier of [1, 2, 3] as Tier[]) {
-        const hidden = leg({ tier: hiddenTier, hidden: true });
-        expect(classifyOne(incoming(incomingTier), [hidden])).toEqual({ status: "removed", matchId: hidden.id });
-      }
+  test("removed when the match is hidden, whatever the source or content", () => {
+    for (const hiddenSource of ["viaduct", "icalendar", "manual"]) {
+      const hidden = leg({ source: hiddenSource, hidden: true });
+      expect(classifyOne(incoming(), [hidden])).toEqual({ status: "removed", matchId: hidden.id });
+      expect(classifyOne(incoming({ operator: "SNCF" }), [hidden]).status).toBe("removed");
     }
   });
 
@@ -76,8 +76,35 @@ describe("classify", () => {
     const hidden = leg({ hidden: true });
     const index = buildDedupeIndex([hidden]);
     const seen = new Set<string>();
-    expect(classify(incoming(2), index, seen).status).toBe("removed");
-    expect(classify(incoming(2), index, seen).status).toBe("batch-duplicate");
+    expect(classify(incoming(), index, seen).status).toBe("removed");
+    expect(classify(incoming(), index, seen).status).toBe("batch-duplicate");
+  });
+});
+
+describe("hasSourceChanges", () => {
+  test("ignores everything the user owns and importer bookkeeping", () => {
+    const existing = leg({
+      reflection: "Lovely", participants: ["p1"], tripId: "t1", overrides: { from: "Berlin" } as Leg["overrides"],
+      importId: "run1", unreviewed: "new", importNotes: ["note"], sourceRef: "old.csv#row2", createdAt: "2020-01-01T00:00:00.000Z",
+    });
+    const same = incoming({ sourceRef: "new.csv#row9", createdAt: "2026-10-25T00:00:00.000Z" });
+    expect(hasSourceChanges(same, existing)).toBe(false);
+  });
+
+  test("a field the user overrode is not a change even when the source differs", () => {
+    const existing = leg({ operator: "DB", overrides: { operator: "My operator" } as unknown as Leg["overrides"] });
+    expect(hasSourceChanges(incoming({ operator: "SNCF" }), existing)).toBe(false);
+  });
+
+  test("a field the incoming record leaves out is not a change", () => {
+    const existing = leg({ operator: "DB", rating: 7 });
+    expect(hasSourceChanges(incoming({ operator: undefined }), existing)).toBe(false);
+  });
+
+  test("key order inside nested values does not matter", () => {
+    const existing = leg({ raw: { a: 1, b: 2 } });
+    expect(hasSourceChanges(incoming({ raw: { b: 2, a: 1 } }), existing)).toBe(false);
+    expect(hasSourceChanges(incoming({ raw: { a: 1, b: 3 } }), existing)).toBe(true);
   });
 });
 
@@ -93,7 +120,7 @@ describe("buildDedupeIndex", () => {
     expect(buildDedupeIndex([visible, hidden]).get(visible.dedupeKey)?.id).toBe("visible");
     expect(buildDedupeIndex([hidden, visible]).get(visible.dedupeKey)?.id).toBe("visible");
     // ...so such an import is classified against the visible entry, not "removed"
-    expect(classifyOne(incoming(2), [hidden, visible]).status).toBe("duplicate");
+    expect(classifyOne(incoming(), [hidden, visible]).status).toBe("duplicate");
   });
 
   test("among entries of the same visibility the last one wins (as before)", () => {

@@ -63,7 +63,7 @@ class MockProvider implements ArtworkProvider {
 
 function film(title: string, year?: number): Film {
   return {
-    id: uid(), kind: "film", source: "letterboxd", tier: 2,
+    id: uid(), kind: "film", source: "letterboxd",
     start: "2024-01-15", dedupeKey: `film|${title.toLowerCase()}|2024-01-15`,
     title, year, createdAt: new Date().toISOString(),
   };
@@ -71,7 +71,7 @@ function film(title: string, year?: number): Film {
 
 function episode(showTitle: string): Episode {
   return {
-    id: uid(), kind: "episode", source: "netflix", tier: 3,
+    id: uid(), kind: "episode", source: "netflix",
     start: "2024-01-15", dedupeKey: `episode|${showTitle.toLowerCase()}|||2024-01-15`,
     showTitle, createdAt: new Date().toISOString(),
   };
@@ -79,7 +79,7 @@ function episode(showTitle: string): Episode {
 
 function event(): JEvent {
   return {
-    id: uid(), kind: "event", source: "manual", tier: 1,
+    id: uid(), kind: "event", source: "manual",
     start: "2024-01-15", dedupeKey: "event|2024-01-15|radiohead",
     category: "concert", artist: "Radiohead", venue: "3Arena", city: "Dublin",
     createdAt: new Date().toISOString(),
@@ -384,7 +384,7 @@ describe("getFetchPostersEnabled", () => {
 
 function book(title: string, author: string, year?: number, isbn13?: string): Book {
   return {
-    id: uid(), kind: "book", source: "goodreads", tier: 2,
+    id: uid(), kind: "book", source: "goodreads",
     start: "2024-01-15", dedupeKey: `book|${title.toLowerCase()}|2024-01-15`,
     title, author, year, isbn13, createdAt: new Date().toISOString(),
   };

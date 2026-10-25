@@ -31,11 +31,11 @@ export const SAMPLE_SETLIST = JSON.stringify(
   2,
 );
 
-export const SAMPLE_GENERIC = `type,start,end,place,city,notes,tier
-stay,2026-05-14,2026-05-17,Michelberger Hotel,Berlin,Room 212 facing the Spree,3
-stay,2026-05-17,2026-05-19,25hours Altes Hafenamt,Hamburg,,3
-stay,2026-08-03,2026-08-06,Trunk Hotel,Tokyo,,3
-stay,2026-08-06,2026-08-09,Ace Hotel,Kyoto,,3
+export const SAMPLE_GENERIC = `type,start,end,place,city,notes
+stay,2026-05-14,2026-05-17,Michelberger Hotel,Berlin,Room 212 facing the Spree
+stay,2026-05-17,2026-05-19,25hours Altes Hafenamt,Hamburg,
+stay,2026-08-03,2026-08-06,Trunk Hotel,Tokyo,
+stay,2026-08-06,2026-08-09,Ace Hotel,Kyoto,
 `;
 
 export const SAMPLE_LIFE = `type,start,title,venue,city,people,notes

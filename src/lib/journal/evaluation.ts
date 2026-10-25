@@ -4,7 +4,7 @@
  * Rules:
  *  - Only entries (events) and containers (Trip, Series) carry them. No day-level reflections.
  *  - `review` is written only by connectors; it is read-only in the UI.
- *  - `reflection` is user-owned and never overwritten by connectors or supersede.
+ *  - `reflection` is user-owned and never overwritten by connectors or a refresh.
  *  - `sourceLocked` tracks only rating provenance now (reflection/review split replaces the old "reflection" lock).
  */
 import type { Entry, Trip } from "./types";
@@ -82,9 +82,9 @@ export function migrateTripEvaluation(t: Trip): Trip | null {
 }
 
 /**
- * When a source record supersedes an existing entry, source-supplied values win
+ * When a source record refreshes an existing entry from the same source, source-supplied values win
  * (they are provenance); otherwise the user's existing value is kept.
- * `reflection` is NEVER replaced by a supersede — it belongs to the user.
+ * `reflection` is NEVER replaced by a refresh: it belongs to the user.
  */
 export function mergeEvaluation<T extends Entry>(incoming: T, old: Entry): T {
   const locks = sourceLocks(incoming);
@@ -92,7 +92,7 @@ export function mergeEvaluation<T extends Entry>(incoming: T, old: Entry): T {
     ...incoming,
     // Source-side: review comes from incoming (updated source text)
     review: incoming.review,
-    // User-side: reflection is NEVER replaced by a supersede
+    // User-side: reflection is NEVER replaced by a refresh
     reflection: old.reflection ?? incoming.reflection,
     // Rating: source-locked rating wins; otherwise keep user's rating
     rating: locks.includes("rating") ? incoming.rating : (old.rating ?? incoming.rating),

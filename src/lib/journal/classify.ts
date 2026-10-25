@@ -1,7 +1,7 @@
 import type { Entry } from "./types";
 
 /** What classify() decides about one incoming record. */
-export type ClassificationStatus = "batch-duplicate" | "new" | "removed" | "supersedes" | "superseded" | "duplicate";
+export type ClassificationStatus = "batch-duplicate" | "new" | "removed" | "refresh" | "enrich" | "duplicate";
 export type Classification = { status: ClassificationStatus; matchId?: string };
 
 /**
@@ -24,16 +24,54 @@ export function buildDedupeIndex(entries: Iterable<Entry>): Map<string, Entry> {
 }
 
 /**
+ * Fields that never count as a source change: identity, bookkeeping set by the
+ * importer, and everything the user owns. Anything the user corrected lives in
+ * `overrides`, and those fields are skipped too (see hasSourceChanges).
+ */
+const NOT_SOURCE_FIELDS = new Set([
+  "id", "source", "dedupeKey", "createdAt", "sourceRef", "sourceLocked",
+  "importId", "importNotes", "unreviewed", "hidden",
+  "overrides", "reflection", "participants", "tripId", "seriesId", "additionalSources",
+]);
+
+/** Order-independent JSON, so two equal objects compare equal whatever their key order. */
+function stable(v: unknown): string {
+  return JSON.stringify(v, (_k, val) =>
+    val && typeof val === "object" && !Array.isArray(val)
+      ? Object.fromEntries(Object.entries(val as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : val,
+  );
+}
+
+/**
+ * True when `incoming` says something different from `existing` about a field
+ * the source owns. Only fields the incoming record defines are compared, so a
+ * rating or note the user added where the source had none is not a change, and
+ * fields the user overrode are ignored. An unchanged re-import must report false.
+ */
+export function hasSourceChanges(incoming: Entry, existing: Entry): boolean {
+  const overridden = new Set(Object.keys((existing.overrides ?? {}) as Record<string, unknown>));
+  const inc = incoming as unknown as Record<string, unknown>;
+  const old = existing as unknown as Record<string, unknown>;
+  for (const key of Object.keys(inc)) {
+    if (NOT_SOURCE_FIELDS.has(key) || overridden.has(key)) continue;
+    if (inc[key] === undefined) continue;
+    if (stable(inc[key]) !== stable(old[key])) return true;
+  }
+  return false;
+}
+
+/**
  * Decides what to do with one incoming record. Isolated in its own function so
- * the source precedence rules (tiers) can be redesigned without touching the
- * importers.
+ * the matching rules can change without touching the importers. There is no
+ * source precedence: no source ever replaces another.
  *
  *   batch-duplicate  same key seen earlier in this file
  *   new              no match in the journal
- *   removed          matches an entry the user hid, whatever its tier
- *   supersedes       match with a higher tier number (lower precedence)
- *   superseded       match with a lower tier number (higher precedence)
- *   duplicate        match with the same tier
+ *   removed          matches an entry the user hid
+ *   refresh          match from the same source whose source fields changed
+ *   enrich           match from a different source (fills gaps, see the merge spec)
+ *   duplicate        match from the same source with nothing changed
  *
  * `seen` is the set of keys already classified in this file; classify adds to it.
  */
@@ -43,7 +81,6 @@ export function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<s
   const m = existing.get(entry.dedupeKey);
   if (!m) return { status: "new" };
   if (m.hidden) return { status: "removed", matchId: m.id };
-  if (entry.tier < m.tier) return { status: "supersedes", matchId: m.id };
-  if (entry.tier > m.tier) return { status: "superseded", matchId: m.id };
-  return { status: "duplicate", matchId: m.id };
+  if (entry.source !== m.source) return { status: "enrich", matchId: m.id };
+  return { status: hasSourceChanges(entry, m) ? "refresh" : "duplicate", matchId: m.id };
 }

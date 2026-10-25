@@ -8,7 +8,6 @@ describe("generic connector", () => {
     expect(connector.id).toBe("generic");
     expect(connector.label).toBe("Generic / cleaned CSV or JSON");
     expect(connector.kind).toBe("file");
-    expect(connector.tier).toBe(3);
     expect(connector.accepts).toContain(".csv");
     expect(connector.accepts).toContain(".json");
   });

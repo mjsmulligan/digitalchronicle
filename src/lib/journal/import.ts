@@ -3,8 +3,9 @@
  *
  * importFile() replaces the stage-then-commit gate: it parses a file, classifies
  * every record against the journal (hidden entries included), and writes the
- * ones that are new or supersede an existing entry straight to the journal,
- * flagged `unreviewed` so the feed can show them for review.
+ * ones that are new or refresh an existing entry from the same source straight
+ * to the journal, flagged `unreviewed` so the feed can show them for review.
+ * A match from a different source is skipped for now (the merge spec adds enrich).
  */
 import {
   allEntries, allHiddenEntries, getState, putMany, setCommitProgress, storeFor,
@@ -67,7 +68,7 @@ export function importFile(filename: string, text: string, opts: ImportOptions =
 interface PlannedWrite {
   store: StoreName;
   entry: Entry;
-  /** Prior version, for records that supersede an existing entry. */
+  /** Prior version, for records that refresh an existing entry. */
   before?: Entry;
 }
 
@@ -133,7 +134,7 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
 
     if (c.status === "batch-duplicate") { skipped.inFile++; continue; }
     if (c.status === "removed") { skipped.removed++; continue; }
-    if (c.status === "duplicate" || c.status === "superseded") { skipped.duplicate++; continue; }
+    if (c.status === "duplicate" || c.status === "enrich") { skipped.duplicate++; continue; }
 
     if (c.status === "new") {
       const notes = [...(parsed.entries[i].warnings ?? [])];
@@ -152,13 +153,19 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
       continue;
     }
 
-    // supersedes: keep the user's id, trip, overrides, reflection and participants.
+    // refresh: the same source says something new. Keep the user's id, trip, series,
+    // overrides, reflection, participants and extra sources.
     const old = c.matchId ? byId.get(c.matchId) : undefined;
     if (!old) { skipped.duplicate++; continue; }
     // Keep the user's participants; if they have none, tag from the new source data.
     const incoming = old.participants === undefined ? withMatchedPeople(entry, peopleIndex) : entry;
     const merged = mergeEvaluation(
-      { ...incoming, id: old.id, tripId: old.tripId, overrides: old.overrides, participants: old.participants ?? incoming.participants } as Entry,
+      {
+        ...incoming, id: old.id, tripId: old.tripId, overrides: old.overrides,
+        participants: old.participants ?? incoming.participants,
+        additionalSources: old.additionalSources,
+        ...("seriesId" in old ? { seriesId: (old as { seriesId?: string }).seriesId } : {}),
+      } as Entry,
       old,
     );
     // An entry nobody has looked at yet stays "new"; a reviewed one becomes "updated".

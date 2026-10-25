@@ -17,7 +17,7 @@ import { toBackupData, fromBackupData } from "../backup";
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const leg = (over: Partial<Leg> = {}): Leg => ({
-  id: "leg1", kind: "leg", source: "viaduct", tier: 2, mode: "rail",
+  id: "leg1", kind: "leg", source: "viaduct", mode: "rail",
   from: "Dublin Heuston", to: "Cork", start: "2026-03-01T09:00",
   dedupeKey: "leg|2026-03-01|DUBLIN HEUSTON|CORK", createdAt: "2026-03-01T10:00:00.000Z",
   ...over,

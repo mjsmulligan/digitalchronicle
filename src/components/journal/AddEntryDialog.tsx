@@ -33,7 +33,7 @@ export function AddEntryDialog({ defaultDate, tripId }: { defaultDate?: string; 
     const companions = f.people ? f.people.split(",").map((x) => x.trim()).filter(Boolean) : undefined;
     const purpose = (f.purpose as Purpose) || undefined;
     const base = {
-      id: uid(), source: "manual" as const, tier: 1 as const, confidence: "confirmed" as const,
+      id: uid(), source: "manual" as const, confidence: "confirmed" as const,
       start: f.time ? `${date}T${f.time}` : date, createdAt: new Date().toISOString(),
       reflection: f.reflection || undefined, purpose, companions,
       tripId: (f.tripId || tripId) || undefined,

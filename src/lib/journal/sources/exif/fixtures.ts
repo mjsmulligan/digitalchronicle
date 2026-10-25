@@ -401,7 +401,6 @@ export function makePlaceEntry(overrides: Partial<PlaceEntry> = {}): PlaceEntry 
     id: overrides.id ?? `entry-${uid()}`,
     kind: "place-entry",
     source: "photo-library",
-    tier: 2,
     start: localDay,           // Base.start mirrors localDay
     placeId: overrides.placeId ?? "place-london",
     localityKey: overrides.localityKey ?? "gb:london",
@@ -432,7 +431,6 @@ export function makeJEvent({ start, ...rest }: Partial<JEvent> & { start: string
     id: `event-${uid()}`,
     kind: "event",
     source: "icalendar",
-    tier: 1,
     start,
     category: rest.category ?? "activity",
     artist:   rest.artist   ?? "Event",
