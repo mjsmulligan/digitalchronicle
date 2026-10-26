@@ -4,6 +4,7 @@ import { KIND_REGISTRY } from "./kinds";
 import { mergeEntries } from "./merge";
 import { clearDuplicateFlag } from "./nearMatch";
 import { rowHash } from "./split";
+import { canConvert, eventToStay, type ConvertTarget } from "./convert";
 import { stable } from "./classify";
 import { eventKey, legKey, stayKey } from "./connectors/keys";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
@@ -676,6 +677,33 @@ export async function markNotDuplicate(aId: string, bId: string): Promise<void> 
     else byStore.set(store, [next]);
   }
   for (const [store, entries] of byStore) await putMany(store, entries);
+}
+
+export type ConvertResult = { ok: true; created: Entry } | { ok: false; reason: string };
+
+/**
+ * Converts an entry to another kind (merge spec WP10; only event to stay for now). The
+ * stay is a new entry carrying everything the user owns; the event is hidden under its own
+ * key, so re-importing its calendar row is `removed` rather than a second event. The stay
+ * is written first: if hiding then fails, the user has a harmless extra event, never a
+ * lost entry. Possible-duplicate hints that pointed at the event follow it to the stay.
+ * Merging is a separate step (mergeManual), which stays same-kind only.
+ */
+export async function convertKind(entryId: string, to: ConvertTarget): Promise<ConvertResult> {
+  const entry = allEntries(state).find((e) => e.id === entryId);
+  if (!entry) return { ok: false, reason: "The entry is no longer in the journal." };
+  if (!canConvert(entry, to)) return { ok: false, reason: "Only an event can be converted to a stay." };
+
+  const created = eventToStay(entry as JEvent);
+  await putMany("stays", [created]);
+  await hideMany("events", [entry.id]);
+
+  for (const e of allEntries(state)) {
+    if (e.id !== created.id && e.possibleDuplicateOf === entry.id) {
+      await putMany(storeFor(e), [{ ...e, possibleDuplicateOf: created.id } as Entry]);
+    }
+  }
+  return { ok: true, created };
 }
 
 export type SplitResult = { ok: true; created: Entry } | { ok: false; reason: string };

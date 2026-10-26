@@ -15,7 +15,7 @@ import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useJournal, allEntries, allHiddenEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed, mergeManual, undoMerge, markNotDuplicate, splitAbsorbed } from "@chronicle/journal/db";
+import { useJournal, allEntries, allHiddenEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed, mergeManual, undoMerge, markNotDuplicate, splitAbsorbed, convertKind } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { TripPicker } from "../../src/components/TripPicker";
 import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "@chronicle/journal/types";
@@ -713,6 +713,25 @@ export default function EntryDetailScreen() {
     );
   };
 
+  // Event to stay (merge spec WP10): a calendar item that is really a hotel night. The stay is a
+  // new entry; this event is hidden. Merging with a stay is then the normal same-kind merge.
+  const handleConvert = (target: Entry, openResult: boolean) => {
+    dialog.confirm(
+      "Convert to a stay",
+      `"${entryTitle(target)}" becomes a stay. Your notes, trip and people come with it, and the original event is hidden.`,
+      "Convert",
+      async () => {
+        try {
+          const res = await convertKind(target.id, "stay");
+          if (!res.ok) dialog.alert("Could not convert", res.reason);
+          else if (openResult) router.replace({ pathname: "/entry/[id]", params: { id: res.created.id } });
+        } catch (err) {
+          dialog.alert("Convert failed", String(err));
+        }
+      },
+    );
+  };
+
   const handleNotDuplicate = async () => {
     if (!entry || !duplicateOf) return;
     try {
@@ -883,9 +902,19 @@ export default function EntryDetailScreen() {
           <View style={{ flex: 1 }}>
             <Text style={styles.reviewBarLabel}>Possible duplicate of "{entryTitle(duplicateOf)}"</Text>
           </View>
-          <Pressable style={styles.reviewBarBtn} onPress={handleMergeDuplicate} accessibilityLabel="Merge with possible duplicate">
-            <Text style={styles.reviewBarBtnText}>Merge</Text>
-          </Pressable>
+          {duplicateOf.kind === entry.kind ? (
+            <Pressable style={styles.reviewBarBtn} onPress={handleMergeDuplicate} accessibilityLabel="Merge with possible duplicate">
+              <Text style={styles.reviewBarBtnText}>Merge</Text>
+            </Pressable>
+          ) : entry.kind === "event" && duplicateOf.kind === "stay" ? (
+            <Pressable style={styles.reviewBarBtn} onPress={() => handleConvert(entry, true)} accessibilityLabel="Convert this event to a stay">
+              <Text style={styles.reviewBarBtnText}>Convert to stay</Text>
+            </Pressable>
+          ) : duplicateOf.kind === "event" && entry.kind === "stay" ? (
+            <Pressable style={styles.reviewBarBtn} onPress={() => handleConvert(duplicateOf, false)} accessibilityLabel="Convert the other event to a stay">
+              <Text style={styles.reviewBarBtnText}>Convert it to stay</Text>
+            </Pressable>
+          ) : null}
           <Pressable
             style={[styles.reviewBarBtn, styles.reviewBarBtnDestructive]}
             onPress={handleNotDuplicate}
@@ -990,6 +1019,21 @@ export default function EntryDetailScreen() {
         ))}
         <RawImportData raw={entry.raw} styles={styles} color={colors.textMuted} />
       </View>
+
+      {/* Convert (merge spec WP10): a calendar item that is really a stay */}
+      {entry.kind === "event" && (
+        <View style={styles.metaCard}>
+          <View style={styles.sourceFieldRow}>
+            <Text style={styles.fieldLabel}>Kind</Text>
+            <View style={styles.sourceValue}>
+              <Text style={styles.fieldValue} numberOfLines={1}>Event</Text>
+            </View>
+            <Pressable style={styles.mergeUndoBtn} onPress={() => handleConvert(entry, true)} accessibilityLabel="Convert this event to a stay">
+              <Text style={styles.mergeUndoText}>Convert to stay</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {/* Merged entries (merge spec 4.7) */}
       {mergedTwins.length > 0 && (
