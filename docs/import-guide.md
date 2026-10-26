@@ -109,6 +109,7 @@ Any calendar application can export an iCal file. This is useful for bulk-import
 **What you get:**
 - Timed events and all-day events as journal entries
 - Multi-day all-day events (2+ days) automatically classified as **Stays** — useful for hotel bookings, trips, or time away from home
+- Booking-site events (a description with a date range such as `(2026.10.12 00:00 - 2026.10.14 00:00)` plus a "Booked for" or "Booking code" line) become **Stays** with the dates from that range, even when the calendar times are odd. Other timed multi-day items stay events
 - Single-day events classified by keyword inference (concert, birthday, gathering, etc.)
 - Event description imported as a reflection
 - Venue and city extracted from the LOCATION field (split on the last comma)

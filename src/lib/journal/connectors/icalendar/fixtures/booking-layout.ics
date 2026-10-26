@@ -1,0 +1,44 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Example//Calendar//EN
+
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Dublin:20261012T225900
+DTEND;TZID=Europe/Dublin:20261014T110000
+SUMMARY:Hôtel Exemple Paris
+LOCATION:12 Rue de l'Exemple\, 75008 Paris\, France
+DESCRIPTION:Hôtel Exemple Paris\n12 Rue de l'Exemple\, 75008 Paris\, France\n(2026.10.12 00:00 - 2026.10.14 00:00)\nBooked for: Alex Example\nBooking code: EXAMPLE-0000
+ORGANIZER;CN="Alex Example":mailto:alex@example.invalid
+ATTENDEE;CN="Alex Example":mailto:alex@example.invalid
+ATTENDEE;CN="Alex Example":mailto:alex2@example.invalid
+UID:booking-layout-1@calendar.example
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Dublin:20261020T090000
+DTEND;TZID=Europe/Dublin:20261022T170000
+SUMMARY:Example Conference
+LOCATION:Example Centre\, Dublin
+DESCRIPTION:Annual conference. Registration opens at 9.
+UID:conference-1@calendar.example
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Dublin:20261101T150000
+DTEND;TZID=Europe/Dublin:20261102T110000
+SUMMARY:Sample Inn Lyon
+LOCATION:5 Rue Modèle\, Lyon 69002\, France
+DESCRIPTION:Sample Inn Lyon\n5 Rue Modèle\, Lyon 69002\, France\n(2026.11.01 00:00 - 2026.11.02 00:00)\nBooking code: SAMPLE-0000
+UID:booking-layout-2@calendar.example
+END:VEVENT
+
+BEGIN:VEVENT
+DTSTART;TZID=Europe/Dublin:20261110T100000
+DTEND;TZID=Europe/Dublin:20261112T100000
+SUMMARY:Retreat
+LOCATION:Somewhere\, Cork
+DESCRIPTION:(2026.11.10 00:00 - 2026.11.12 00:00) team notes only
+UID:range-without-booking-1@calendar.example
+END:VEVENT
+
+END:VCALENDAR

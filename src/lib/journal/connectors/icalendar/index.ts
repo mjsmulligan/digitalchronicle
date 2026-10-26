@@ -6,6 +6,7 @@
  *
  * Classification rules:
  *   - All-day DTSTART + DTEND spanning ≥ 2 days → Stay (hotel, Airbnb, trip)
+ *   - A booking-site description (date range + "Booked for" / "Booking code") → Stay
  *   - Summary contains "flight"/"fly", two airport codes, or a flight number with a route
  *     → Leg (mode: air). Airports are resolved from SUMMARY, DESCRIPTION and LOCATION
  *     against the bundled airport table (see flights.ts).
@@ -353,6 +354,53 @@ function parseHotelBooking(description: string | undefined): { name: string; add
   return { name, address, nights: nightsText ? parseInt(nightsText, 10) : undefined };
 }
 
+/**
+ * Booking-site layout (merge spec WP9): the event is timed, so the calendar's own start and
+ * end are artefacts (a late check-in and a late-morning check-out). The real stay is in
+ * DESCRIPTION: hotel name, address, a "(YYYY.MM.DD HH:MM - YYYY.MM.DD HH:MM)" range, and a
+ * "Booked for:" or "Booking code:" line. The range plus one of those lines is required, so a
+ * conference or any other timed multi-day item still stays an event.
+ */
+function parseBookingRange(
+  description: string | undefined,
+): { name?: string; address?: string; start: string; end: string; nights: number } | null {
+  if (!description) return null;
+  const m = /\((\d{4})\.(\d{2})\.(\d{2})\s+\d{1,2}:\d{2}\s*-\s*(\d{4})\.(\d{2})\.(\d{2})\s+\d{1,2}:\d{2}\)/.exec(description);
+  if (!m) return null;
+  if (!/^(Booked for|Booking code)\s*:/im.test(description)) return null;
+  const start = `${m[1]}-${m[2]}-${m[3]}`;
+  const end = `${m[4]}-${m[5]}-${m[6]}`;
+  const nights = daysBetween(start, end);
+  if (!(nights >= 1)) return null;
+  const content = description
+    .split(/\r?\n/)
+    .map((l) => l.replace(m[0], "").trim())
+    .filter((l) => l && !/^(Booked for|Booking code)\s*:/i.test(l));
+  return { name: content[0], address: content[1], start, end, nights };
+}
+
+/**
+ * City from a full postal address ("12 Rue Exemple, 75008 Paris, France"): drops a trailing
+ * country, then any postcode, which may stand alone or sit in front of the city name.
+ */
+function cityFromAddress(address: string): string {
+  const parts = address.split(",").map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 3) parts.pop(); // the country
+  while (parts.length) {
+    const tokens = parts.pop()!.split(/\s+/).filter((t) => !POSTCODE_RE.test(t));
+    const city = tokens.join(" ").trim();
+    if (city) return city;
+  }
+  return "";
+}
+
+/** Name of the calendar's ORGANIZER, the journal owner for an invite they sent themselves. */
+function organizerName(block: string): string | undefined {
+  const line = block.split(/\r?\n/).find((l) => /^ORGANIZER[;:]/i.test(l));
+  const cn = line && /;CN=(?:"([^"]*)"|([^;:]*))/i.exec(line);
+  return cn ? (cn[1] ?? cn[2] ?? "").replace(/\s+/g, " ").trim() || undefined : undefined;
+}
+
 function addDays(dateStr: string, n: number): string {
   return new Date(Date.parse(dateStr) + n * 86_400_000).toISOString().slice(0, 10);
 }
@@ -405,6 +453,39 @@ function parseIcs(text: string): ParseResult {
       // Source text kept for name matching and later reprocessing.
       raw: { summary, ...(location ? { location } : {}), ...(description ? { description } : {}) },
     };
+
+    // --- Booking-site layout with its own date range → Stay ---
+    const booking = parseBookingRange(description);
+    if (booking) {
+      const address = location || booking.address || "";
+      const city = cityFromAddress(address) || undefined;
+      const tz = city ? timezoneFor(city) : undefined;
+      // The organiser is the journal owner: not a companion of their own stay.
+      const owner = organizerName(block);
+      const guests = (base.companions ?? []).filter((n) => n !== owner);
+      const { companions: _c, ...rest } = base;
+      const s: Stay = {
+        ...rest,
+        ...(guests.length ? { companions: guests } : {}),
+        kind: "stay",
+        place: booking.name ?? summary,
+        city,
+        start: booking.start,
+        end: booking.end,
+        startTz: tz,
+        endTz: tz,
+        startUTC: localToUTC(booking.start, tz),
+        endUTC: localToUTC(booking.end, tz),
+        dedupeKey: "",
+      };
+      s.dedupeKey = stayKey(s);
+      out.entries.push({
+        entry: s,
+        warnings: city ? [] : ["No city detected in LOCATION — check the place name"],
+        sourceRow,
+      });
+      return;
+    }
 
     // --- Classify: hotel booking, or multi-day all-day → Stay ---
     const hotel = parseHotelBooking(description);

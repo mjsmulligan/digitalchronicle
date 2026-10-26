@@ -7,7 +7,8 @@
  * merges anything: import writes the new entry as usual, linked to the best candidate
  * through `possibleDuplicateOf` with a short note, and the user decides.
  *
- * Only entries of the same kind are compared, and place entries never (exact only).
+ * Only entries of the same kind are compared, with one exception: an event and a stay (a
+ * calendar item that is really a hotel night, see convert.ts). Place entries never (exact only).
  * A pair the user marked "not a duplicate" (`notDuplicateOf`, either way round) is skipped.
  */
 import { normaliseText } from "./connectors/keys";
@@ -147,10 +148,28 @@ function episodeHit(a: Episode, b: Episode): Hit {
   return { reason: "same episode", score: 3 };
 }
 
+/** An event and a stay: the event falls on a night of the stay and the names share a word. */
+function eventStayHit(ev: JEvent, st: Stay): Hit {
+  if (!stayDays(st).includes(dayOf(ev.start))) return null;
+  const te = significant(ev.artist);
+  const ts = new Set(significant(st.place));
+  const shared = te.filter((t) => ts.has(t)).length;
+  return shared > 0 && shared / Math.min(te.length, ts.size) >= 0.5
+    ? { reason: "event during a stay with a similar name", score: 2 }
+    : null;
+}
+
+/** Kinds that may be compared with each other even though they differ. */
+const crossKind = (a: Entry, b: Entry) =>
+  (a.kind === "event" && b.kind === "stay") || (a.kind === "stay" && b.kind === "event");
+
 function hitFor(a: Entry, b: Entry): Hit {
   // Compare what the user sees, so a field they corrected counts.
   const va = view(a);
   const vb = view(b);
+  if (a.kind !== b.kind) {
+    return va.kind === "event" ? eventStayHit(va, vb as Stay) : eventStayHit(vb as JEvent, va as Stay);
+  }
   switch (va.kind) {
     case "leg": return legHit(va, vb as Leg);
     case "stay": return stayHit(va, vb as Stay);
@@ -183,7 +202,8 @@ export function findNearMatches(entry: Entry, index: NearIndex): NearMatch[] {
   const out = new Map<string, NearMatch & { distance: number }>();
   for (const d of searchDays(entry)) {
     for (const other of index.get(d) ?? []) {
-      if (other.id === entry.id || other.kind !== entry.kind || out.has(other.id)) continue;
+      if (other.id === entry.id || out.has(other.id)) continue;
+      if (other.kind !== entry.kind && !crossKind(entry, other)) continue;
       if (entry.notDuplicateOf?.includes(other.id) || other.notDuplicateOf?.includes(entry.id)) continue;
       const hit = hitFor(entry, other);
       if (hit) out.set(other.id, { id: other.id, ...hit, distance: Math.abs(dayNum(dayOf(other.start)) - here) });

@@ -1,8 +1,9 @@
+import { findSplitEntry, type SplitIndex } from "./split";
 import type { Entry } from "./types";
 
 /** What classify() decides about one incoming record. */
 export type ClassificationStatus = "batch-duplicate" | "new" | "removed" | "refresh" | "enrich" | "duplicate";
-export type Classification = { status: ClassificationStatus; matchId?: string };
+export type Classification = { status: ClassificationStatus; matchId?: string; split?: true };
 
 /**
  * Lookup of everything already in the journal, by dedupeKey. Pass visible AND
@@ -16,6 +17,8 @@ export type Classification = { status: ClassificationStatus; matchId?: string };
 export function buildDedupeIndex(entries: Iterable<Entry>): Map<string, Entry> {
   const index = new Map<string, Entry>();
   for (const e of entries) {
+    // A split entry shares its key with the entry it was split from; the key belongs to that one.
+    if (e.separateRows?.length) continue;
     const prev = index.get(e.dedupeKey);
     if (prev && !prev.hidden && e.hidden) continue;
     index.set(e.dedupeKey, e);
@@ -28,10 +31,10 @@ export function buildDedupeIndex(entries: Iterable<Entry>): Map<string, Entry> {
  * importer, and everything the user owns. Anything the user corrected lives in
  * `overrides`, and those fields are skipped too (see hasSourceChanges).
  */
-const NOT_SOURCE_FIELDS = new Set([
+export const NOT_SOURCE_FIELDS = new Set([
   "id", "source", "dedupeKey", "createdAt", "sourceRef", "sourceLocked",
   "importId", "importNotes", "unreviewed", "hidden",
-  "overrides", "reflection", "participants", "tripId", "seriesId", "additionalSources", "absorbed", "fieldSources",
+  "overrides", "reflection", "participants", "tripId", "seriesId", "additionalSources", "absorbed", "fieldSources", "separateRows",
 ]);
 
 /** Order-independent JSON, so two equal objects compare equal whatever their key order. */
@@ -75,9 +78,22 @@ export function hasSourceChanges(incoming: Entry, existing: Entry): boolean {
  *   enrich           match from a different source (fills gaps, see the merge spec)
  *   duplicate        match from the same source with nothing changed
  *
+ * `splits` (see split.ts) routes a row the user split apart to its own entry first.
+ *
  * `seen` is the set of keys already classified in this file; classify adds to it.
  */
-export function classify(entry: Entry, existing: Map<string, Entry>, seen: Set<string>): Classification {
+export function classify(
+  entry: Entry,
+  existing: Map<string, Entry>,
+  seen: Set<string>,
+  splits?: SplitIndex,
+): Classification {
+  // A row the user split out of another entry belongs to its own entry, whatever its key says.
+  const owner = splits && findSplitEntry(entry, splits);
+  if (owner) {
+    if (owner.hidden) return { status: "removed", matchId: owner.id, split: true };
+    return { status: hasSourceChanges(entry, owner) ? "refresh" : "duplicate", matchId: owner.id, split: true };
+  }
   if (seen.has(entry.dedupeKey)) return { status: "batch-duplicate" };
   seen.add(entry.dedupeKey);
   const m = existing.get(entry.dedupeKey);
