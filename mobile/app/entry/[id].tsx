@@ -15,7 +15,7 @@ import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useJournal, allEntries, allHiddenEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed, mergeManual, undoMerge } from "@chronicle/journal/db";
+import { useJournal, allEntries, allHiddenEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed, mergeManual, undoMerge, markNotDuplicate } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { TripPicker } from "../../src/components/TripPicker";
 import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "@chronicle/journal/types";
@@ -653,7 +653,14 @@ export default function EntryDetailScreen() {
     return allEntries(journal)
       .filter((e) => e.id !== entry.id && e.kind === entry.kind && Math.abs(dayNumber(e.start) - here) <= 1)
       .sort((a, b) =>
+        Number(b.id === entry.possibleDuplicateOf) - Number(a.id === entry.possibleDuplicateOf) ||
         Math.abs(dayNumber(a.start) - here) - Math.abs(dayNumber(b.start) - here) || a.start.localeCompare(b.start));
+  }, [entry, journal]);
+
+  // The entry import flagged as a possible duplicate of this one (merge spec 4.6), if still visible.
+  const duplicateOf = useMemo<Entry | undefined>(() => {
+    if (!entry?.possibleDuplicateOf) return undefined;
+    return allEntries(journal).find((e) => e.id === entry.possibleDuplicateOf);
   }, [entry, journal]);
 
   // The entries merged into this one, oldest first. Only the latest can be undone.
@@ -682,6 +689,37 @@ export default function EntryDetailScreen() {
         }
       },
     );
+  };
+
+  // The existing entry is the base (it may hold the user's own notes); this new one folds into it.
+  const handleMergeDuplicate = () => {
+    if (!entry || !duplicateOf || mergeSaving) return;
+    dialog.confirm(
+      "Merge entries",
+      `Merge this entry into "${entryTitle(duplicateOf)}"?\n\nThe existing entry keeps its details and fills in anything it is missing from this one. This entry is hidden, and you can undo the merge from the existing entry.`,
+      "Merge",
+      async () => {
+        setMergeSaving(true);
+        try {
+          const res = await mergeManual(duplicateOf.id, entry.id);
+          if (!res.ok) dialog.alert("Could not merge", res.reason);
+          else router.replace({ pathname: "/entry/[id]", params: { id: duplicateOf.id } });
+        } catch (err) {
+          dialog.alert("Merge failed", String(err));
+        } finally {
+          setMergeSaving(false);
+        }
+      },
+    );
+  };
+
+  const handleNotDuplicate = async () => {
+    if (!entry || !duplicateOf) return;
+    try {
+      await markNotDuplicate(entry.id, duplicateOf.id);
+    } catch (err) {
+      dialog.alert("Could not update entry", String(err));
+    }
   };
 
   const handleUndoMerge = (twin: Entry) => {
@@ -817,6 +855,25 @@ export default function EntryDetailScreen() {
             accessibilityLabel="Hide entry"
           >
             <Text style={[styles.reviewBarBtnText, styles.reviewBarBtnTextDestructive]}>Hide</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Possible duplicate — flagged by import, never merged automatically */}
+      {duplicateOf && (
+        <View style={styles.reviewBar}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.reviewBarLabel}>Possible duplicate of "{entryTitle(duplicateOf)}"</Text>
+          </View>
+          <Pressable style={styles.reviewBarBtn} onPress={handleMergeDuplicate} accessibilityLabel="Merge with possible duplicate">
+            <Text style={styles.reviewBarBtnText}>Merge</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.reviewBarBtn, styles.reviewBarBtnDestructive]}
+            onPress={handleNotDuplicate}
+            accessibilityLabel="Not a duplicate"
+          >
+            <Text style={[styles.reviewBarBtnText, styles.reviewBarBtnTextDestructive]}>Not a duplicate</Text>
           </Pressable>
         </View>
       )}
