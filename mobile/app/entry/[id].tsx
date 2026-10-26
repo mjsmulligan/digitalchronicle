@@ -15,12 +15,11 @@ import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useJournal, allEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed } from "@chronicle/journal/db";
+import { useJournal, allEntries, allHiddenEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed, mergeManual, undoMerge, markNotDuplicate } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { TripPicker } from "../../src/components/TripPicker";
 import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "@chronicle/journal/types";
 import { resolveAirportText } from "@chronicle/journal/airports";
-import { mergeEntries } from "@chronicle/journal/merge";
 import { isLocked } from "@chronicle/journal/evaluation";
 import { useTheme } from "../../src/components/ThemeProvider";
 import { KindIcon, StarRating } from "../../src/components/KindIcon";
@@ -610,6 +609,14 @@ export default function EntryDetailScreen() {
     mergeRowText: { ...text.base, color: colors.textPrimary, flex: 1 },
     mergeRowSub:  { ...text.sm, color: colors.textTertiary },
     mergeEmpty: { ...text.base, color: colors.textTertiary, textAlign: "center" as const, padding: spacing.xl },
+    mergeUndoBtn: {
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    mergeUndoText: { ...text.sm, fontWeight: "600" as const, color: colors.textSecondary },
   }), [colors, fonts]);
 
   const iconColors = useMemo<IconColors>(
@@ -637,33 +644,95 @@ export default function EntryDetailScreen() {
     return (journal.importRuns ?? []).find((r) => r.id === entry.importId);
   }, [entry?.importId, journal.importRuns]);
 
-  // Same-day entries for the merge picker (WP-E3)
-  const sameDayEntries = useMemo<Entry[]>(() => {
+  // Merge picker: entries of the same kind on the same day or the day either side,
+  // same day first (merge spec 4.7). Different kinds are never offered.
+  const mergeCandidates = useMemo<Entry[]>(() => {
     if (!entry) return [];
-    const day = entry.start.slice(0, 10);
-    return allEntries(journal).filter(
-      (e) => e.id !== entry.id && e.start.slice(0, 10) === day,
-    );
+    const dayNumber = (iso: string) => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86_400_000;
+    const here = dayNumber(entry.start);
+    return allEntries(journal)
+      .filter((e) => e.id !== entry.id && e.kind === entry.kind && Math.abs(dayNumber(e.start) - here) <= 1)
+      .sort((a, b) =>
+        Number(b.id === entry.possibleDuplicateOf) - Number(a.id === entry.possibleDuplicateOf) ||
+        Math.abs(dayNumber(a.start) - here) - Math.abs(dayNumber(b.start) - here) || a.start.localeCompare(b.start));
+  }, [entry, journal]);
+
+  // The entry import flagged as a possible duplicate of this one (merge spec 4.6), if still visible.
+  const duplicateOf = useMemo<Entry | undefined>(() => {
+    if (!entry?.possibleDuplicateOf) return undefined;
+    return allEntries(journal).find((e) => e.id === entry.possibleDuplicateOf);
+  }, [entry, journal]);
+
+  // The entries merged into this one, oldest first. Only the latest can be undone.
+  const mergedTwins = useMemo<Entry[]>(() => {
+    if (!entry?.mergedFrom?.length) return [];
+    const byId = new Map(allHiddenEntries(journal).map((e) => [e.id, e]));
+    return entry.mergedFrom.map((id) => byId.get(id)).filter((e): e is Entry => !!e);
   }, [entry, journal]);
 
   const handleMerge = async (other: Entry) => {
     if (!entry || mergeSaving) return;
-    // Confirm: keep `entry` (this), delete `other`
     dialog.confirm(
       "Merge entries",
-      `Keep "${entryTitle(entry)}" and discard "${entryTitle(other)}"?\n\nTrip link, participants, overrides and reflections from the discarded entry will be preserved.`,
+      `Merge "${entryTitle(other)}" into "${entryTitle(entry)}"?\n\nThis entry keeps its details and fills in anything it is missing from the other one. The other entry is hidden, and you can undo the merge from this screen.`,
       "Merge",
       async () => {
         setMergeSaving(true);
         setMergeVisible(false);
         try {
-          const merged = mergeEntries(entry, other);
-          await saveUserEdit(merged as Entry);
-          await hideMany(storeFor(other), [other.id]);
+          const res = await mergeManual(entry.id, other.id);
+          if (!res.ok) dialog.alert("Could not merge", res.reason);
         } catch (err) {
           dialog.alert("Merge failed", String(err));
         } finally {
           setMergeSaving(false);
+        }
+      },
+    );
+  };
+
+  // The existing entry is the base (it may hold the user's own notes); this new one folds into it.
+  const handleMergeDuplicate = () => {
+    if (!entry || !duplicateOf || mergeSaving) return;
+    dialog.confirm(
+      "Merge entries",
+      `Merge this entry into "${entryTitle(duplicateOf)}"?\n\nThe existing entry keeps its details and fills in anything it is missing from this one. This entry is hidden, and you can undo the merge from the existing entry.`,
+      "Merge",
+      async () => {
+        setMergeSaving(true);
+        try {
+          const res = await mergeManual(duplicateOf.id, entry.id);
+          if (!res.ok) dialog.alert("Could not merge", res.reason);
+          else router.replace({ pathname: "/entry/[id]", params: { id: duplicateOf.id } });
+        } catch (err) {
+          dialog.alert("Merge failed", String(err));
+        } finally {
+          setMergeSaving(false);
+        }
+      },
+    );
+  };
+
+  const handleNotDuplicate = async () => {
+    if (!entry || !duplicateOf) return;
+    try {
+      await markNotDuplicate(entry.id, duplicateOf.id);
+    } catch (err) {
+      dialog.alert("Could not update entry", String(err));
+    }
+  };
+
+  const handleUndoMerge = (twin: Entry) => {
+    dialog.confirm(
+      "Undo merge",
+      `"${entryTitle(twin)}" will come back as its own entry, and this entry returns to how it was before the merge. Changes you made to this entry since the merge will be lost.`,
+      "Undo merge",
+      async () => {
+        try {
+          const res = await undoMerge(twin.id);
+          if (!res.ok) dialog.alert("Could not undo", res.reason);
+        } catch (err) {
+          dialog.alert("Undo failed", String(err));
         }
       },
     );
@@ -742,7 +811,7 @@ export default function EntryDetailScreen() {
   // ── shared header options ──────────────────────────────────────────────────
   const headerRight = () => (
     <View style={styles.headerActions}>
-      {sameDayEntries.length > 0 && (
+      {mergeCandidates.length > 0 && (
         <Pressable style={styles.headerBtn} onPress={() => setMergeVisible(true)}>
           <Ionicons name="git-merge-outline" size={22} color={showHero && heroUri ? "#fff" : colors.textTertiary} />
         </Pressable>
@@ -786,6 +855,25 @@ export default function EntryDetailScreen() {
             accessibilityLabel="Hide entry"
           >
             <Text style={[styles.reviewBarBtnText, styles.reviewBarBtnTextDestructive]}>Hide</Text>
+          </Pressable>
+        </View>
+      )}
+
+      {/* Possible duplicate — flagged by import, never merged automatically */}
+      {duplicateOf && (
+        <View style={styles.reviewBar}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.reviewBarLabel}>Possible duplicate of "{entryTitle(duplicateOf)}"</Text>
+          </View>
+          <Pressable style={styles.reviewBarBtn} onPress={handleMergeDuplicate} accessibilityLabel="Merge with possible duplicate">
+            <Text style={styles.reviewBarBtnText}>Merge</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.reviewBarBtn, styles.reviewBarBtnDestructive]}
+            onPress={handleNotDuplicate}
+            accessibilityLabel="Not a duplicate"
+          >
+            <Text style={[styles.reviewBarBtnText, styles.reviewBarBtnTextDestructive]}>Not a duplicate</Text>
           </Pressable>
         </View>
       )}
@@ -872,6 +960,25 @@ export default function EntryDetailScreen() {
         ))}
         <RawImportData raw={entry.raw} styles={styles} color={colors.textMuted} />
       </View>
+
+      {/* Merged entries (merge spec 4.7) */}
+      {mergedTwins.length > 0 && (
+        <View style={styles.metaCard}>
+          {mergedTwins.map((twin, i) => (
+            <View key={twin.id} style={styles.sourceFieldRow}>
+              <Text style={styles.fieldLabel}>{i === 0 ? "Merged" : ""}</Text>
+              <View style={styles.sourceValue}>
+                <Text style={styles.fieldValue} numberOfLines={1}>{entryTitle(twin)}</Text>
+              </View>
+              {i === mergedTwins.length - 1 && (
+                <Pressable style={styles.mergeUndoBtn} onPress={() => handleUndoMerge(twin)} accessibilityLabel={`Undo merge of ${entryTitle(twin)}`}>
+                  <Text style={styles.mergeUndoText}>Undo</Text>
+                </Pressable>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
     </>
   );
 
@@ -967,20 +1074,20 @@ export default function EntryDetailScreen() {
           <View style={styles.modalHandle} />
           <Text style={styles.modalTitle}>Merge with…</Text>
           <Text style={styles.modalSubtitle}>
-            Pick another entry from the same day. This entry will be kept; the selected one will be removed.
+            Pick another entry of the same kind from this day or the day either side. This entry is kept; the selected one is hidden, and you can undo the merge.
           </Text>
-          {sameDayEntries.length === 0 ? (
-            <Text style={styles.mergeEmpty}>No other entries on this day.</Text>
+          {mergeCandidates.length === 0 ? (
+            <Text style={styles.mergeEmpty}>No other entries of this kind nearby.</Text>
           ) : (
             <FlatList
-              data={sameDayEntries}
+              data={mergeCandidates}
               keyExtractor={(e) => e.id}
               renderItem={({ item }) => (
                 <Pressable style={styles.mergeRow} onPress={() => handleMerge(item)}>
                   <KindIcon kind={item.kind} size={18} color={colors.textSecondary} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.mergeRowText} numberOfLines={1}>{entryTitle(item)}</Text>
-                    <Text style={styles.mergeRowSub}>{item.source}</Text>
+                    <Text style={styles.mergeRowSub}>{item.start.slice(0, 10)} · {sourceLabel(item.source)}</Text>
                   </View>
                 </Pressable>
               )}

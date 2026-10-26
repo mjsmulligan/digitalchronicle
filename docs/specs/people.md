@@ -95,7 +95,7 @@ After parsing:
 3. User selects which to import (default: all new ones selected).
 4. "Import N contacts" button writes `Person` records to IndexedDB via `putMany("people", [...])`.
 
-No staging hub involvement — contacts have no tier precedence or dedup key logic.
+No staging hub involvement — contacts have no source precedence or dedup key logic.
 
 ---
 

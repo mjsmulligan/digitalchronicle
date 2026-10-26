@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useJournal, allHiddenEntries, unhideMany, storeFor } from "@chronicle/journal/db";
+import { useJournal, allEntries, allHiddenEntries, unhideMany, undoMerge, storeFor } from "@chronicle/journal/db";
 import { entryTitle, view, CATEGORY_LABEL, type Entry } from "@chronicle/journal/types";
 import { useTheme, type ThemeColors, type ThemeFonts, text as textScale, spacing as spacingScale, radius as radiusScale } from "../src/components/ThemeProvider";
 import { useDialog, Dialog } from "../src/components/Dialog";
@@ -138,14 +138,24 @@ export default function HiddenEntriesScreen() {
   const groups = useMemo(() => groupByDay(hidden), [hidden]);
 
   const handleRestore = (entry: Entry) => {
+    // An entry that was merged into another is restored by undoing that merge: restoring
+    // it alone would leave its details in both entries (merge spec 4.7).
+    const mergedInto = entry.mergedInto ? allEntries(journal).find((e) => e.id === entry.mergedInto!.id) : undefined;
     dialog.confirm(
       "Restore entry",
-      `"${entryTitle(entry)}" will be returned to your journal.`,
-      "Restore",
+      mergedInto
+        ? `"${entryTitle(entry)}" was merged into "${entryTitle(mergedInto)}". Restoring it undoes the merge: "${entryTitle(mergedInto)}" goes back to how it was before, and changes you made to it since are lost.`
+        : `"${entryTitle(entry)}" will be returned to your journal.`,
+      mergedInto ? "Undo merge" : "Restore",
       async () => {
         setRestoring((prev) => new Set([...prev, entry.id]));
         try {
-          await unhideMany(storeFor(entry), [entry.id]);
+          if (entry.mergedInto) {
+            const res = await undoMerge(entry.id);
+            if (!res.ok) dialog.alert("Could not restore", res.reason);
+          } else {
+            await unhideMany(storeFor(entry), [entry.id]);
+          }
         } catch (err) {
           dialog.alert("Restore failed", String(err));
         } finally {

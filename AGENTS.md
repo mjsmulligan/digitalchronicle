@@ -10,7 +10,7 @@
 <!-- LOVABLE:END -->
 
 - Journal data lives only in browser IndexedDB (src/lib/journal/db.ts); no cloud sync — privacy requirement.
-- Imports go through `importFile` in `src/lib/journal/import.ts`; precedence tier 1 manual > 2 primary > 3 secondary.
+- Imports go through `importFile` in `src/lib/journal/import.ts`; sources have no precedence. The same source refreshes an entry, a different source fills empty fields only (`merge.ts`), and near matches are flagged, never auto-merged (`nearMatch.ts`). User edits live in `overrides`. Design: `docs/specs/merge-dedup.md`.
 
 ## ⚠️ Connector architecture — do not remove or simplify
 

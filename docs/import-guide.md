@@ -9,17 +9,18 @@ Your journal lives entirely in your browser — no data is sent anywhere. Everyt
 3. Each record is checked against existing entries — new and updated entries are written to your journal and marked **New** or **Updated** so you can review them on the main feed.
 4. Duplicate and already-hidden entries are skipped automatically.
 
-### Source tiers
+### When two sources describe the same thing
 
-When two sources describe the same event, the higher-tier source always wins:
+No source outranks another. What happens depends on where the matching record comes from:
 
-| Tier | Meaning | Examples |
-|------|---------|---------|
-| 1 | Your own manual edit — sovereign | Any entry you type directly |
-| 2 | Primary curated record | Letterboxd, Goodreads, Setlist.fm, Viaduct |
-| 3 | Automated secondary record | Netflix viewing history, iCalendar exports |
+| Situation | What happens |
+|-----------|--------------|
+| The same source sends the record again | The entry is refreshed with the source's latest values. Your edits, reflection, trip and people stay. |
+| A different source describes the same thing (for example Letterboxd and Netflix both log a film) | The existing entry fills in only the fields it is missing, and the other source is added to its source list. Nothing is overwritten. |
+| The same thing appears twice in one file | The rows are merged into one entry that keeps both source references. |
+| The records look similar but do not match exactly (a hotel under two names, a film logged a day apart) | Both are kept. The newer one is flagged **Possible duplicate**, and you choose Merge or Not a duplicate. |
 
-A tier 2 import of a film you already imported from Netflix will supersede the Netflix record. Your manual edits and reflections are always preserved regardless of tier.
+You can also merge two entries of the same kind by hand from the entry screen, and undo the merge later. Your manual edits and reflections are always preserved.
 
 ---
 
@@ -27,7 +28,7 @@ A tier 2 import of a film you already imported from Netflix will supersede the N
 
 Legs are individual transport segments: a flight, a train ride, or a road trip.
 
-### Viaduct (tier 2)
+### Viaduct
 
 [Viaduct](https://viaduct.world) is a free, web-based digital logbook and mapping platform for train enthusiasts and travellers to record, track, and visualise their rail journeys.
 
@@ -44,7 +45,7 @@ Legs are individual transport segments: a flight, a train ride, or a road trip.
 - Times are imported as local wall-clock time and stored with IANA timezone data.
 - If a station name can't be resolved to a timezone, the time is stored as date-only.
 
-### Manual entry (tier 1)
+### Manual entry
 
 Use **Add entry → Flight / Train / Road** in the journal.
 
@@ -56,7 +57,7 @@ Fill in From, To, date, and optionally a departure time. The app resolves timezo
 
 A stay is a period spent in one place — a hotel, an Airbnb, staying with friends.
 
-### Viaduct (tier 2)
+### Viaduct
 
 Viaduct is focused on rail journeys — accommodation bookings are not part of its export. Add stays manually or via the iCalendar connector if you have hotel bookings in your calendar.
 
@@ -64,7 +65,7 @@ Viaduct is focused on rail journeys — accommodation bookings are not part of i
 - Property name and city
 - Check-in and check-out dates
 
-### Manual entry (tier 1)
+### Manual entry
 
 Use **Add entry → Stay** in the journal.
 
@@ -76,7 +77,7 @@ Fill in the place name, city, and optionally a check-out date.
 
 Events cover concerts, gatherings, celebrations, milestones, memories, and activities.
 
-### Setlist.fm (tier 2)
+### Setlist.fm
 
 Setlist.fm tracks concerts you've attended. It doesn't offer a native export, but third-party scripts can generate a compatible CSV or JSON from your attended shows page.
 
@@ -93,7 +94,7 @@ Setlist.fm tracks concerts you've attended. It doesn't offer a native export, bu
 **Notes:**
 - Setlist.fm has no official export API or download. The third-party tools vary in quality. Review new entries in your feed after importing.
 
-### iCalendar (.ics) (tier 3)
+### iCalendar (.ics)
 
 Any calendar application can export an iCal file. This is useful for bulk-importing personal events from Google Calendar, Apple Calendar, or Outlook.
 
@@ -121,13 +122,13 @@ Any calendar application can export an iCal file. This is useful for bulk-import
 - Export only the calendars that contain personal life events — avoid importing work calendars or use the **New** filter on the main feed to review and hide anything irrelevant after importing.
 - Calendar exports typically include noise. Use the **New** filter on the main feed after import and hide entries you don't want to keep.
 
-### Manual entry (tier 1)
+### Manual entry
 
 Use **Add entry** and choose a category: Concert, Gathering, Celebration, Milestone, Memory, or Activity.
 
 Fill in the title/artist, venue, city, and date. You can also record companions and link the entry to a trip.
 
-### Generic CSV (tier 3)
+### Generic CSV
 
 For custom event data from other sources, you can import a generic CSV. The app attempts to map columns to event fields automatically.
 
@@ -139,7 +140,7 @@ Expected columns (headers are matched flexibly): `date`, `title` or `artist`, `v
 
 A film entry records a single viewing — rewatches are separate entries with their own date.
 
-### Letterboxd (tier 2)
+### Letterboxd
 
 Letterboxd is the primary source for film data. It provides clean metadata alongside your ratings and reviews.
 
@@ -158,7 +159,7 @@ Letterboxd is the primary source for film data. It provides clean metadata along
 
 **Import either `diary.csv` or `reviews.csv`** — or both. Entries with the same film and date will deduplicate correctly.
 
-### Netflix (tier 3)
+### Netflix
 
 Netflix provides a raw viewing history export. It has no ratings or metadata beyond title and date, but it's useful for filling in gaps.
 
@@ -175,9 +176,9 @@ Netflix provides a raw viewing history export. It has no ratings or metadata bey
 **Notes:**
 - Netflix titles use the format `Show: Season N: Episode` for TV — these are parsed into Episode entries automatically.
 - Two-part titles like `Show: Something` that don't match the season pattern are treated as Films.
-- No ratings, directors, or metadata — Letterboxd imports for the same film will supersede these entries.
+- No ratings, directors, or metadata — a Letterboxd import for the same film adds its details to the entry.
 
-### Manual entry (tier 1)
+### Manual entry
 
 Films can't yet be added through the quick-add dialog. Use Letterboxd import, or add via a single-row generic CSV import.
 
@@ -187,7 +188,7 @@ Films can't yet be added through the quick-add dialog. Use Letterboxd import, or
 
 An episode entry records a single episode viewing. Episodes are grouped under a series.
 
-### Netflix (tier 3)
+### Netflix
 
 Same export file as for Films — `NetflixViewingHistory.csv`. Episodes and films are parsed from the same file automatically.
 
@@ -208,9 +209,9 @@ Same export file as for Films — `NetflixViewingHistory.csv`. Episodes and film
 
 **Notes:**
 - No episode numbers from Netflix — the title is parsed but numbering within a season isn't available.
-- A Letterboxd import for the same film will supersede a Netflix film entry; episode entries from Netflix have no higher-tier alternative currently.
+- A Letterboxd import for the same film fills in the missing details on the Netflix entry; episode entries have no other source currently.
 
-### Manual entry (tier 1)
+### Manual entry
 
 Use **Add entry → Episode** in the journal. Fill in show title, season, episode number, episode title, and watch date.
 
@@ -220,7 +221,7 @@ Use **Add entry → Episode** in the journal. Fill in show title, season, episod
 
 A book entry records a completed read. The read date is the anchor — "when this happened" — not the start date.
 
-### Goodreads (tier 2)
+### Goodreads
 
 Goodreads is the primary source for book data.
 
@@ -248,7 +249,7 @@ Goodreads is the primary source for book data.
 - Ratings of 0 (unrated in Goodreads) are imported without a rating rather than as a zero.
 - If a book has an ISBN-13, it is used to look up a cover image from Open Library. Books without an ISBN fall back to a title + author search. No personal data is sent — only the ISBN or title/author string.
 
-### Manual entry (tier 1)
+### Manual entry
 
 Use **Add entry → Book** in the journal. Fill in title, author, year, series details, rating, and read date. An optional "started reading" date can also be recorded.
 
@@ -256,9 +257,9 @@ Use **Add entry → Book** in the journal. Fill in title, author, year, series d
 
 ## Tips
 
-**Import order doesn't matter.** The tier system handles precedence automatically — you can import Netflix first and Letterboxd later, and Letterboxd entries will supersede the Netflix ones for the same films on review.
+**Import order doesn't matter.** You can import Netflix first and Letterboxd later: the second source fills in what the first lacked and both are kept as sources of the entry.
 
-**Your reflections are never overwritten.** If you've written a reflection on an entry and a higher-tier import supersedes it, your reflection is preserved on the new record.
+**Your reflections are never overwritten.** If you've written a reflection on an entry, no import changes it.
 
 **Re-importing is safe.** Importing the same file twice will skip all entries as duplicates — nothing will be added unless you have since hidden entries from your journal.
 

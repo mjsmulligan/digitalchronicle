@@ -46,7 +46,7 @@ Chronicle is a **passive journal**. Activity is imported from other apps and ser
 
 - a **reflection** (free text, later also voice) and a **rating** on any entry,
 - **people** present at an entry,
-- **corrections** to imported data (these always win over source data, tier 1),
+- **corrections** to imported data (these always win over source data, stored as `overrides`),
 - naming and editing container objects such as Trips and Series.
 
 There is no "create a new entry" flow in the mobile app. Do not add a floating action button or an "add entry" screen.
@@ -156,7 +156,7 @@ Match the web stack, bundled via `expo-font` and the `@expo-google-fonts/*` pack
 |---|---|---|
 | Serif (titles, day numerals, reflections) | Fraunces | 400, 500, 600 |
 | Sans (UI, subtitles, metadata) | IBM Plex Sans | 400, 500 |
-| Mono (kind labels, dates, source tier) | JetBrains Mono | 400, 500 |
+| Mono (kind labels, dates, source label) | JetBrains Mono | 400, 500 |
 
 Rules:
 - Day numeral: serif 32/36. Entry title in feed: serif 17/24. Page title on entry screen: serif 28/34.
@@ -188,7 +188,7 @@ Rules:
 - Component `SourceMark`: 20x20 rounded square (radius 5), background is the source colour at 15% opacity, glyph is the source colour at about 14px. Mirror `src/components/journal/SourceIcon.tsx` on web.
 - Not every source has an official mark (`icons.ts` says so deliberately). Fallback: a neutral chip with the entry kind icon from the line icon set. Never render text in place of a mark in the feed.
 - The source colours were softened for a dark palette. Check them on Paper for contrast and, if needed, add a `paperColor` variant in the mobile layer without editing the shared file in a way that breaks web.
-- Feed rows show only the mark. The entry page small print shows the mark, the source label and the tier (`t1`, `t2`, `t3`) in mono.
+- Feed rows show only the mark. The entry page small print shows the mark, and the source label in mono.
 
 ---
 
@@ -258,8 +258,8 @@ Order top to bottom:
 4. **Media strip** (Phase 5): photos as slightly rotated mounted prints, horizontally scrollable. Empty state is hidden entirely, with an `Add photo` control inside the reflection toolbar.
 5. **Reflection**: a ruled page area with the serif at 16/26. Empty prompt (italic, `textMuted`): `What do you remember?`. Auto-grows. Auto-saves on blur and on leaving the page (debounced). No Save button.
 6. **People**: chips with remove, `Add person` typeahead, creating a person on the fly. Follow the participants rules in `docs/specs/people.md` exactly (self implicit when `participants` is undefined).
-7. **Small print**: source mark, source label, tier in mono, trip link, source reference. Structured imported fields (seat, aircraft, operator, director, etc.) sit here as compact label/value rows, not as a hero card.
-8. **Amend** (collapsed, opened from the overflow menu): edit imported fields. Writes tier 1 manual overrides that survive re-import. Label it `Corrections (these win over imported data)`.
+7. **Small print**: source mark, source label in mono, trip link, source reference. Structured imported fields (seat, aircraft, operator, director, etc.) sit here as compact label/value rows, not as a hero card.
+8. **Amend** (collapsed, opened from the overflow menu): edit imported fields. Writes manual overrides that survive re-import. Label it `Corrections (these win over imported data)`.
 
 Navigation: swipe left and right to move between entries of the same day (Phase 4). Keep the back stack simple: back always returns to the feed at the same scroll position.
 
@@ -361,7 +361,7 @@ Branch: `feat/mobile-entry-page`
 - [ ] Rating writes the shared `rating` field; reflection writes `reflection`; both persist through the shared db API and survive restart.
 - [ ] Auto-save on blur and on leaving; no Save button; keyboard never covers the field.
 - [ ] Overflow menu with `Amend` and `Delete` (confirm dialog).
-- [ ] `Amend` writes tier 1 overrides; verify a re-import does not overwrite them.
+- [ ] `Amend` writes overrides; verify a re-import does not overwrite them.
 - [ ] People editing follows `docs/specs/people.md`.
 
 Acceptance: a reflection, rating and person added on mobile are visible after force-closing the app. Amended fields survive re-importing the same file. TalkBack reads every control sensibly.

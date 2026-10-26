@@ -210,7 +210,7 @@ describe("re-import after hiding (importFile)", () => {
   });
 });
 
-describe("fuzzy flight rule ignores hidden legs", () => {
+describe("near-match rule ignores hidden legs", () => {
   beforeEach(freshJournal);
 
   const flightToParis = [
@@ -228,7 +228,8 @@ describe("fuzzy flight rule ignores hidden legs", () => {
     // The flight is added (not blocked) but flagged with a note.
     expect(result.added).toBe(1);
     const entry = allEntries(getState()).find((e) => e.kind === "leg" && e.id !== "existing");
-    expect(entry?.importNotes).toContain("Possible duplicate of an existing flight on this date");
+    expect(entry?.importNotes?.[0]).toMatch(/^Possible duplicate of "/);
+    expect((entry as Leg).possibleDuplicateOf).toBe("existing");
   });
 
   test("a hidden leg on the same date does not flag the imported flight", async () => {
@@ -236,6 +237,7 @@ describe("fuzzy flight rule ignores hidden legs", () => {
     const result = await importFile("calendar.ics", flightToParis, { forced: "icalendar" });
     expect(result.added).toBe(1);
     const entry = allEntries(getState()).find((e) => e.kind === "leg");
-    expect(entry?.importNotes ?? []).not.toContain("Possible duplicate of an existing flight on this date");
+    expect(entry?.importNotes ?? []).not.toContainEqual(expect.stringMatching(/^Possible duplicate/));
+    expect((entry as Leg).possibleDuplicateOf).toBeUndefined();
   });
 });

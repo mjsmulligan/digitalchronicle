@@ -10,13 +10,13 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 - [x] **Shared `rating`, `reflection`, `datePrecision`, `sourceRef` fields** on Base — normalised across all entry types.
 - [x] **Film & Episode types** (`film`, `episode`) with `Series` container, rewatch flag, season/episode parsing.
 - [x] **Book type** (`book`) with clean title, author, series/seriesNumber.
-- [x] **Connector architecture** — registry, tier system, `importFile` pipeline, dedup by source-agnostic keys.
-- [x] **Letterboxd connector** (tier 2) — `diary.csv` and `reviews.csv`; half-star ratings doubled to 0–10; rewatch flag.
-- [x] **Netflix connector** (tier 3) — `NetflixViewingHistory.csv`; auto-detects Film vs. Episode from title structure.
-- [x] **Goodreads connector** (tier 2) — `goodreads_library_export.csv`; read shelf only; series suffix parsing; date fallback with unknown precision.
-- [x] **Setlist.fm connector** (tier 2) — concert history with setlists.
-- [x] **Viaduct connector** (tier 2) — flights, trains, road segments.
-- [x] **Manual tier 1 overrides** — field-level corrections that survive re-imports.
+- [x] **Connector architecture** — registry, `importFile` pipeline, dedup by source-agnostic keys.
+- [x] **Letterboxd connector** — `diary.csv` and `reviews.csv`; half-star ratings doubled to 0–10; rewatch flag.
+- [x] **Netflix connector** — `NetflixViewingHistory.csv`; auto-detects Film vs. Episode from title structure.
+- [x] **Goodreads connector** — `goodreads_library_export.csv`; read shelf only; series suffix parsing; date fallback with unknown precision.
+- [x] **Setlist.fm connector** — concert history with setlists.
+- [x] **Viaduct connector** — flights, trains, road segments.
+- [x] **Manual overrides** — field-level corrections that survive re-imports.
 - [x] **Culture view** — films, TV episodes, books, and concerts in one view; series grouping; filter by kind or rating.
 - [x] **Moments view** — gatherings, celebrations, milestones, memories, activities; category filter pills.
 - [x] **Star rendering** — `rating` (0–10) displayed as half-stars in EntryCard and list views.
@@ -24,7 +24,7 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 - [x] **`dateStarted` UI** — optional reading-start date on Book entries.
 - [x] **Event posters (film & episode)** — TMDB poster images on Film and Episode entries; cached in a separate SQLite/IDB artwork store; settings toggle; TMDB attribution.
 - [x] **Book covers** — Open Library cover images on Book entries; ISBN probe + title/author search fallback; `isbn13` persisted from Goodreads; no API key required; separate toggle; attribution.
-- [x] **iCalendar connector** (tier 3) — `.ics` files from Google/Apple/Outlook Calendar; multi-day all-day events → Stays; single-day → JEvents with keyword-inferred categories.
+- [x] **iCalendar connector** — `.ics` files from Google/Apple/Outlook Calendar; multi-day all-day events → Stays; single-day → JEvents with keyword-inferred categories.
 - [x] **Import guide** (`docs/import-guide.md`) — per-source export instructions for all supported connectors.
 - [x] **People store** — `Person` records in IndexedDB with `isSelf` flag for journal owner; `participants?: string[]` on Base (undefined = self implicit, `[]` = self explicitly removed).
 - [x] **Contacts import** — vCard (`.vcf`) and Google Contacts CSV parser; preview and select before writing.
@@ -50,7 +50,7 @@ A local-first, privacy-focused personal journal and lifelog. All data remains st
 
 ## 2. Importers (Remaining)
 
-All importers feed into the Staging Hub for preview, duplicate detection, and tier-based conflict resolution before writing to IndexedDB.
+All importers feed into the Staging Hub for preview, duplicate detection, and merge handling before writing to IndexedDB.
 
 - [ ] **Resident Advisor / Songkick** — club nights, DJ sets, and concert tickets as alternatives to Setlist.fm.
 - [ ] **Foursquare / Swarm** — restaurant, café, and cultural venue check-ins with companion mentions.
@@ -79,7 +79,7 @@ Direct browser-to-service connections. All tokens and credentials stay on-device
 
 ## 6. Data Model (Outstanding)
 
-- [ ] **Field-level dedup resolution** — the current tier model assigns precedence to a whole entry. Cross-source imports (e.g. Netflix has the accurate watch date; Letterboxd has the rating and review) could benefit from field-level merging. The `reflection` field is already preserved this way in `commitBatch`; generalise the pattern.
+- [x] **Field-level dedup resolution** — done in `docs/specs/merge-dedup.md`: tiers removed, other sources fill empty fields only, near matches flagged.
 - [ ] **`Read Count` from Goodreads** — a count > 1 implies re-reads that aren't individually dated. Currently imported as a single entry; consider surfacing the count as metadata or prompting the user to add re-read entries.
 - [ ] **Private Notes from Goodreads** — currently dropped. Consider mapping to a second reflection or a private tag.
 

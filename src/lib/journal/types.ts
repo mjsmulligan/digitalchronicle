@@ -100,6 +100,20 @@ interface Base {
   /** For each field filled from another row: the `sourceRef` (or source id) it came from. */
   fieldSources?: Record<string, string>;
   /**
+   * Set by import when this entry looks like a duplicate of an existing one that the exact
+   * key did not catch (merge spec 4.6). A hint for the user, never acted on automatically.
+   */
+  possibleDuplicateOf?: string;
+  /** Ids of entries the user said this one is NOT a duplicate of, so the hint does not return. */
+  notDuplicateOf?: string[];
+  /** Ids of the entries the user merged into this one, oldest first (merge spec 4.7). */
+  mergedFrom?: string[];
+  /**
+   * Set on the hidden entry the user merged away: which entry absorbed it, and that
+   * entry as it was just before the merge, so the merge can be undone exactly.
+   */
+  mergedInto?: { id: string; baseBefore: Entry };
+  /**
    * Soft-delete flag. When `true` the entry is excluded from all normal views
    * and helpers (allEntries, feeds, trip linking, etc.) but remains in the
    * database so it can be restored from Settings → Hidden Entries.

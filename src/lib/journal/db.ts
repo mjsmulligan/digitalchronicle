@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type Trip, type PlaceEntry } from "./types";
 import { KIND_REGISTRY } from "./kinds";
+import { mergeEntries } from "./merge";
+import { clearDuplicateFlag } from "./nearMatch";
 import { eventKey, legKey, stayKey } from "./connectors/keys";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
@@ -624,6 +626,84 @@ export async function undoRun(runId: string): Promise<{ hidden: number; restored
 
   await putMany("importRuns", [{ ...run, status: "undone" as const }]);
   return { hidden, restored, kept };
+}
+
+// ─── Manual merge and undo (docs/specs/merge-dedup.md, 4.7) ───────────────────
+
+export type MergeResult = { ok: true; merged: Entry } | { ok: false; reason: string };
+
+/**
+ * Merges `otherId` into `baseId`: the base is kept (same id, source and sourceRef) and
+ * gains what it lacked, the other becomes a hidden twin that remembers the base as it
+ * was. Both rows go into one putMany, so a failure leaves both entries untouched. The
+ * other stays hidden under its own key, so a re-import of its source row is `removed`.
+ */
+export async function mergeManual(baseId: string, otherId: string): Promise<MergeResult> {
+  const all = allEntries(state);
+  const base = all.find((e) => e.id === baseId);
+  const other = all.find((e) => e.id === otherId);
+  if (!base || !other) return { ok: false, reason: "One of the entries is no longer in the journal." };
+  if (base.id === other.id) return { ok: false, reason: "An entry cannot be merged with itself." };
+  if (base.kind !== other.kind) return { ok: false, reason: "Only entries of the same kind can be merged." };
+
+  // The hint that the two were duplicates is resolved by merging them.
+  const merged = stripReviewFlags(clearDuplicateFlag({
+    ...mergeEntries(base, other),
+    mergedFrom: [...(base.mergedFrom ?? []), other.id],
+  } as Entry, other.id)) as Entry;
+  const twin = { ...stripReviewFlags(other), hidden: true as const, mergedInto: { id: base.id, baseBefore: base } } as Entry;
+  await putMany(storeFor(base), [merged, twin]);
+  return { ok: true, merged };
+}
+
+/**
+ * "Not a duplicate": records, on both entries, that they are different things, and drops
+ * the possible-duplicate hint and its note from whichever carried it. The review flags are
+ * left alone, because the user has answered one question, not reviewed the entry.
+ */
+export async function markNotDuplicate(aId: string, bId: string): Promise<void> {
+  const all = [...allEntries(state), ...allHiddenEntries(state)];
+  const byStore = new Map<StoreName, Entry[]>();
+  for (const [id, otherId] of [[aId, bId], [bId, aId]] as const) {
+    const e = all.find((x) => x.id === id);
+    if (!e) continue;
+    const next = clearDuplicateFlag({ ...e, notDuplicateOf: Array.from(new Set([...(e.notDuplicateOf ?? []), otherId])) } as Entry, otherId);
+    const store = storeFor(e);
+    const list = byStore.get(store);
+    if (list) list.push(next);
+    else byStore.set(store, [next]);
+  }
+  for (const [store, entries] of byStore) await putMany(store, entries);
+}
+
+export type UnmergeResult = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Undoes a manual merge from the hidden twin: the base goes back to how it was before
+ * the merge and the twin comes back. Edits made to the base since are lost, so callers
+ * confirm first. Only the latest merge into a base can be undone, because an earlier
+ * snapshot would drop the later one.
+ */
+export async function undoMerge(twinId: string): Promise<UnmergeResult> {
+  const twin = allHiddenEntries(state).find((e) => e.id === twinId);
+  const link = twin?.mergedInto;
+  if (!twin || !link) return { ok: false, reason: "This entry was not merged into another." };
+  const store = storeFor(twin);
+  const base = (state[store] as Entry[]).find((e) => e.id === link.id);
+  const restoredTwin = (() => {
+    const { hidden: _h, mergedInto: _m, ...rest } = twin;
+    return rest as Entry;
+  })();
+  if (!base) {
+    // The entry it was merged into is gone: just bring this one back.
+    await putMany(store, [restoredTwin]);
+    return { ok: true };
+  }
+  if (base.mergedFrom?.[base.mergedFrom.length - 1] !== twinId) {
+    return { ok: false, reason: "A later merge was made into the same entry. Undo that one first." };
+  }
+  await putMany(store, [link.baseBefore, restoredTwin]);
+  return { ok: true };
 }
 
 /** Restore soft-deleted entries by removing the hidden flag. */
