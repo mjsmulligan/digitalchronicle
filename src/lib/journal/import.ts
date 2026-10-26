@@ -16,9 +16,10 @@ import { enrichAll } from "./artworkEnrichment";
 import { loadStations } from "./geo";
 import { sourceLocks } from "./evaluation";
 import { enrichEntry, mergeEntries, refreshFromSource } from "./merge";
+import { buildNearIndex, findNearMatches, possibleDuplicateNote } from "./nearMatch";
 import { buildPeopleIndex, withMatchedPeople } from "./peopleMatch";
 import {
-  uid, type Entry, type ImportRun, type ImportSkipCounts, type Leg, type StoreName,
+  uid, type Entry, type ImportRun, type ImportSkipCounts, type StoreName,
 } from "./types";
 
 export interface ImportResult {
@@ -43,8 +44,6 @@ const CLASSIFY_CHUNK = 200;
 /** Undo restores at most this many replaced entries per run (spec 4.2). */
 export const MAX_REPLACED_SNAPSHOTS = 500;
 const MAX_NOTES = 3;
-
-export const POSSIBLE_DUPLICATE_NOTE = "Possible duplicate of an existing flight on this date";
 
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -110,15 +109,8 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
   // People known to the journal, for tagging attendees and names found in events.
   const peopleIndex = buildPeopleIndex(journal.people);
 
-  // Fuzzy flight rule (5.3) looks at legs the user can see.
-  const legsByDate = new Map<string, Entry[]>();
-  for (const e of visible) {
-    if (e.kind !== "leg") continue;
-    const day = e.start.slice(0, 10);
-    const bucket = legsByDate.get(day);
-    if (bucket) bucket.push(e);
-    else legsByDate.set(day, [e]);
-  }
+  // Near matches (merge spec 4.6) are looked for among entries the user can see.
+  const nearIndex = buildNearIndex(visible);
 
   // 3. Classify. Nothing is written yet.
   const skipped = emptySkips();
@@ -170,13 +162,15 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
 
     if (c.status === "new") {
       const notes = [...(parsed.entries[i].warnings ?? [])];
-      // A leg with placeholder codes and another leg on the same date might be a
-      // repeat of a flight we already have. Import it flagged, with a note (5.3).
-      if (entry.kind === "leg" && !(entry as Leg).from && (legsByDate.get(entry.start.slice(0, 10))?.length ?? 0) > 0) {
-        notes.push(POSSIBLE_DUPLICATE_NOTE);
-      }
+      // No exact match, but it may still be the same thing recorded differently (a flight
+      // without airport codes, a hotel under another name). Import it as new, linked to the
+      // best candidate with a note, and let the user decide (merge spec 4.6).
+      const near = findNearMatches(entry, nearIndex)[0];
+      const nearEntry = near ? byId.get(near.id) : undefined;
+      if (nearEntry) notes.unshift(possibleDuplicateNote(nearEntry));
       const written: Entry = {
         ...withMatchedPeople(entry, peopleIndex),
+        ...(nearEntry ? { possibleDuplicateOf: nearEntry.id } : {}),
         unreviewed: "new",
         importId: runId,
         ...(notes.length ? { importNotes: notes.slice(0, MAX_NOTES) } : {}),

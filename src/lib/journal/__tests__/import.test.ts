@@ -9,7 +9,7 @@ import { describe, test, expect, beforeEach, vi } from "vitest";
 vi.mock("../artworkEnrichment", () => ({ enrichAll: vi.fn(async () => {}) }));
 
 import { enrichAll } from "../artworkEnrichment";
-import { importFile, POSSIBLE_DUPLICATE_NOTE } from "../import";
+import { importFile } from "../import";
 import {
   setAdapter, initJournal, getState, allEntries, allHiddenEntries, hideMany, putMany, storeFor,
 } from "../db";
@@ -426,7 +426,7 @@ describe("importFile: refresh", () => {
 
 // ─── suspected duplicate flights ─────────────────────────────────────────────
 
-describe("importFile: suspected duplicate flights (5.3)", () => {
+describe("importFile: suspected duplicate flights (merge spec 4.6)", () => {
   const flightToParis = [
     "BEGIN:VCALENDAR", "BEGIN:VEVENT",
     "DTSTART:20261015T060000Z", "DTEND:20261015T080000Z",
@@ -445,19 +445,21 @@ describe("importFile: suspected duplicate flights (5.3)", () => {
     expect(res.skipped.duplicate).toBe(0);
     const added = legs().find((l) => l.id !== "existing")!;
     expect(added.unreviewed).toBe("new");
-    expect(added.importNotes).toContain(POSSIBLE_DUPLICATE_NOTE);
+    expect(added.importNotes?.[0]).toMatch(/^Possible duplicate of "/);
+    expect(added.possibleDuplicateOf).toBe("existing");
   });
 
   test("no note when there is no other leg that day, or the only one is hidden", async () => {
     let res = await importFile("calendar.ics", flightToParis, { forced: "icalendar" });
-    expect(legs()[0].importNotes ?? []).not.toContain(POSSIBLE_DUPLICATE_NOTE);
+    expect(legs()[0].possibleDuplicateOf).toBeUndefined();
     expect(res.added).toBe(1);
 
     await freshJournal();
     await putMany("legs", [existingLeg({ hidden: true })]);
     res = await importFile("calendar.ics", flightToParis, { forced: "icalendar" });
     const added = legs().find((l) => l.id !== "existing")!;
-    expect(added.importNotes ?? []).not.toContain(POSSIBLE_DUPLICATE_NOTE);
+    expect(added.possibleDuplicateOf).toBeUndefined();
+    expect(added?.importNotes ?? []).not.toContainEqual(expect.stringMatching(/^Possible duplicate/));
   });
 });
 

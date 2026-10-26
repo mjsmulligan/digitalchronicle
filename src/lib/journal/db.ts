@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type Trip, type PlaceEntry } from "./types";
 import { KIND_REGISTRY } from "./kinds";
 import { mergeEntries } from "./merge";
+import { clearDuplicateFlag } from "./nearMatch";
 import { eventKey, legKey, stayKey } from "./connectors/keys";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
@@ -645,13 +646,34 @@ export async function mergeManual(baseId: string, otherId: string): Promise<Merg
   if (base.id === other.id) return { ok: false, reason: "An entry cannot be merged with itself." };
   if (base.kind !== other.kind) return { ok: false, reason: "Only entries of the same kind can be merged." };
 
-  const merged = stripReviewFlags({
+  // The hint that the two were duplicates is resolved by merging them.
+  const merged = stripReviewFlags(clearDuplicateFlag({
     ...mergeEntries(base, other),
     mergedFrom: [...(base.mergedFrom ?? []), other.id],
-  }) as Entry;
+  } as Entry, other.id)) as Entry;
   const twin = { ...stripReviewFlags(other), hidden: true as const, mergedInto: { id: base.id, baseBefore: base } } as Entry;
   await putMany(storeFor(base), [merged, twin]);
   return { ok: true, merged };
+}
+
+/**
+ * "Not a duplicate": records, on both entries, that they are different things, and drops
+ * the possible-duplicate hint and its note from whichever carried it. The review flags are
+ * left alone, because the user has answered one question, not reviewed the entry.
+ */
+export async function markNotDuplicate(aId: string, bId: string): Promise<void> {
+  const all = [...allEntries(state), ...allHiddenEntries(state)];
+  const byStore = new Map<StoreName, Entry[]>();
+  for (const [id, otherId] of [[aId, bId], [bId, aId]] as const) {
+    const e = all.find((x) => x.id === id);
+    if (!e) continue;
+    const next = clearDuplicateFlag({ ...e, notDuplicateOf: Array.from(new Set([...(e.notDuplicateOf ?? []), otherId])) } as Entry, otherId);
+    const store = storeFor(e);
+    const list = byStore.get(store);
+    if (list) list.push(next);
+    else byStore.set(store, [next]);
+  }
+  for (const [store, entries] of byStore) await putMany(store, entries);
 }
 
 export type UnmergeResult = { ok: true } | { ok: false; reason: string };

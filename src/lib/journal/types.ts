@@ -99,6 +99,13 @@ interface Base {
   absorbed?: Array<{ source: string; sourceRef?: string; entry: Entry }>;
   /** For each field filled from another row: the `sourceRef` (or source id) it came from. */
   fieldSources?: Record<string, string>;
+  /**
+   * Set by import when this entry looks like a duplicate of an existing one that the exact
+   * key did not catch (merge spec 4.6). A hint for the user, never acted on automatically.
+   */
+  possibleDuplicateOf?: string;
+  /** Ids of entries the user said this one is NOT a duplicate of, so the hint does not return. */
+  notDuplicateOf?: string[];
   /** Ids of the entries the user merged into this one, oldest first (merge spec 4.7). */
   mergedFrom?: string[];
   /**
