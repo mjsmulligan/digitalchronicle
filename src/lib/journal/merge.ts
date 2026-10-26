@@ -147,7 +147,7 @@ export function enrichEntry<T extends Entry>(base: T, incoming: Entry): { entry:
 /**
  * The same source says something new about an entry it already supplied. Source fields
  * come from `incoming`; the user's id, trip, series, overrides, reflection and participants
- * stay, and so do the extra sources, absorbed rows and anything another source filled in
+ * stay, and so do the extra sources, absorbed rows, merge links and anything another source filled in
  * that this source does not itself define.
  */
 export function refreshFromSource<T extends Entry>(old: Entry, incoming: T): T {
@@ -172,6 +172,7 @@ export function refreshFromSource<T extends Entry>(old: Entry, incoming: T): T {
       participants: old.participants ?? incoming.participants,
       additionalSources: old.additionalSources,
       absorbed: old.absorbed,
+      mergedFrom: old.mergedFrom,
       fieldSources: Object.keys(fieldSources).length ? fieldSources : undefined,
       ...(seriesId !== undefined ? { seriesId } : {}),
     } as unknown as Entry,

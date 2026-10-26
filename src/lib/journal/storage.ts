@@ -30,7 +30,11 @@ export interface StorageAdapter {
   /** Read all records from a named store. */
   getAll<T extends Row>(store: StoreName): Promise<T[]>;
 
-  /** Upsert a batch of records into a store (insert or replace by id). */
+  /**
+   * Upsert a batch of records into a store (insert or replace by id). All items of one
+   * call are written in one transaction, so they all land or none do (a manual merge
+   * relies on this to write the merged entry and its hidden twin together).
+   */
   putMany<T extends Row>(store: StoreName, items: T[]): Promise<void>;
 
   /** Delete records by their ids. */
