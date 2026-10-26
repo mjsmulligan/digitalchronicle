@@ -2,6 +2,7 @@
 
 **Status:** Draft v0.5. Decisions from the review so far are folded in (section 12). The remaining open questions in section 11 are small and none of them blocks a work package.
 **Location:** `docs/specs/auto-import.md`
+**Note (26 Oct 2026):** the source tiers and the `supersedes` / `superseded` statuses described below were removed by `docs/specs/merge-dedup.md`. `classify()` now returns `new`, `removed`, `batch-duplicate`, `refresh`, `enrich` and `duplicate`. Read the tier text here as history; the log entries are left as written.
 **Branching:** one feature branch per work package, e.g. `feat/auto-import-wp1`, merged by PR
 **Platform focus:** mobile first. The engine changes live in `src/lib/journal/` and are shared, so web is affected (see section 9).
 

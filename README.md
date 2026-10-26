@@ -12,7 +12,7 @@ Key specifications from the project discovery and data model:
   * Legs: transit segments (Air: flight number, airports, departure/arrival times, aircraft; Rail: origin, destination, times; Road).
   * Stays: accommodation/lodgings with place, dates, check-in/out, notes.
   * Events: activities, concerts, gigs (artist, venue, city, date, setlist details).
-  * Manual Overrides & Notes: sovereign Tier 1 overrides and personal journal reflections attached to days or trips.
+  * Manual Overrides & Notes: sovereign user overrides and personal journal reflections attached to days or trips.
   * Imported entries retain their parsed source record (including nested JSON) and original row reference. Local times and known place timezones provide UTC instants when unambiguous; manual time/place corrections recalculate UTC in the effective entry view without overwriting source facts.
   * Place matching is offline: hand-curated airports/cities and an unambiguous European station lookup. Unknown or ambiguous names stay unresolved rather than being guessed; no place names are sent to a geocoding service.
 
@@ -25,7 +25,7 @@ Key specifications from the project discovery and data model:
 - Staging Review step:
   * Shows parsed records with preview, validation warnings, and duplicate detection.
   * Suggested Trip Clustering: automatically clusters transit legs and events by proximity and timeline into candidate trips that the user can confirm, adjust, or split.
-  * Conflict resolution adhering to precedence tiers (User manual edits > Primary transit records > Secondary order/calendar records).
+  * Conflict resolution without source precedence: user edits always win, the same source refreshes its entry, another source only fills empty fields, and near matches are flagged for the user to merge or dismiss.
   * Batch or selective commit of staged records into the primary data store.
 
 3. Views Powered by the Local Store:

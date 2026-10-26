@@ -36,7 +36,7 @@ This table is inferred from the first implementation's export and the earlier dr
 | Where the scan lives | Settings page | Sources page | Move |
 | Confidence | `approximate` or `inferred`, rule not specified | Dropped. Staging hints replace it | Remove |
 | Single-photo flag | `singlePhoto` | Kept as data, never used to hide an entry | Keep |
-| Precedence tier | `tier` 2 on every event | Unchanged. Precedence is being redesigned separately | Keep |
+| Precedence tier | None. Tiers were removed (`merge-dedup.md`) | Photo place entries are never merged automatically | Keep |
 | Existing data | 138 place events from a real scan | The app is not live, so reset and rescan. Keep the export as a test fixture | Reset |
 
 ## 3. Model
