@@ -15,7 +15,7 @@ import { getBookCoverProvider } from "@chronicle/journal/bookCoverProvider";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useJournal, allEntries, allHiddenEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed, mergeManual, undoMerge, markNotDuplicate } from "@chronicle/journal/db";
+import { useJournal, allEntries, allHiddenEntries, putMany, removeMany, hideMany, saveUserEdit, storeFor, markReviewed, mergeManual, undoMerge, markNotDuplicate, splitAbsorbed } from "@chronicle/journal/db";
 import { ParticipantPicker } from "../../src/components/ParticipantPicker";
 import { TripPicker } from "../../src/components/TripPicker";
 import { view, CATEGORY_LABEL, entryTitle, locationLabel, type Entry, type Leg, type Stay, type JEvent, type Film, type Episode, type Book, type PlaceEvent, type PlaceEntry } from "@chronicle/journal/types";
@@ -722,6 +722,24 @@ export default function EntryDetailScreen() {
     }
   };
 
+  // Splits a row an import folded into this entry back out as its own entry (merge spec 4.8).
+  const handleSplit = (source: string, sourceRef: string | undefined) => {
+    if (!entry) return;
+    dialog.confirm(
+      "Split into a separate entry",
+      `This row from ${sourceLabel(source)} becomes its own entry, and this entry loses the details it filled in. Your notes, trip and people stay here. A later import will not merge them again.`,
+      "Split",
+      async () => {
+        try {
+          const res = await splitAbsorbed(entry.id, source, sourceRef);
+          if (!res.ok) dialog.alert("Could not split", res.reason);
+        } catch (err) {
+          dialog.alert("Split failed", String(err));
+        }
+      },
+    );
+  };
+
   const handleUndoMerge = (twin: Entry) => {
     dialog.confirm(
       "Undo merge",
@@ -956,6 +974,18 @@ export default function EntryDetailScreen() {
               </View>
             </View>
             {s.sourceRef && <Field label="Ref" value={s.sourceRef} styles={styles} />}
+            {entry.absorbed?.some((a) => a.source === s.source && a.sourceRef === s.sourceRef) && (
+              <View style={styles.sourceFieldRow}>
+                <Text style={styles.fieldLabel} />
+                <Pressable
+                  style={styles.mergeUndoBtn}
+                  onPress={() => handleSplit(s.source, s.sourceRef)}
+                  accessibilityLabel={`Split ${sourceLabel(s.source)} into a separate entry`}
+                >
+                  <Text style={styles.mergeUndoText}>Split into a separate entry</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         ))}
         <RawImportData raw={entry.raw} styles={styles} color={colors.textMuted} />

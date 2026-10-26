@@ -172,6 +172,7 @@ export function refreshFromSource<T extends Entry>(old: Entry, incoming: T): T {
       participants: old.participants ?? incoming.participants,
       additionalSources: old.additionalSources,
       absorbed: old.absorbed,
+      separateRows: old.separateRows,
       mergedFrom: old.mergedFrom,
       fieldSources: Object.keys(fieldSources).length ? fieldSources : undefined,
       ...(seriesId !== undefined ? { seriesId } : {}),

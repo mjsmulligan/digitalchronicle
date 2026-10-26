@@ -1,8 +1,10 @@
 import { useSyncExternalStore } from "react";
-import { STORES, emptyJournalData, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type Trip, type PlaceEntry } from "./types";
+import { STORES, emptyJournalData, uid, type JournalData, type StoreName, type Entry, type JEvent, type Leg, type Stay, type GazetteerEntry, type ImportRun, type Trip, type PlaceEntry } from "./types";
 import { KIND_REGISTRY } from "./kinds";
 import { mergeEntries } from "./merge";
 import { clearDuplicateFlag } from "./nearMatch";
+import { rowHash } from "./split";
+import { stable } from "./classify";
 import { eventKey, legKey, stayKey } from "./connectors/keys";
 import { migrateEntryEvaluation, migrateTripEvaluation } from "./evaluation";
 import { loadStations } from "./geo";
@@ -674,6 +676,59 @@ export async function markNotDuplicate(aId: string, bId: string): Promise<void> 
     else byStore.set(store, [next]);
   }
   for (const [store, entries] of byStore) await putMany(store, entries);
+}
+
+export type SplitResult = { ok: true; created: Entry } | { ok: false; reason: string };
+
+/**
+ * Splits a row an import folded into an entry back out as its own entry (merge spec 4.8).
+ * The new entry is built from the stored snapshot and flagged `new`. The original loses
+ * the row from `absorbed` and `additionalSources`, and the fields that row filled in
+ * (per `fieldSources`), unless they have changed since. Trip, people, overrides and
+ * reflection stay with the original. Both entries are written in one putMany, and the
+ * pair is marked not a duplicate so near-match detection stays quiet. The new entry
+ * keeps the row's key and carries `separateRows`, so re-importing the file routes that
+ * row to it and never merges it again.
+ */
+export async function splitAbsorbed(entryId: string, source: string, sourceRef: string | undefined): Promise<SplitResult> {
+  const orig = allEntries(state).find((e) => e.id === entryId);
+  if (!orig) return { ok: false, reason: "The entry is no longer in the journal." };
+  const row = orig.absorbed?.find((a) => a.source === source && a.sourceRef === sourceRef);
+  if (!row) return { ok: false, reason: "That source is not part of this entry any more." };
+
+  const snapshot = row.entry;
+  const ref = snapshot.sourceRef ?? snapshot.source;
+  const created = {
+    ...snapshot,
+    id: uid(),
+    unreviewed: "new" as const,
+    separateRows: [rowHash(snapshot)],
+    notDuplicateOf: [orig.id],
+  } as Entry;
+  delete (created as { importNotes?: string[] }).importNotes;
+  delete (created as { possibleDuplicateOf?: string }).possibleDuplicateOf;
+  delete (created as { hidden?: true }).hidden;
+
+  const next = { ...orig } as unknown as Record<string, unknown>;
+  const snap = snapshot as unknown as Record<string, unknown>;
+  for (const [field, from] of Object.entries(orig.fieldSources ?? {})) {
+    if (from !== ref) continue;
+    // Only take back what is still the row's value: a field the user has since changed stays.
+    if (stable(next[field]) !== stable(snap[field])) continue;
+    delete next[field];
+    if (field === "rating") delete next.sourceLocked;
+  }
+  const fieldSources = Object.fromEntries(Object.entries(orig.fieldSources ?? {}).filter(([, from]) => from !== ref));
+  const absorbed = (orig.absorbed ?? []).filter((a) => a !== row);
+  const additional = (orig.additionalSources ?? []).filter((a) => !(a.source === source && a.sourceRef === sourceRef));
+  next.absorbed = absorbed.length ? absorbed : undefined;
+  next.fieldSources = Object.keys(fieldSources).length ? fieldSources : undefined;
+  next.additionalSources = additional.length ? additional : undefined;
+  next.notDuplicateOf = Array.from(new Set([...(orig.notDuplicateOf ?? []), created.id]));
+  for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+
+  await putMany(storeFor(orig), [next as unknown as Entry, created]);
+  return { ok: true, created };
 }
 
 export type UnmergeResult = { ok: true } | { ok: false; reason: string };

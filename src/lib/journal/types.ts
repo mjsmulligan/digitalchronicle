@@ -104,6 +104,12 @@ interface Base {
    * key did not catch (merge spec 4.6). A hint for the user, never acted on automatically.
    */
   possibleDuplicateOf?: string;
+  /**
+   * Hashes of source rows the user split out of another entry into this one (merge spec
+   * 4.8). Import routes a row with a matching hash, or the same sourceRef, to this entry
+   * and never folds it into the entry it was split from.
+   */
+  separateRows?: string[];
   /** Ids of entries the user said this one is NOT a duplicate of, so the hint does not return. */
   notDuplicateOf?: string[];
   /** Ids of the entries the user merged into this one, oldest first (merge spec 4.7). */

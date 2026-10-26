@@ -11,6 +11,7 @@ import {
   allEntries, allHiddenEntries, getState, putMany, setCommitProgress, storeFor,
 } from "./db";
 import { buildDedupeIndex, classify } from "./classify";
+import { buildSplitIndex } from "./split";
 import { detectConnector, getConnector, UNSUPPORTED_FORMATS } from "./connectors/registry";
 import { enrichAll } from "./artworkEnrichment";
 import { loadStations } from "./geo";
@@ -105,6 +106,7 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
   const journal = getState();
   const visible = allEntries(journal);
   const existing = buildDedupeIndex([...visible, ...allHiddenEntries(journal)]);
+  const splits = buildSplitIndex([...visible, ...allHiddenEntries(journal)]);
   const byId = new Map(visible.map((e) => [e.id, e]));
   // People known to the journal, for tagging attendees and names found in events.
   const peopleIndex = buildPeopleIndex(journal.people);
@@ -139,7 +141,9 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
     const { entry, sourceRow } = parsed.entries[i];
     entry.sourceRef = `${filename}#row${sourceRow}`;
     entry.sourceLocked = sourceLocks(entry);
-    const c = classify(entry, existing, seen);
+    const c = classify(entry, existing, seen, splits);
+    // A split row is planned under its own key, so later rows with the shared key never fold into it.
+    const planKey = c.split ? `split|${c.matchId}` : entry.dedupeKey;
 
     if (c.status === "removed") { skipped.removed++; continue; }
 
@@ -189,7 +193,7 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
       // entry is only touched (and flagged) when that changed something.
       const { entry: merged, changed } = enrichEntry(old, withMatchedPeople(entry, peopleIndex));
       if (!changed) { skipped.duplicate++; continue; }
-      addPlanned(entry.dedupeKey, merged, old);
+      addPlanned(planKey, merged, old);
       continue;
     }
 
@@ -197,7 +201,7 @@ async function runImport(filename: string, text: string, opts: ImportOptions): P
     // overrides, reflection, participants, extra sources and anything another source filled in.
     // Keep the user's participants; if they have none, tag from the new source data.
     const incoming = old.participants === undefined ? withMatchedPeople(entry, peopleIndex) : entry;
-    addPlanned(entry.dedupeKey, refreshFromSource(old, incoming), old);
+    addPlanned(planKey, refreshFromSource(old, incoming), old);
   }
 
   const added = plan.filter((p) => !p.before).length;
