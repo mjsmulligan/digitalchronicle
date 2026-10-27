@@ -14,7 +14,14 @@
  */
 
 export interface NormalisedExif {
+  /**
+   * True UTC instant (seconds). Only set when the EXIF offset is known, because the
+   * wall-clock time alone does not identify an instant. Otherwise null, and the caller
+   * uses the asset creation time.
+   */
   captureTimestamp: number | null;
+  /** EXIF wall-clock time as "YYYY-MM-DDTHH:MM:SS" (local time, no zone), or null. */
+  localCaptureTime: string | null;
   tzOffset: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -114,13 +121,15 @@ export function resolveCoordinates(
 /**
  * Normalise the platform EXIF dictionary.
  *
- * The capture timestamp handling is unchanged from the original mediaAccess
- * implementation: the EXIF wall-clock time is read as if it were UTC and the time
- * resolver applies the offset afterwards. (That interaction is reviewed separately.)
+ * EXIF DateTimeOriginal is local wall-clock time with no zone. It is returned as
+ * `localCaptureTime` and never treated as UTC. When OffsetTimeOriginal is also present
+ * the true instant is worked out as wall-clock minus offset. (The first implementation
+ * read the wall-clock time as UTC and the resolver then applied the offset again,
+ * which moved evening photos to the next day.)
  */
 export function normaliseExif(exif: Record<string, unknown> | null | undefined): NormalisedExif {
   if (!exif) {
-    return { captureTimestamp: null, tzOffset: null, latitude: null, longitude: null, cameraMake: null, cameraModel: null };
+    return { captureTimestamp: null, localCaptureTime: null, tzOffset: null, latitude: null, longitude: null, cameraMake: null, cameraModel: null };
   }
 
   // ── Capture timestamp ──
@@ -130,13 +139,25 @@ export function normaliseExif(exif: Record<string, unknown> | null | undefined):
     (exif["DateTime"] as string | undefined) ??
     null;
 
-  let captureTimestamp: number | null = null;
+  // EXIF datetime format: "YYYY:MM:DD HH:MM:SS". `wallClockUtcMs` is that wall-clock
+  // time placed on the UTC axis purely for date arithmetic. It is not an instant.
+  let localCaptureTime: string | null = null;
+  let wallClockUtcMs: number | null = null;
   if (rawDateTime) {
-    // EXIF datetime format: "YYYY:MM:DD HH:MM:SS"
     const m = String(rawDateTime).match(/^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
     if (m) {
       const [, y, mo, d, h, min, s] = m;
-      captureTimestamp = Date.UTC(+y, +mo - 1, +d, +h, +min, +s) / 1000;
+      const ms = Date.UTC(+y, +mo - 1, +d, +h, +min, +s);
+      // Reject values that Date.UTC would silently roll over (month 13, 30 February,
+      // hour 25) and the all-zero date that cameras write when the clock is unset.
+      const back = new Date(ms);
+      const valid =
+        back.getUTCFullYear() === +y && back.getUTCMonth() === +mo - 1 && back.getUTCDate() === +d &&
+        back.getUTCHours() === +h && back.getUTCMinutes() === +min && back.getUTCSeconds() === +s;
+      if (valid) {
+        wallClockUtcMs = ms;
+        localCaptureTime = `${y}-${mo}-${d}T${h}:${min}:${s}`;
+      }
     }
   }
 
@@ -145,9 +166,15 @@ export function normaliseExif(exif: Record<string, unknown> | null | undefined):
     (exif["OffsetTimeOriginal"] as string | undefined) ??
     (exif["{Exif}.OffsetTimeOriginal"] as string | undefined) ??
     null;
-  const tzOffset = rawOffset && /^[+-]\d{2}:\d{2}$/.test(String(rawOffset))
+  const tzOffset = rawOffset && /^[+-]\d{2}:\d{2}$/.test(String(rawOffset)) && offsetSeconds(String(rawOffset)) !== null
     ? String(rawOffset)
     : null;
+
+  // The instant is only known when both the wall-clock time and the offset are.
+  const captureTimestamp =
+    wallClockUtcMs !== null && tzOffset !== null
+      ? wallClockUtcMs / 1000 - (offsetSeconds(tzOffset) as number)
+      : null;
 
   // ── GPS ──
   let latitude: number | null = null;
@@ -167,5 +194,20 @@ export function normaliseExif(exif: Record<string, unknown> | null | undefined):
   const cameraMake = String(exif["Make"] ?? exif["{TIFF}.Make"] ?? "").trim() || null;
   const cameraModel = String(exif["Model"] ?? exif["{TIFF}.Model"] ?? "").trim() || null;
 
-  return { captureTimestamp, tzOffset, latitude, longitude, cameraMake, cameraModel };
+  return { captureTimestamp, localCaptureTime, tzOffset, latitude, longitude, cameraMake, cameraModel };
+}
+
+/**
+ * Seconds east of UTC for an offset such as "+01:00" or "-10:00", or null if the
+ * value is outside the real range of UTC-12:00 to UTC+14:00 with valid minutes.
+ */
+function offsetSeconds(offset: string): number | null {
+  const m = offset.match(/^([+-])(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const hours = +m[2];
+  const minutes = +m[3];
+  if (minutes > 59 || hours > 14) return null;
+  const total = hours * 3600 + minutes * 60;
+  const signed = m[1] === "-" ? -total : total;
+  return signed >= -12 * 3600 && signed <= 14 * 3600 ? signed : null;
 }

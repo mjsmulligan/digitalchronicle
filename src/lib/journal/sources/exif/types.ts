@@ -36,10 +36,20 @@ export interface PhotoRecord {
   /** File URI or content URI (content:// on Android, ph:// on iOS) */
   uri: string;
   /**
-   * Capture time from EXIF DateTimeOriginal as a Unix timestamp (seconds).
-   * null if no capture time could be read — file modified time is used instead.
+   * The moment the photo was taken, as a true UTC Unix timestamp (seconds).
+   *
+   * This is an instant, never a wall-clock time read as if it were UTC. It comes from
+   * the EXIF time and offset when both exist, otherwise from the asset creation time.
+   * null when neither is available.
    */
   captureTimestamp: number | null;
+  /**
+   * The EXIF DateTimeOriginal wall-clock time exactly as the camera recorded it, as
+   * "YYYY-MM-DDTHH:MM:SS" with no zone. This is already local time at the place the
+   * photo was taken, so its date is the local day. Absent when EXIF has no valid
+   * capture time.
+   */
+  localCaptureTime?: string;
   /**
    * EXIF timezone offset string (e.g. "+01:00") or null if not present.
    * Present in EXIF 2.31+ (most phones since 2019).
@@ -53,7 +63,7 @@ export interface PhotoRecord {
   cameraMake: string | null;
   /** EXIF Model field (e.g. "iPhone 15 Pro") */
   cameraModel: string | null;
-  /** True if the asset creation time was used because EXIF capture time was absent */
+  /** True if the asset creation time was used because EXIF had no valid capture time */
   usedFallbackTime?: boolean;
   /**
    * Asset creation time in milliseconds, as the media library reports it. This is
