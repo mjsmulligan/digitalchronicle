@@ -11,10 +11,16 @@ import { putMany, getState } from "@chronicle/journal/db";
 import { uid, type ImportRun } from "@chronicle/journal/types";
 import { resolveLocalDay } from "@chronicle/journal/sources/exif/timeResolution";
 import { InMemoryLocalityCache, ResolvingLocalityResolver } from "@chronicle/journal/sources/exif/localityResolver";
+import {
+  createdAtList,
+  newestCreatedAt,
+  nextMarkerTimestamp,
+  resolvePhotoLocalities,
+} from "@chronicle/journal/sources/exif/scanPipeline";
 import { buildPlaceEntries } from "@chronicle/journal/sources/exif/entryBuilder";
 import { buildStagingPlan } from "@chronicle/journal/sources/exif/stagingService";
-import type { ScanScope, TimedPhotoRecord, LocatedPhotoRecord, UnlocatedPhotoRecord } from "@chronicle/journal/sources/exif/types";
-import { setScanMarker } from "./scanPrefs";
+import type { ScanScope, TimedPhotoRecord } from "@chronicle/journal/sources/exif/types";
+import { getScanMarker, setScanMarker } from "./scanPrefs";
 
 // ─── Lazy device module loader ────────────────────────────────────────────────
 // expo-media-library requires native code not present in Expo Go.
@@ -90,6 +96,14 @@ export function useExifScan() {
       }
 
       setState((s) => ({ ...s, phase: "scanning" }));
+      const scanStartedAt = Date.now();
+      // A "since" scan (for example reconnecting from the Sources page) must stay
+      // inside the user's chosen scope, so read it from the stored marker.
+      const previousMarker = await getScanMarker();
+      const effectiveScope: ScanScope =
+        scope.kind === "since" && scope.base === undefined && previousMarker
+          ? { ...scope, base: previousMarker.scope }
+          : scope;
 
       // ── Step 2 + 3: scan + time-resolve ───────────────────────────────────
       const timed: TimedPhotoRecord[] = [];
@@ -97,7 +111,7 @@ export function useExifScan() {
       const legs = journal.legs;
       const fallbackTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-      for await (const batch of scanPhotos(scope)) {
+      for await (const batch of scanPhotos(effectiveScope)) {
         if (cancelRef.current) { setState((s) => ({ ...s, phase: "cancelled" })); return; }
         for (const photo of batch) timed.push(resolveLocalDay(photo, legs, fallbackTz));
         setState((s) => ({ ...s, scanned: timed.length }));
@@ -109,25 +123,12 @@ export function useExifScan() {
       setState((s) => ({ ...s, phase: "geocoding" }));
       const cache = new InMemoryLocalityCache();
       const resolver = new ResolvingLocalityResolver(deviceGeocoder, cache);
-      const located: LocatedPhotoRecord[] = [];
-      const unlocated: UnlocatedPhotoRecord[] = [];
-
-      for (const photo of timed) {
-        if (cancelRef.current) { setState((s) => ({ ...s, phase: "cancelled" })); return; }
-        if (photo.latitude !== null && photo.longitude !== null) {
-          const info = await resolver.resolve(photo.latitude, photo.longitude, photo.localDay);
-          if (info) located.push({ ...photo, locality: info });
-          else      unlocated.push({ ...photo, locality: null });
-        } else {
-          unlocated.push({ ...photo, locality: null });
-        }
-        setState((s) => ({ ...s, pending: resolver.pendingCount }));
-      }
-
-      if (resolver.pendingCount > 0) {
-        await resolver.retryPending();
-        setState((s) => ({ ...s, pending: resolver.pendingCount }));
-      }
+      const outcome = await resolvePhotoLocalities(timed, resolver, {
+        shouldCancel: () => cancelRef.current,
+        onProgress: (pending) => setState((s) => ({ ...s, pending })),
+      });
+      if (!outcome) { setState((s) => ({ ...s, phase: "cancelled" })); return; }
+      const { located, unlocated, unresolved } = outcome;
 
       // ── Step 5: build place entries (one per locality × day) ──────────────
       setState((s) => ({ ...s, phase: "building" }));
@@ -174,13 +175,22 @@ export function useExifScan() {
       }
 
       // Advance the scan marker now that the scan completed successfully.
-      // The marker stores the scope so future startup checks know which albums
-      // or date range to apply. For "since" scope (startup check called via
-      // photoSource), the marker is advanced by photoSource.ts instead; the
-      // useExifScan path is always a user-initiated scan with a base scope.
-      if (scope.kind !== "since") {
-        await setScanMarker(scope);
-      }
+      // The marker stores the user's base scope so future startup checks know which
+      // albums or date range to apply, and a timestamp that starts from when this scan
+      // began and stays behind photos whose lookup failed (see scanPipeline.ts).
+      // A "since" scan keeps the stored base scope; a manual scan replaces it.
+      const markerScope = scope.kind === "since"
+        ? (previousMarker?.scope ?? scope.base ?? { kind: "all" as const })
+        : scope;
+      await setScanMarker(
+        markerScope,
+        nextMarkerTimestamp({
+          previous: scope.kind === "since" ? previousMarker?.lastScannedAt ?? null : null,
+          scanStartedAt,
+          newestProcessedAt: newestCreatedAt(timed),
+          unresolvedCreatedAt: createdAtList(unresolved),
+        }),
+      );
 
       setState((s) => ({
         ...s,

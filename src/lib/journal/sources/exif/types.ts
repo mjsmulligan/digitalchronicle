@@ -15,8 +15,15 @@ export type ScanScope =
   | { kind: "all" }
   | { kind: "date-range"; start: string; end: string } // YYYY-MM-DD
   | { kind: "albums"; albumIds: string[] }
-  /** WP12b: startup check — only photos created after this ISO 8601 timestamp */
-  | { kind: "since"; timestamp: string };
+  /**
+   * WP12b: incremental check, only photos created after this ISO 8601 timestamp.
+   * `base` is the user's chosen scope (all, date range or albums); the incremental
+   * check must stay inside it. Absent means the whole library.
+   */
+  | { kind: "since"; timestamp: string; base?: BaseScanScope };
+
+/** A scope the user can choose. "since" is derived from one of these. */
+export type BaseScanScope = Exclude<ScanScope, { kind: "since" }>;
 
 /**
  * A normalised photo record as returned by the media access layer.
@@ -29,10 +36,20 @@ export interface PhotoRecord {
   /** File URI or content URI (content:// on Android, ph:// on iOS) */
   uri: string;
   /**
-   * Capture time from EXIF DateTimeOriginal as a Unix timestamp (seconds).
-   * null if no capture time could be read — file modified time is used instead.
+   * The moment the photo was taken, as a true UTC Unix timestamp (seconds).
+   *
+   * This is an instant, never a wall-clock time read as if it were UTC. It comes from
+   * the EXIF time and offset when both exist, otherwise from the asset creation time.
+   * null when neither is available.
    */
   captureTimestamp: number | null;
+  /**
+   * The EXIF DateTimeOriginal wall-clock time exactly as the camera recorded it, as
+   * "YYYY-MM-DDTHH:MM:SS" with no zone. This is already local time at the place the
+   * photo was taken, so its date is the local day. Absent when EXIF has no valid
+   * capture time.
+   */
+  localCaptureTime?: string;
   /**
    * EXIF timezone offset string (e.g. "+01:00") or null if not present.
    * Present in EXIF 2.31+ (most phones since 2019).
@@ -46,8 +63,14 @@ export interface PhotoRecord {
   cameraMake: string | null;
   /** EXIF Model field (e.g. "iPhone 15 Pro") */
   cameraModel: string | null;
-  /** True if the file modified time was used because capture time was absent */
+  /** True if the asset creation time was used because EXIF had no valid capture time */
   usedFallbackTime?: boolean;
+  /**
+   * Asset creation time in milliseconds, as the media library reports it. This is
+   * the value the library's date filters and sort order use, so the scan marker is
+   * computed from it. Absent in fixtures and on assets that report no creation time.
+   */
+  createdAt?: number;
 }
 
 // ─── Time resolution (WP3) ────────────────────────────────────────────────────
@@ -164,6 +187,6 @@ export interface ExifScanMarker {
   sourceId: "photo-library";
   /** ISO 8601 timestamp of the last completed scan */
   lastScannedAt: string;
-  /** The scope that was active on the last scan */
-  scope: ScanScope;
+  /** The user's chosen scope on the last scan. Never "since", which is derived. */
+  scope: BaseScanScope;
 }

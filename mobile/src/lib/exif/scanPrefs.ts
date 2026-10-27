@@ -8,7 +8,7 @@
  */
 
 import * as FileSystem from "expo-file-system/legacy";
-import type { ExifScanMarker, ScanScope } from "../../../../src/lib/journal/sources/exif/types";
+import type { BaseScanScope, ExifScanMarker } from "@chronicle/journal/sources/exif/types";
 
 const PREFS_PATH = (FileSystem.documentDirectory ?? "") + "chronicle-prefs.json";
 
@@ -37,18 +37,27 @@ export async function getScanMarker(): Promise<ExifScanMarker | null> {
   if (!raw || typeof raw !== "object") return null;
   const m = raw as Partial<ExifScanMarker>;
   if (!m.lastScannedAt || !m.scope) return null;
-  return { sourceId: "photo-library", lastScannedAt: m.lastScannedAt, scope: m.scope };
+  // A marker never stores a "since" scope, but be safe: unwrap it to its base.
+  const scope: BaseScanScope = m.scope.kind === "since" ? (m.scope.base ?? { kind: "all" }) : m.scope;
+  return { sourceId: "photo-library", lastScannedAt: m.lastScannedAt, scope };
 }
 
 /**
  * Persist a completed scan's marker.
  * Called after a scan finishes (phase === "done").
+ *
+ * `lastScannedAt` is where the next incremental scan starts reading. It defaults to
+ * now, but callers should pass nextMarkerTimestamp() so the marker never moves past
+ * photos that were not fully handled (see scanPipeline.ts).
  */
-export async function setScanMarker(scope: ScanScope): Promise<void> {
+export async function setScanMarker(
+  scope: BaseScanScope,
+  lastScannedAt: string = new Date().toISOString(),
+): Promise<void> {
   const prefs = await readPrefs();
   const marker: ExifScanMarker = {
     sourceId: "photo-library",
-    lastScannedAt: new Date().toISOString(),
+    lastScannedAt,
     scope,
   };
   prefs[SCAN_MARKER_KEY] = marker;

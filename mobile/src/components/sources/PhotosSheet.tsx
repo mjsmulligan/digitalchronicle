@@ -9,7 +9,7 @@
 import React from "react";
 import { ActivityIndicator, Linking, View } from "react-native";
 import { useTheme, spacing } from "../ThemeProvider";
-import type { ScanScope } from "../../../../src/lib/journal/sources/exif/types";
+import type { ScanScope } from "@chronicle/journal/sources/exif/types";
 import type { ScanState } from "../../lib/exif/useExifScan";
 import type { SourceView } from "../../lib/sourceRegistry";
 import {

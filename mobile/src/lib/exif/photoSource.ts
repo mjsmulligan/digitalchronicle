@@ -12,8 +12,10 @@
  *   - Never prompts for permissions (uses getMediaPermissions, not requestMediaPermissions).
  *   - Returns early without error when no scan marker exists (user has not yet run a
  *     first manual scan — startup check is not the right moment to onboard them).
- *   - Caps new photos at STARTUP_CAP to keep startup latency predictable.
- *   - Advances the scan marker only after the pipeline commits successfully.
+ *   - Caps new photos at STARTUP_CAP to keep startup latency predictable. Photos above
+ *     the cap are left for the next launch: the marker stops at the newest photo read.
+ *   - Advances the scan marker only after the pipeline commits successfully, and never
+ *     past photos whose location lookup is still waiting for a retry.
  *   - Preserves the base scope (all / albums / date-range) stored in the marker.
  */
 
@@ -26,13 +28,15 @@ import {
 } from "@chronicle/journal/sources/exif/localityResolver";
 import { buildPlaceEntries } from "@chronicle/journal/sources/exif/entryBuilder";
 import { buildStagingPlan } from "@chronicle/journal/sources/exif/stagingService";
+import {
+  createdAtList,
+  newestCreatedAt,
+  nextMarkerTimestamp,
+  resolvePhotoLocalities,
+} from "@chronicle/journal/sources/exif/scanPipeline";
 import type { SourceDef } from "../connectedSources";
 import { getScanMarker, setScanMarker } from "./scanPrefs";
-import type {
-  TimedPhotoRecord,
-  LocatedPhotoRecord,
-  UnlocatedPhotoRecord,
-} from "../../../../src/lib/journal/sources/exif/types";
+import type { TimedPhotoRecord } from "@chronicle/journal/sources/exif/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -103,7 +107,9 @@ export function makePhotoSource(): SourceDef {
       const marker = await getScanMarker();
       if (!marker) return; // No first scan yet; startup check has nothing to anchor to.
 
-      const scope = { kind: "since" as const, timestamp: marker.lastScannedAt };
+      // The base scope keeps the check inside the albums or date range the user chose.
+      const scope = { kind: "since" as const, timestamp: marker.lastScannedAt, base: marker.scope };
+      const scanStartedAt = Date.now();
 
       // ── Scan + time-resolve (capped at STARTUP_CAP) ────────────────────────
       const journal = getState();
@@ -111,31 +117,20 @@ export function makePhotoSource(): SourceDef {
       const fallbackTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
       const timed: TimedPhotoRecord[] = [];
+      let capped = false;
       for await (const batch of scanPhotos(scope)) {
         for (const photo of batch) {
-          if (timed.length >= STARTUP_CAP) break;
+          if (timed.length >= STARTUP_CAP) { capped = true; break; }
           timed.push(resolveLocalDay(photo, legs, fallbackTz));
         }
-        if (timed.length >= STARTUP_CAP) break;
+        if (capped) break;
       }
 
-      // ── Geocode ────────────────────────────────────────────────────────────
+      // ── Geocode (with one retry pass for failed lookups) ───────────────────
       const cache = new InMemoryLocalityCache();
       const resolver = new ResolvingLocalityResolver(deviceGeocoder, cache);
-      const located: LocatedPhotoRecord[] = [];
-      const unlocated: UnlocatedPhotoRecord[] = [];
-
-      for (const photo of timed) {
-        if (photo.latitude !== null && photo.longitude !== null) {
-          const info = await resolver.resolve(photo.latitude, photo.longitude, photo.localDay);
-          if (info) located.push({ ...photo, locality: info });
-          else      unlocated.push({ ...photo, locality: null });
-        } else {
-          unlocated.push({ ...photo, locality: null });
-        }
-      }
-
-      if (resolver.pendingCount > 0) await resolver.retryPending();
+      const outcome = (await resolvePhotoLocalities(timed, resolver))!;
+      const { located, unlocated, unresolved } = outcome;
 
       // ── Build place entries ────────────────────────────────────────────────
       const builtEntries = buildPlaceEntries(located, unlocated, legs);
@@ -178,8 +173,19 @@ export function makePhotoSource(): SourceDef {
       // ── Advance marker (only on successful completion) ────────────────────
       // Preserve the base scope (all / albums / date-range) from the stored marker
       // so future startup checks continue to respect the user's scan preference.
-      // setScanMarker updates lastScannedAt to now.
-      await setScanMarker(marker.scope);
+      // The marker starts from when this scan began (not when it ended), stops at the
+      // newest photo read if the cap was hit, and stays behind photos whose lookup
+      // failed, so none of them are skipped.
+      await setScanMarker(
+        marker.scope,
+        nextMarkerTimestamp({
+          previous: marker.lastScannedAt,
+          scanStartedAt,
+          capped,
+          newestProcessedAt: newestCreatedAt(timed),
+          unresolvedCreatedAt: createdAtList(unresolved),
+        }),
+      );
     },
   };
 }

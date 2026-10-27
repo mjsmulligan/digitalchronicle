@@ -19,8 +19,8 @@
  */
 
 import * as Location from "expo-location";
-import { normaliseLocalityKey } from "../../../../src/lib/journal/sources/exif/localityResolver";
-import type { LocalityResolver, LocalityInfo } from "../../../../src/lib/journal/sources/exif/types";
+import { normaliseLocalityKey } from "@chronicle/journal/sources/exif/localityResolver";
+import type { LocalityResolver, LocalityInfo } from "@chronicle/journal/sources/exif/types";
 
 /**
  * Pick the best locality name from an Address object, along with its hierarchy level.
