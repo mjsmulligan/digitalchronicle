@@ -8,7 +8,7 @@
  */
 
 import * as FileSystem from "expo-file-system/legacy";
-import type { ExifScanMarker, ScanScope } from "../../../../src/lib/journal/sources/exif/types";
+import type { ExifScanMarker, ScanScope } from "@chronicle/journal/sources/exif/types";
 
 const PREFS_PATH = (FileSystem.documentDirectory ?? "") + "chronicle-prefs.json";
 

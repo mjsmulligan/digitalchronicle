@@ -15,8 +15,15 @@ export type ScanScope =
   | { kind: "all" }
   | { kind: "date-range"; start: string; end: string } // YYYY-MM-DD
   | { kind: "albums"; albumIds: string[] }
-  /** WP12b: startup check — only photos created after this ISO 8601 timestamp */
-  | { kind: "since"; timestamp: string };
+  /**
+   * WP12b: incremental check, only photos created after this ISO 8601 timestamp.
+   * `base` is the user's chosen scope (all, date range or albums); the incremental
+   * check must stay inside it. Absent means the whole library.
+   */
+  | { kind: "since"; timestamp: string; base?: BaseScanScope };
+
+/** A scope the user can choose. "since" is derived from one of these. */
+export type BaseScanScope = Exclude<ScanScope, { kind: "since" }>;
 
 /**
  * A normalised photo record as returned by the media access layer.
@@ -46,8 +53,14 @@ export interface PhotoRecord {
   cameraMake: string | null;
   /** EXIF Model field (e.g. "iPhone 15 Pro") */
   cameraModel: string | null;
-  /** True if the file modified time was used because capture time was absent */
+  /** True if the asset creation time was used because EXIF capture time was absent */
   usedFallbackTime?: boolean;
+  /**
+   * Asset creation time in milliseconds, as the media library reports it. This is
+   * the value the library's date filters and sort order use, so the scan marker is
+   * computed from it. Absent in fixtures and on assets that report no creation time.
+   */
+  createdAt?: number;
 }
 
 // ─── Time resolution (WP3) ────────────────────────────────────────────────────

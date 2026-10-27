@@ -29,11 +29,11 @@ import {
 import type { Place, PlaceEntry } from "@chronicle/journal/types";
 import {
   mergePlaces as _merge,
-} from "../../../../src/lib/journal/sources/exif/stagingService";
+} from "@chronicle/journal/sources/exif/stagingService";
 import {
   sortEntriesByHints,
   partitionByRoutine,
-} from "../../../../src/lib/journal/sources/exif/stagingHints";
+} from "@chronicle/journal/sources/exif/stagingHints";
 
 // ─── Derived hierarchy types ──────────────────────────────────────────────────
 

@@ -32,7 +32,7 @@ import type {
   TimedPhotoRecord,
   LocatedPhotoRecord,
   UnlocatedPhotoRecord,
-} from "../../../../src/lib/journal/sources/exif/types";
+} from "@chronicle/journal/sources/exif/types";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
