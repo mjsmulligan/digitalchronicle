@@ -166,6 +166,12 @@ export class ResolvingLocalityResolver {
   private readonly seenThisScan = new Set<string>();
   /** Lookups that failed and should be retried on the next scan */
   private readonly retryQueue: PendingLookup[] = [];
+  /**
+   * Coarsened coordinates ("lat,lon") whose lookup has failed this scan. Later photos
+   * at the same place skip the geocoder instead of failing again, so a scan started
+   * offline makes one failed call per place rather than one per photo.
+   */
+  private readonly failedCoords = new Set<string>();
 
   constructor(
     private readonly inner: LocalityResolver,
@@ -198,6 +204,10 @@ export class ResolvingLocalityResolver {
       return cached;
     }
 
+    // This place already failed earlier in the scan: leave it for the retry pass.
+    const coordKey = `${lat},${lon}`;
+    if (this.failedCoords.has(coordKey)) return null;
+
     // Geocoder call — with coarsened coords only (spec §8: anonymous lookup).
     try {
       const result = await this.inner.resolve(lat, lon);
@@ -210,6 +220,7 @@ export class ResolvingLocalityResolver {
     } catch {
       // Lookup failed (offline / timeout / geocoder error).
       // Spec §8: "stay pending… retried on the next scan. No place is created until resolved."
+      this.failedCoords.add(coordKey);
       if (day !== undefined) {
         this.retryQueue.push({ lat, lon, day });
       }
@@ -225,6 +236,7 @@ export class ResolvingLocalityResolver {
   async retryPending(): Promise<number> {
     const pending = [...this.retryQueue];
     this.retryQueue.length = 0;
+    this.failedCoords.clear();
     let resolved = 0;
     for (const { lat, lon, day } of pending) {
       try {
@@ -239,6 +251,7 @@ export class ResolvingLocalityResolver {
       } catch {
         // Still failing — put back on the queue.
         this.retryQueue.push({ lat, lon, day });
+        this.failedCoords.add(`${lat},${lon}`);
       }
     }
     return resolved;
@@ -247,6 +260,22 @@ export class ResolvingLocalityResolver {
   /** Reset the per-scan dedup set (e.g. at the start of a new scan). */
   resetDedup(): void {
     this.seenThisScan.clear();
+    this.failedCoords.clear();
+  }
+
+  /**
+   * The cached result for a coordinate pair, without calling the geocoder.
+   * Use after retryPending() to pick up lookups that succeeded on retry.
+   */
+  peek(rawLat: number, rawLon: number): LocalityInfo | undefined {
+    const { lat, lon } = coarsenCoords(rawLat, rawLon);
+    return this.cache.getByCoords(lat, lon);
+  }
+
+  /** True while a lookup for this coordinate pair is waiting to be retried. */
+  hasPending(rawLat: number, rawLon: number): boolean {
+    const { lat, lon } = coarsenCoords(rawLat, rawLon);
+    return this.retryQueue.some((p) => p.lat === lat && p.lon === lon);
   }
 
   /** How many lookups are waiting to be retried. */

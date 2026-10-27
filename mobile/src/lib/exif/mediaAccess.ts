@@ -187,7 +187,9 @@ export async function* scanPhotos(
       mediaType: MediaLibrary.MediaType.photo,
       first: BATCH_SIZE,
       after,
-      sortBy: [MediaLibrary.SortBy.creationTime],
+      // Oldest first. A capped scan then reads a contiguous run from the marker, and
+      // the marker can advance to the newest photo processed without skipping any.
+      sortBy: [[MediaLibrary.SortBy.creationTime, true]],
     };
     if (filter.createdAfter !== undefined) query.createdAfter = filter.createdAfter;
     if (filter.createdBefore !== undefined) query.createdBefore = filter.createdBefore;

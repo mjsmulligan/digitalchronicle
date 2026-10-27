@@ -177,6 +177,6 @@ export interface ExifScanMarker {
   sourceId: "photo-library";
   /** ISO 8601 timestamp of the last completed scan */
   lastScannedAt: string;
-  /** The scope that was active on the last scan */
-  scope: ScanScope;
+  /** The user's chosen scope on the last scan. Never "since", which is derived. */
+  scope: BaseScanScope;
 }
