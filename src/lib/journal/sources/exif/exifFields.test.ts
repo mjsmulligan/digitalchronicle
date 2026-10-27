@@ -108,12 +108,13 @@ describe("normaliseExif GPS", () => {
     expect(normaliseExif(undefined).captureTimestamp).toBeNull();
   });
 
-  it("still reads the capture time and offset as before", () => {
+  it("reads the capture time and offset", () => {
     const r = normaliseExif({
       DateTimeOriginal: "2025:07:14 10:00:00",
       OffsetTimeOriginal: "+01:00",
     });
-    expect(r.captureTimestamp).toBe(Date.UTC(2025, 6, 14, 10, 0, 0) / 1000);
+    // 10:00 at UTC+1 is 09:00 UTC.
+    expect(r.captureTimestamp).toBe(Date.UTC(2025, 6, 14, 9, 0, 0) / 1000);
     expect(r.tzOffset).toBe("+01:00");
   });
 });

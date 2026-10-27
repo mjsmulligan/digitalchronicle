@@ -144,16 +144,23 @@ export function resolveLocalDay(
   legs: Leg[],
   fallbackTz: string,
 ): TimedPhotoRecord {
-  // Use captureTimestamp when available; fall back to current time as last resort.
-  // The access layer (WP2) should have substituted file modified time already when
-  // captureTimestamp is null, setting usedFallbackTime: true on the record.
+  // Use captureTimestamp (a true UTC instant) when available; fall back to current time
+  // as last resort. The access layer (WP2) substitutes the asset creation time when EXIF
+  // has no capture time, setting usedFallbackTime: true on the record.
   const ts = photo.captureTimestamp ?? Date.now() / 1000;
+
+  // When EXIF recorded a wall-clock capture time, its date is already the local day at
+  // the place the photo was taken. Converting it again with an offset or a timezone would
+  // shift it a second time and move evening photos to the next day. The rules below still
+  // decide the recorded timingRule, and compute the day only when there is no wall-clock
+  // time and the instant has to be converted.
+  const wallDay = photo.localCaptureTime?.slice(0, 10);
 
   // Rule 1 — EXIF timezone offset (most accurate; available on most phones since ~2019)
   if (photo.tzOffset) {
     return {
       ...photo,
-      localDay: dayFromRawOffset(ts, photo.tzOffset),
+      localDay: wallDay ?? dayFromRawOffset(ts, photo.tzOffset),
       timingRule: "exif-offset",
     };
   }
@@ -163,7 +170,7 @@ export function resolveLocalDay(
     const tz = nearestTzForCoords(photo.latitude, photo.longitude) ?? fallbackTz;
     return {
       ...photo,
-      localDay: dayFromNamedTz(ts, tz),
+      localDay: wallDay ?? dayFromNamedTz(ts, tz),
       timingRule: "gps-inferred",
     };
   }
@@ -172,7 +179,7 @@ export function resolveLocalDay(
   const tz = tzFromLegs(ts, legs) ?? fallbackTz;
   return {
     ...photo,
-    localDay: dayFromNamedTz(ts, tz),
+    localDay: wallDay ?? dayFromNamedTz(ts, tz),
     timingRule: "fallback",
   };
 }

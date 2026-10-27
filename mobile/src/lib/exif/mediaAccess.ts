@@ -13,7 +13,7 @@
  *  - Yield photos in batches of BATCH_SIZE so a large scan can be cancelled / resumed
  *  - Normalise platform EXIF fields into the shared PhotoRecord shape
  *  - Never read assets outside the chosen scope
- *  - Set usedFallbackTime: true on records where file modified time replaced capture time
+ *  - Set usedFallbackTime: true on records where the asset creation time replaced the EXIF capture time
  *
  * Platform notes:
  *  - EXIF keys differ between iOS and Android (see exifFields.ts in the shared library)
@@ -221,9 +221,13 @@ export async function* scanPhotos(
 
       const exifData = normaliseExif(assetInfo.exif as Record<string, unknown> | null);
 
-      // Determine if we had to fall back to the asset's creation time.
-      const usedFallbackTime = exifData.captureTimestamp === null;
-      // If no EXIF capture time, use asset.creationTime (milliseconds from MediaLibrary).
+      // Determine if we had to fall back to the asset's creation time because EXIF has
+      // no valid capture time.
+      const usedFallbackTime = exifData.localCaptureTime === null;
+      // captureTimestamp is a true UTC instant. EXIF gives one only when it also has an
+      // offset; otherwise use asset.creationTime (milliseconds from MediaLibrary), which
+      // the platform stores as an instant. The EXIF wall-clock time is passed separately
+      // as localCaptureTime and decides the local day.
       const captureTimestamp = exifData.captureTimestamp
         ?? (asset.creationTime ? asset.creationTime / 1000 : null);
 
@@ -235,6 +239,7 @@ export async function* scanPhotos(
         mediaId: asset.id,
         uri: asset.uri,
         captureTimestamp,
+        ...(exifData.localCaptureTime ? { localCaptureTime: exifData.localCaptureTime } : {}),
         tzOffset: exifData.tzOffset,
         latitude,
         longitude,
