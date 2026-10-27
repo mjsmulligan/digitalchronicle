@@ -55,6 +55,28 @@ interface Prop { value: string; params: Record<string, string> }
  * Only the first occurrence of each property name is stored (spec allows multiple
  * EXDATE etc., but we only care about the primary scheduling properties).
  */
+/**
+ * Calendar text can carry HTML (booking sites and Google Calendar put <b>, <br> and entities
+ * in DESCRIPTION, sometimes in SUMMARY). Entries show plain text, so tags are removed, line
+ * breaks kept, and the common entities decoded.
+ */
+export function htmlToText(value: string): string {
+  if (!/[<&]/.test(value)) return value;
+  return value
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/\s*(p|div|li|tr|h[1-6])\s*>/gi, "\n")
+    .replace(/<\/?[a-z][^>]*>/gi, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .split("\n").map((l) => l.replace(/[ \t]+/g, " ").trim()).join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function parseProps(block: string): Map<string, Prop> {
   const map = new Map<string, Prop>();
   for (const line of block.split(/\r?\n/)) {
@@ -418,7 +440,7 @@ function parseIcs(text: string): ParseResult {
     const sourceRow = idx + 1;
     const props = parseProps(block);
 
-    const summary = props.get("SUMMARY")?.value.trim() ?? "";
+    const summary = htmlToText(props.get("SUMMARY")?.value ?? "").replace(/\s*\n\s*/g, " ").trim();
     if (!summary) {
       out.errors.push(`Event ${sourceRow}: no SUMMARY — skipped`);
       return;
@@ -438,8 +460,8 @@ function parseIcs(text: string): ParseResult {
     }
 
     const dtend = parseDt(props.get("DTEND"));
-    const description = props.get("DESCRIPTION")?.value.trim() || undefined;
-    const location = props.get("LOCATION")?.value ?? "";
+    const description = htmlToText(props.get("DESCRIPTION")?.value ?? "") || undefined;
+    const location = htmlToText(props.get("LOCATION")?.value ?? "").replace(/\s*\n\s*/g, ", ");
     const categories = props.get("CATEGORIES")?.value ?? "";
 
     const attendees = parseAttendeeNames(block);
